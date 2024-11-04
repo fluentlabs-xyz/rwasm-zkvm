@@ -278,7 +278,7 @@ impl ExecutionRecord {
 /// A memory access record.
 #[derive(Debug, Copy, Clone, Default)]
 pub struct MemoryAccessRecord {
-    /// The memory access of the `a` register.
+    /// The memory access arg1
     pub a: Option<MemoryRecordEnum>,
     /// The memory access of the `b` register.
     pub b: Option<MemoryRecordEnum>,

@@ -24,13 +24,11 @@ mod disassembler;
 pub mod events;
 mod executor;
 mod hook;
-mod instruction;
 mod io;
 mod memory;
 mod opcode;
 mod program;
-#[cfg(any(test, feature = "programs"))]
-pub mod programs;
+
 mod record;
 mod register;
 mod report;
@@ -42,7 +40,7 @@ mod utils;
 pub use context::*;
 pub use executor::*;
 pub use hook::*;
-pub use instruction::*;
+
 pub use opcode::*;
 pub use program::*;
 pub use record::*;

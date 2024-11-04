@@ -5,6 +5,7 @@ use std::{
 
 use enum_map::{EnumArray, EnumMap};
 use hashbrown::HashMap;
+use rwasm::engine::bytecode::Instruction;
 
 use crate::{events::sorted_table_lines, syscalls::SyscallCode, Opcode};
 

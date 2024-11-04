@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::Instruction;
+use rwasm::engine::bytecode::Instruction;
 
-use super::{memory::MemoryRecordEnum, LookupId};
+use super::{memory::MemoryRecordEnum, LookupId, MemoryReadRecord,MemoryWriteRecord};
 
 /// CPU Event.
 ///
@@ -17,27 +17,19 @@ pub struct CpuEvent {
     /// The clock cycle.
     pub clk: u32,
     /// The program counter.
+    /// 
+    pub next_clk:u32,
     pub pc: u32,
     /// The next program counter.
     pub next_pc: u32,
+
+    pub sp: u32,
+    pub next_sp:u32,
     /// The instruction.
     pub instruction: Instruction,
     /// The first operand.
-    pub a: u32,
-    /// The first operand memory record.
-    pub a_record: Option<MemoryRecordEnum>,
-    /// The second operand.
-    pub b: u32,
-    /// The second operand memory record.
-    pub b_record: Option<MemoryRecordEnum>,
-    /// The third operand.
-    pub c: u32,
-    /// The third operand memory record.
-    pub c_record: Option<MemoryRecordEnum>,
-    /// The memory value.
-    pub memory: Option<u32>,
-    /// The memory record.
-    pub memory_record: Option<MemoryRecordEnum>,
+   
+    pub exec_memory_list:ExecMemoryRecords,
     /// The exit code.
     pub exit_code: u32,
     /// The ALU lookup id.
@@ -60,4 +52,30 @@ pub struct CpuEvent {
     pub jump_jalr_lookup_id: LookupId,
     /// The auipc lookup id.
     pub auipc_lookup_id: LookupId,
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize,Default)]
+pub struct ExecMemoryRecords{
+    arg1: u32,
+    arg1_record: Option<MemoryReadRecord>,
+    arg2:u32,
+    arg2_record:Option<MemoryReadRecord>,
+    arg3:u32,
+    arg3_record:Option<MemoryReadRecord>,
+    res:u32,
+    res_record:Option<MemoryWriteRecord>,
+}
+impl ExecMemoryRecords {
+    pub fn new()->Self{
+        ExecMemoryRecords{
+            arg1: 0,
+            arg1_record:None,
+            arg2: 0,
+            arg2_record: None,
+            arg3:0,
+            arg3_record:None,
+            res: 0,
+            res_record: None,
+        }
+    }
 }

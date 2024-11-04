@@ -32,7 +32,7 @@ impl Syscall for WriteSyscall {
         let rt = &mut ctx.rt;
         let fd = arg1;
         let write_buf = arg2;
-        let nbytes = rt.register(a2);
+        let nbytes = 0; //TODO fix write
         // Read nbytes from memory starting at write_buf.
         let bytes = (0..nbytes).map(|i| rt.byte(write_buf + i)).collect::<Vec<u8>>();
         let slice = bytes.as_slice();

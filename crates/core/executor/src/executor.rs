@@ -7,14 +7,13 @@ use std::{
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use sp1_stark::SP1CoreOpts;
+
 use thiserror::Error;
 
 use crate::{
     context::SP1Context,
     events::{
-        create_alu_lookup_id, create_alu_lookups, AluEvent, CpuEvent, LookupId,
-        MemoryAccessPosition, MemoryInitializeFinalizeEvent, MemoryReadRecord, MemoryRecord,
-        MemoryWriteRecord,
+        create_alu_lookup_id, create_alu_lookups, AluEvent, CpuEvent, ExecMemoryRecords, LookupId, MemoryAccessPosition, MemoryInitializeFinalizeEvent, MemoryReadRecord, MemoryRecord, MemoryWriteRecord
     },
     hook::{HookEnv, HookRegistry},
     memory::{Entry, PagedMemory},
@@ -23,8 +22,9 @@ use crate::{
     state::{ExecutionState, ForkState},
     subproof::{DefaultSubproofVerifier, SubproofVerifier},
     syscalls::{default_syscall_map, Syscall, SyscallCode, SyscallContext},
-    Instruction, Opcode, Program, Register,
+     Opcode, Program, Register,
 };
+use rwasm::engine::bytecode::Instruction;
 
 /// An executor for the SP1 RISC-V zkVM.
 ///
@@ -248,60 +248,9 @@ impl<'a> Executor<'a> {
         runtime
     }
 
-    /// Get the current values of the registers.
-    #[allow(clippy::single_match_else)]
-    #[must_use]
-    pub fn registers(&mut self) -> [u32; 32] {
-        let mut registers = [0; 32];
-        for i in 0..32 {
-            let addr = Register::from_u32(i as u32) as u32;
-            let record = self.state.memory.get(addr);
+  
 
-            // Only add the previous memory state to checkpoint map if we're in checkpoint mode,
-            // or if we're in unconstrained mode. In unconstrained mode, the mode is always
-            // Simple.
-            if self.executor_mode == ExecutorMode::Checkpoint || self.unconstrained {
-                match record {
-                    Some(record) => {
-                        self.memory_checkpoint.entry(addr).or_insert_with(|| Some(*record));
-                    }
-                    None => {
-                        self.memory_checkpoint.entry(addr).or_insert(None);
-                    }
-                }
-            }
-
-            registers[i] = match record {
-                Some(record) => record.value,
-                None => 0,
-            };
-        }
-        registers
-    }
-
-    /// Get the current value of a register.
-    #[must_use]
-    pub fn register(&mut self, register: Register) -> u32 {
-        let addr = register as u32;
-        let record = self.state.memory.get(addr);
-
-        if self.executor_mode == ExecutorMode::Checkpoint || self.unconstrained {
-            match record {
-                Some(record) => {
-                    self.memory_checkpoint.entry(addr).or_insert_with(|| Some(*record));
-                }
-                None => {
-                    self.memory_checkpoint.entry(addr).or_insert(None);
-                }
-            }
-        }
-
-        match record {
-            Some(record) => record.value,
-            None => 0,
-        }
-    }
-
+   
     /// Get the current value of a word.
     #[must_use]
     pub fn word(&mut self, addr: u32) -> u32 {
@@ -444,78 +393,9 @@ impl<'a> Executor<'a> {
         MemoryWriteRecord::new(value, shard, timestamp, prev_value, prev_shard, prev_timestamp)
     }
 
-    /// Read from memory, assuming that all addresses are aligned.
-    pub fn mr_cpu(&mut self, addr: u32, position: MemoryAccessPosition) -> u32 {
-        // Assert that the address is aligned.
-        assert_valid_memory_access!(addr, position);
+  
 
-        // Read the address from memory and create a memory read record.
-        let record = self.mr(addr, self.shard(), self.timestamp(&position));
-
-        // If we're not in unconstrained mode, record the access for the current cycle.
-        if !self.unconstrained && self.executor_mode == ExecutorMode::Trace {
-            match position {
-                MemoryAccessPosition::A => self.memory_accesses.a = Some(record.into()),
-                MemoryAccessPosition::B => self.memory_accesses.b = Some(record.into()),
-                MemoryAccessPosition::C => self.memory_accesses.c = Some(record.into()),
-                MemoryAccessPosition::Memory => self.memory_accesses.memory = Some(record.into()),
-            }
-        }
-        record.value
-    }
-
-    /// Write to memory.
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if the address is not aligned or if the memory accesses are already
-    /// initialized.
-    pub fn mw_cpu(&mut self, addr: u32, value: u32, position: MemoryAccessPosition) {
-        // Assert that the address is aligned.
-        assert_valid_memory_access!(addr, position);
-
-        // Read the address from memory and create a memory read record.
-        let record = self.mw(addr, value, self.shard(), self.timestamp(&position));
-
-        // If we're not in unconstrained mode, record the access for the current cycle.
-        if !self.unconstrained && self.executor_mode == ExecutorMode::Trace {
-            match position {
-                MemoryAccessPosition::A => {
-                    assert!(self.memory_accesses.a.is_none());
-                    self.memory_accesses.a = Some(record.into());
-                }
-                MemoryAccessPosition::B => {
-                    assert!(self.memory_accesses.b.is_none());
-                    self.memory_accesses.b = Some(record.into());
-                }
-                MemoryAccessPosition::C => {
-                    assert!(self.memory_accesses.c.is_none());
-                    self.memory_accesses.c = Some(record.into());
-                }
-                MemoryAccessPosition::Memory => {
-                    assert!(self.memory_accesses.memory.is_none());
-                    self.memory_accesses.memory = Some(record.into());
-                }
-            }
-        }
-    }
-
-    /// Read from a register.
-    pub fn rr(&mut self, register: Register, position: MemoryAccessPosition) -> u32 {
-        self.mr_cpu(register as u32, position)
-    }
-
-    /// Write to a register.
-    pub fn rw(&mut self, register: Register, value: u32) {
-        // The only time we are writing to a register is when it is in operand A.
-        // Register %x0 should always be 0. See 2.6 Load and Store Instruction on
-        // P.18 of the RISC-V spec. We always write 0 to %x0.
-        if register == Register::X0 {
-            self.mw_cpu(register as u32, 0, MemoryAccessPosition::A);
-        } else {
-            self.mw_cpu(register as u32, value, MemoryAccessPosition::A);
-        }
-    }
+ 
 
     /// Emit a CPU event.
     #[allow(clippy::too_many_arguments)]
@@ -524,14 +404,15 @@ impl<'a> Executor<'a> {
         shard: u32,
         channel: u8,
         clk: u32,
+        next_clk:u32,
         pc: u32,
         next_pc: u32,
+        sp: u32,
+        next_sp:u32,
         instruction: Instruction,
-        a: u32,
-        b: u32,
-        c: u32,
-        memory_store_value: Option<u32>,
-        record: MemoryAccessRecord,
+        
+        exec_record:ExecMemoryRecords,
+        
         exit_code: u32,
         lookup_id: LookupId,
         syscall_lookup_id: LookupId,
@@ -540,17 +421,13 @@ impl<'a> Executor<'a> {
             shard,
             channel,
             clk,
+            next_clk,
             pc,
             next_pc,
             instruction,
-            a,
-            a_record: record.a,
-            b,
-            b_record: record.b,
-            c,
-            c_record: record.c,
-            memory: memory_store_value,
-            memory_record: record.memory,
+            sp,
+            next_sp,
+            exec_memory_list:exec_record,
             exit_code,
             alu_lookup_id: lookup_id,
             syscall_lookup_id,
@@ -562,6 +439,7 @@ impl<'a> Executor<'a> {
             jump_jal_lookup_id: create_alu_lookup_id(),
             jump_jalr_lookup_id: create_alu_lookup_id(),
             auipc_lookup_id: create_alu_lookup_id(),
+            
         };
 
         self.record.cpu_events.push(cpu_event);
@@ -609,70 +487,21 @@ impl<'a> Executor<'a> {
         }
     }
 
-    /// Fetch the destination register and input operand values for an ALU instruction.
-    fn alu_rr(&mut self, instruction: &Instruction) -> (Register, u32, u32) {
-        if !instruction.imm_c {
-            let (rd, rs1, rs2) = instruction.r_type();
-            let c = self.rr(rs2, MemoryAccessPosition::C);
-            let b = self.rr(rs1, MemoryAccessPosition::B);
-            (rd, b, c)
-        } else if !instruction.imm_b && instruction.imm_c {
-            let (rd, rs1, imm) = instruction.i_type();
-            let (rd, b, c) = (rd, self.rr(rs1, MemoryAccessPosition::B), imm);
-            (rd, b, c)
-        } else {
-            assert!(instruction.imm_b && instruction.imm_c);
-            let (rd, b, c) =
-                (Register::from_u32(instruction.op_a), instruction.op_b, instruction.op_c);
-            (rd, b, c)
-        }
+    fn fetch_binary32_args_from_stack(&mut self,sp:u32)->(MemoryReadRecord,MemoryReadRecord){
+        let x_record = self.mr(sp, self.shard(),self.state.clk);
+
+        self.state.clk+=1;
+        let y_record = self.mr(sp-1, self.shard(),self.state.clk);
+        (x_record,y_record)
     }
 
-    /// Set the destination register with the result and emit an ALU event.
-    fn alu_rw(
-        &mut self,
-        instruction: &Instruction,
-        rd: Register,
-        a: u32,
-        b: u32,
-        c: u32,
-        lookup_id: LookupId,
-    ) {
-        self.rw(rd, a);
-        if self.executor_mode == ExecutorMode::Trace {
-            self.emit_alu(self.state.clk, instruction.opcode, a, b, c, lookup_id);
-        }
+    fn update_stack_after_binary32(&mut self,res:u32)->MemoryWriteRecord{
+        self.state.clk+=1;
+        let sp = self.state.sp;
+        self.state.sp-=1;
+        let next_sp = self.state.sp;
+        self.mw(next_sp, res, self.shard(), self.state.clk)
     }
-
-    /// Fetch the input operand values for a load instruction.
-    fn load_rr(&mut self, instruction: &Instruction) -> (Register, u32, u32, u32, u32) {
-        let (rd, rs1, imm) = instruction.i_type();
-        let (b, c) = (self.rr(rs1, MemoryAccessPosition::B), imm);
-        let addr = b.wrapping_add(c);
-        let memory_value = self.mr_cpu(align(addr), MemoryAccessPosition::Memory);
-        (rd, b, c, addr, memory_value)
-    }
-
-    /// Fetch the input operand values for a store instruction.
-    fn store_rr(&mut self, instruction: &Instruction) -> (u32, u32, u32, u32, u32) {
-        let (rs1, rs2, imm) = instruction.s_type();
-        let c = imm;
-        let b = self.rr(rs2, MemoryAccessPosition::B);
-        let a = self.rr(rs1, MemoryAccessPosition::A);
-        let addr = b.wrapping_add(c);
-        let memory_value = self.word(align(addr));
-        (a, b, c, addr, memory_value)
-    }
-
-    /// Fetch the input operand values for a branch instruction.
-    fn branch_rr(&mut self, instruction: &Instruction) -> (u32, u32, u32) {
-        let (rs1, rs2, imm) = instruction.b_type();
-        let c = imm;
-        let b = self.rr(rs2, MemoryAccessPosition::B);
-        let a = self.rr(rs1, MemoryAccessPosition::A);
-        (a, b, c)
-    }
-
     /// Fetch the instruction at the current program counter.
     fn fetch(&self) -> Instruction {
         let idx = ((self.state.pc - self.program.pc_base) / 4) as usize;
@@ -684,15 +513,17 @@ impl<'a> Executor<'a> {
     fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), ExecutionError> {
         let mut pc = self.state.pc;
         let mut clk = self.state.clk;
+        let mut sp = self.state.sp;
+        let mut next_sp = self.state.sp;
         let mut exit_code = 0u32;
 
         let mut next_pc = self.state.pc.wrapping_add(4);
 
-        let rd: Register;
-        let (a, b, c): (u32, u32, u32);
-        let (addr, memory_read_value): (u32, u32);
-        let mut memory_store_value: Option<u32> = None;
-
+        let mut arg1:u32; let mut arg1_hi:u32;
+        let mut arg2:u32; let mut arg2_hi:u32;
+        let mut arg3:u32; let mut arg3_hi:u32;
+       
+       
         if self.executor_mode == ExecutorMode::Trace {
             self.memory_accesses = MemoryAccessRecord::default();
         }
@@ -707,222 +538,32 @@ impl<'a> Executor<'a> {
             LookupId::default()
         };
 
-        if self.print_report && !self.unconstrained {
-            self.report.opcode_counts[instruction.opcode] += 1;
-        }
-
-        match instruction.opcode {
+        // if self.print_report && !self.unconstrained {
+        //     self.report.opcode_counts[instruction] += 1;
+        // }
+        //TODO: fix report
+        let arg1_record:MemoryReadRecord;
+        let arg2_record:MemoryReadRecord;
+        let arg3_record:MemoryReadRecord;
+        let res_record:MemoryWriteRecord;
+        let exec_memory_records = ExecMemoryRecords::new();
+        match instruction{
             // Arithmetic instructions.
-            Opcode::ADD => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = b.wrapping_add(c);
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
+            Instruction::I32Add=>{
+                (arg1_record,arg2_record) = self.fetch_binary32_args_from_stack(sp);
+                let arg1 = arg1_record.value;
+                let arg2 = arg2_record.value;
+                let res = arg1.wrapping_add(arg2);
+                res_record = self.update_stack_after_binary32(res)
             }
-            Opcode::SUB => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = b.wrapping_sub(c);
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::XOR => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = b ^ c;
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::OR => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = b | c;
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::AND => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = b & c;
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::SLL => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = b.wrapping_shl(c);
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::SRL => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = b.wrapping_shr(c);
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::SRA => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = (b as i32).wrapping_shr(c) as u32;
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::SLT => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = if (b as i32) < (c as i32) { 1 } else { 0 };
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::SLTU => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = if b < c { 1 } else { 0 };
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-
-            // Load instructions.
-            Opcode::LB => {
-                (rd, b, c, addr, memory_read_value) = self.load_rr(instruction);
-                let value = (memory_read_value).to_le_bytes()[(addr % 4) as usize];
-                a = ((value as i8) as i32) as u32;
-                memory_store_value = Some(memory_read_value);
-                self.rw(rd, a);
-            }
-            Opcode::LH => {
-                (rd, b, c, addr, memory_read_value) = self.load_rr(instruction);
-                if addr % 2 != 0 {
-                    return Err(ExecutionError::InvalidMemoryAccess(Opcode::LH, addr));
-                }
-                let value = match (addr >> 1) % 2 {
-                    0 => memory_read_value & 0x0000_FFFF,
-                    1 => (memory_read_value & 0xFFFF_0000) >> 16,
-                    _ => unreachable!(),
-                };
-                a = ((value as i16) as i32) as u32;
-                memory_store_value = Some(memory_read_value);
-                self.rw(rd, a);
-            }
-            Opcode::LW => {
-                (rd, b, c, addr, memory_read_value) = self.load_rr(instruction);
-                if addr % 4 != 0 {
-                    return Err(ExecutionError::InvalidMemoryAccess(Opcode::LW, addr));
-                }
-                a = memory_read_value;
-                memory_store_value = Some(memory_read_value);
-                self.rw(rd, a);
-            }
-            Opcode::LBU => {
-                (rd, b, c, addr, memory_read_value) = self.load_rr(instruction);
-                let value = (memory_read_value).to_le_bytes()[(addr % 4) as usize];
-                a = value as u32;
-                memory_store_value = Some(memory_read_value);
-                self.rw(rd, a);
-            }
-            Opcode::LHU => {
-                (rd, b, c, addr, memory_read_value) = self.load_rr(instruction);
-                if addr % 2 != 0 {
-                    return Err(ExecutionError::InvalidMemoryAccess(Opcode::LHU, addr));
-                }
-                let value = match (addr >> 1) % 2 {
-                    0 => memory_read_value & 0x0000_FFFF,
-                    1 => (memory_read_value & 0xFFFF_0000) >> 16,
-                    _ => unreachable!(),
-                };
-                a = (value as u16) as u32;
-                memory_store_value = Some(memory_read_value);
-                self.rw(rd, a);
-            }
-
-            // Store instructions.
-            Opcode::SB => {
-                (a, b, c, addr, memory_read_value) = self.store_rr(instruction);
-                let value = match addr % 4 {
-                    0 => (a & 0x0000_00FF) + (memory_read_value & 0xFFFF_FF00),
-                    1 => ((a & 0x0000_00FF) << 8) + (memory_read_value & 0xFFFF_00FF),
-                    2 => ((a & 0x0000_00FF) << 16) + (memory_read_value & 0xFF00_FFFF),
-                    3 => ((a & 0x0000_00FF) << 24) + (memory_read_value & 0x00FF_FFFF),
-                    _ => unreachable!(),
-                };
-                memory_store_value = Some(value);
-                self.mw_cpu(align(addr), value, MemoryAccessPosition::Memory);
-            }
-            Opcode::SH => {
-                (a, b, c, addr, memory_read_value) = self.store_rr(instruction);
-                if addr % 2 != 0 {
-                    return Err(ExecutionError::InvalidMemoryAccess(Opcode::SH, addr));
-                }
-                let value = match (addr >> 1) % 2 {
-                    0 => (a & 0x0000_FFFF) + (memory_read_value & 0xFFFF_0000),
-                    1 => ((a & 0x0000_FFFF) << 16) + (memory_read_value & 0x0000_FFFF),
-                    _ => unreachable!(),
-                };
-                memory_store_value = Some(value);
-                self.mw_cpu(align(addr), value, MemoryAccessPosition::Memory);
-            }
-            Opcode::SW => {
-                (a, b, c, addr, _) = self.store_rr(instruction);
-                if addr % 4 != 0 {
-                    return Err(ExecutionError::InvalidMemoryAccess(Opcode::SW, addr));
-                }
-                let value = a;
-                memory_store_value = Some(value);
-                self.mw_cpu(align(addr), value, MemoryAccessPosition::Memory);
-            }
-
-            // B-type instructions.
-            Opcode::BEQ => {
-                (a, b, c) = self.branch_rr(instruction);
-                if a == b {
-                    next_pc = self.state.pc.wrapping_add(c);
-                }
-            }
-            Opcode::BNE => {
-                (a, b, c) = self.branch_rr(instruction);
-                if a != b {
-                    next_pc = self.state.pc.wrapping_add(c);
-                }
-            }
-            Opcode::BLT => {
-                (a, b, c) = self.branch_rr(instruction);
-                if (a as i32) < (b as i32) {
-                    next_pc = self.state.pc.wrapping_add(c);
-                }
-            }
-            Opcode::BGE => {
-                (a, b, c) = self.branch_rr(instruction);
-                if (a as i32) >= (b as i32) {
-                    next_pc = self.state.pc.wrapping_add(c);
-                }
-            }
-            Opcode::BLTU => {
-                (a, b, c) = self.branch_rr(instruction);
-                if a < b {
-                    next_pc = self.state.pc.wrapping_add(c);
-                }
-            }
-            Opcode::BGEU => {
-                (a, b, c) = self.branch_rr(instruction);
-                if a >= b {
-                    next_pc = self.state.pc.wrapping_add(c);
-                }
-            }
-
-            // Jump instructions.
-            Opcode::JAL => {
-                let (rd, imm) = instruction.j_type();
-                (b, c) = (imm, 0);
-                a = self.state.pc + 4;
-                self.rw(rd, a);
-                next_pc = self.state.pc.wrapping_add(imm);
-            }
-            Opcode::JALR => {
-                let (rd, rs1, imm) = instruction.i_type();
-                (b, c) = (self.rr(rs1, MemoryAccessPosition::B), imm);
-                a = self.state.pc + 4;
-                self.rw(rd, a);
-                next_pc = b.wrapping_add(c);
-            }
-
-            // Upper immediate instructions.
-            Opcode::AUIPC => {
-                let (rd, imm) = instruction.u_type();
-                (b, c) = (imm, imm);
-                a = self.state.pc.wrapping_add(b);
-                self.rw(rd, a);
-            }
-
-            // System instructions.
-            Opcode::ECALL => {
+           
+            Instruction::Call(syscall_id)=>{
+                let syscall_id = syscall_id.to_u32();
+                  // System instructions.
+             {
                 // We peek at register x5 to get the syscall id. The reason we don't `self.rr` this
                 // register is that we write to it later.
-                let t0 = Register::X5;
-                let syscall_id = self.register(t0);
-                c = self.rr(Register::X11, MemoryAccessPosition::C);
-                b = self.rr(Register::X10, MemoryAccessPosition::B);
+               
                 let syscall = SyscallCode::from_u32(syscall_id);
 
                 if self.print_report && !self.unconstrained {
@@ -949,13 +590,8 @@ impl<'a> Executor<'a> {
                         // Executing a syscall optionally returns a value to write to the t0
                         // register. If it returns None, we just keep the
                         // syscall_id in t0.
-                        let res = syscall_impl.execute(&mut precompile_rt, b, c);
-                        if let Some(val) = res {
-                            a = val;
-                        } else {
-                            a = syscall_id;
-                        }
-
+                        
+                      
                         // If the syscall is `HALT` and the exit code is non-zero, return an error.
                         if syscall == SyscallCode::HALT && precompile_rt.exit_code != 0 {
                             return Err(ExecutionError::HaltWithNonZeroExitCode(
@@ -975,8 +611,9 @@ impl<'a> Executor<'a> {
                 // Allow the syscall impl to modify state.clk/pc (exit unconstrained does this)
                 clk = self.state.clk;
                 pc = self.state.pc;
-
-                self.rw(t0, a);
+                sp = self.state.sp;
+                next_sp = self.state.sp;
+                // self.rw(t0, a); TODO writeback syscall result to top of stack
                 next_pc = precompile_next_pc;
                 self.state.clk += precompile_cycles;
                 exit_code = returned_exit_code;
@@ -994,82 +631,215 @@ impl<'a> Executor<'a> {
                 self.record.nonce_lookup.insert(syscall_lookup_id, nonce);
                 *syscall_count += 1;
             }
-            Opcode::EBREAK => {
-                return Err(ExecutionError::Breakpoint());
             }
-
-            // Multiply instructions.
-            Opcode::MUL => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = b.wrapping_mul(c);
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::MULH => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = (((b as i32) as i64).wrapping_mul((c as i32) as i64) >> 32) as u32;
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::MULHU => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = ((b as u64).wrapping_mul(c as u64) >> 32) as u32;
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::MULHSU => {
-                (rd, b, c) = self.alu_rr(instruction);
-                a = (((b as i32) as i64).wrapping_mul(c as i64) >> 32) as u32;
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::DIV => {
-                (rd, b, c) = self.alu_rr(instruction);
-                if c == 0 {
-                    a = u32::MAX;
-                } else {
-                    a = (b as i32).wrapping_div(c as i32) as u32;
-                }
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::DIVU => {
-                (rd, b, c) = self.alu_rr(instruction);
-                if c == 0 {
-                    a = u32::MAX;
-                } else {
-                    a = b.wrapping_div(c);
-                }
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::REM => {
-                (rd, b, c) = self.alu_rr(instruction);
-                if c == 0 {
-                    a = b;
-                } else {
-                    a = (b as i32).wrapping_rem(c as i32) as u32;
-                }
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-            Opcode::REMU => {
-                (rd, b, c) = self.alu_rr(instruction);
-                if c == 0 {
-                    a = b;
-                } else {
-                    a = b.wrapping_rem(c);
-                }
-                self.alu_rw(instruction, rd, a, b, c, lookup_id);
-            }
-
-            // See https://github.com/riscv-non-isa/riscv-asm-manual/blob/master/riscv-asm.md#instruction-aliases
-            Opcode::UNIMP => {
-                return Err(ExecutionError::Unimplemented());
-            }
+            Instruction::LocalGet(local_depth) => todo!(),
+            Instruction::LocalSet(local_depth) => todo!(),
+            Instruction::LocalTee(local_depth) => todo!(),
+            Instruction::BrIfEqz(branch_offset) => todo!(),
+            Instruction::BrIfNez(branch_offset) => todo!(),
+            Instruction::BrAdjust(branch_offset) => todo!(),
+            Instruction::BrAdjustIfNez(branch_offset) => todo!(),
+            Instruction::BrTable(branch_table_targets) => todo!(),
+            Instruction::Unreachable => todo!(),
+            Instruction::ConsumeFuel(block_fuel) => todo!(),
+            Instruction::Return(drop_keep) => todo!(),
+            Instruction::ReturnIfNez(drop_keep) => todo!(),
+            Instruction::ReturnCallInternal(compiled_func) => todo!(),
+            Instruction::ReturnCall(func_idx) => todo!(),
+            Instruction::ReturnCallIndirect(signature_idx) => todo!(),
+            Instruction::CallInternal(compiled_func) => todo!(),
+            Instruction::Call(func_idx) => todo!(),
+            Instruction::CallIndirect(signature_idx) => todo!(),
+            Instruction::SignatureCheck(signature_idx) => todo!(),
+            Instruction::Drop => todo!(),
+            Instruction::Select => todo!(),
+            Instruction::GlobalGet(global_idx) => todo!(),
+            Instruction::GlobalSet(global_idx) => todo!(),
+            Instruction::I32Load(address_offset) => todo!(),
+            Instruction::I64Load(address_offset) => todo!(),
+            Instruction::F32Load(address_offset) => todo!(),
+            Instruction::F64Load(address_offset) => todo!(),
+            Instruction::I32Load8S(address_offset) => todo!(),
+            Instruction::I32Load8U(address_offset) => todo!(),
+            Instruction::I32Load16S(address_offset) => todo!(),
+            Instruction::I32Load16U(address_offset) => todo!(),
+            Instruction::I64Load8S(address_offset) => todo!(),
+            Instruction::I64Load8U(address_offset) => todo!(),
+            Instruction::I64Load16S(address_offset) => todo!(),
+            Instruction::I64Load16U(address_offset) => todo!(),
+            Instruction::I64Load32S(address_offset) => todo!(),
+            Instruction::I64Load32U(address_offset) => todo!(),
+            Instruction::I32Store(address_offset) => todo!(),
+            Instruction::I64Store(address_offset) => todo!(),
+            Instruction::F32Store(address_offset) => todo!(),
+            Instruction::F64Store(address_offset) => todo!(),
+            Instruction::I32Store8(address_offset) => todo!(),
+            Instruction::I32Store16(address_offset) => todo!(),
+            Instruction::I64Store8(address_offset) => todo!(),
+            Instruction::I64Store16(address_offset) => todo!(),
+            Instruction::I64Store32(address_offset) => todo!(),
+            Instruction::MemorySize => todo!(),
+            Instruction::MemoryGrow => todo!(),
+            Instruction::MemoryFill => todo!(),
+            Instruction::MemoryCopy => todo!(),
+            Instruction::MemoryInit(data_segment_idx) => todo!(),
+            Instruction::DataDrop(data_segment_idx) => todo!(),
+            Instruction::TableSize(table_idx) => todo!(),
+            Instruction::TableGrow(table_idx) => todo!(),
+            Instruction::TableFill(table_idx) => todo!(),
+            Instruction::TableGet(table_idx) => todo!(),
+            Instruction::TableSet(table_idx) => todo!(),
+            Instruction::TableCopy(table_idx) => todo!(),
+            Instruction::TableInit(element_segment_idx) => todo!(),
+            Instruction::ElemDrop(element_segment_idx) => todo!(),
+            Instruction::RefFunc(func_idx) => todo!(),
+            Instruction::I32Const(untyped_value) => todo!(),
+            Instruction::I64Const(untyped_value) => todo!(),
+            Instruction::F32Const(untyped_value) => todo!(),
+            Instruction::F64Const(untyped_value) => todo!(),
+            Instruction::ConstRef(const_ref) => todo!(),
+            Instruction::I32Eqz => todo!(),
+            Instruction::I32Eq => todo!(),
+            Instruction::I32Ne => todo!(),
+            Instruction::I32LtS => todo!(),
+            Instruction::I32LtU => todo!(),
+            Instruction::I32GtS => todo!(),
+            Instruction::I32GtU => todo!(),
+            Instruction::I32LeS => todo!(),
+            Instruction::I32LeU => todo!(),
+            Instruction::I32GeS => todo!(),
+            Instruction::I32GeU => todo!(),
+            Instruction::I64Eqz => todo!(),
+            Instruction::I64Eq => todo!(),
+            Instruction::I64Ne => todo!(),
+            Instruction::I64LtS => todo!(),
+            Instruction::I64LtU => todo!(),
+            Instruction::I64GtS => todo!(),
+            Instruction::I64GtU => todo!(),
+            Instruction::I64LeS => todo!(),
+            Instruction::I64LeU => todo!(),
+            Instruction::I64GeS => todo!(),
+            Instruction::I64GeU => todo!(),
+            Instruction::F32Eq => todo!(),
+            Instruction::F32Ne => todo!(),
+            Instruction::F32Lt => todo!(),
+            Instruction::F32Gt => todo!(),
+            Instruction::F32Le => todo!(),
+            Instruction::F32Ge => todo!(),
+            Instruction::F64Eq => todo!(),
+            Instruction::F64Ne => todo!(),
+            Instruction::F64Lt => todo!(),
+            Instruction::F64Gt => todo!(),
+            Instruction::F64Le => todo!(),
+            Instruction::F64Ge => todo!(),
+            Instruction::I32Clz => todo!(),
+            Instruction::I32Ctz => todo!(),
+            Instruction::I32Popcnt => todo!(),
+            Instruction::I32Sub => todo!(),
+            Instruction::I32Mul => todo!(),
+            Instruction::I32DivS => todo!(),
+            Instruction::I32DivU => todo!(),
+            Instruction::I32RemS => todo!(),
+            Instruction::I32RemU => todo!(),
+            Instruction::I32And => todo!(),
+            Instruction::I32Or => todo!(),
+            Instruction::I32Xor => todo!(),
+            Instruction::I32Shl => todo!(),
+            Instruction::I32ShrS => todo!(),
+            Instruction::I32ShrU => todo!(),
+            Instruction::I32Rotl => todo!(),
+            Instruction::I32Rotr => todo!(),
+            Instruction::I64Clz => todo!(),
+            Instruction::I64Ctz => todo!(),
+            Instruction::I64Popcnt => todo!(),
+            Instruction::I64Add => todo!(),
+            Instruction::I64Sub => todo!(),
+            Instruction::I64Mul => todo!(),
+            Instruction::I64DivS => todo!(),
+            Instruction::I64DivU => todo!(),
+            Instruction::I64RemS => todo!(),
+            Instruction::I64RemU => todo!(),
+            Instruction::I64And => todo!(),
+            Instruction::I64Or => todo!(),
+            Instruction::I64Xor => todo!(),
+            Instruction::I64Shl => todo!(),
+            Instruction::I64ShrS => todo!(),
+            Instruction::I64ShrU => todo!(),
+            Instruction::I64Rotl => todo!(),
+            Instruction::I64Rotr => todo!(),
+            Instruction::F32Abs => todo!(),
+            Instruction::F32Neg => todo!(),
+            Instruction::F32Ceil => todo!(),
+            Instruction::F32Floor => todo!(),
+            Instruction::F32Trunc => todo!(),
+            Instruction::F32Nearest => todo!(),
+            Instruction::F32Sqrt => todo!(),
+            Instruction::F32Add => todo!(),
+            Instruction::F32Sub => todo!(),
+            Instruction::F32Mul => todo!(),
+            Instruction::F32Div => todo!(),
+            Instruction::F32Min => todo!(),
+            Instruction::F32Max => todo!(),
+            Instruction::F32Copysign => todo!(),
+            Instruction::F64Abs => todo!(),
+            Instruction::F64Neg => todo!(),
+            Instruction::F64Ceil => todo!(),
+            Instruction::F64Floor => todo!(),
+            Instruction::F64Trunc => todo!(),
+            Instruction::F64Nearest => todo!(),
+            Instruction::F64Sqrt => todo!(),
+            Instruction::F64Add => todo!(),
+            Instruction::F64Sub => todo!(),
+            Instruction::F64Mul => todo!(),
+            Instruction::F64Div => todo!(),
+            Instruction::F64Min => todo!(),
+            Instruction::F64Max => todo!(),
+            Instruction::F64Copysign => todo!(),
+            Instruction::I32WrapI64 => todo!(),
+            Instruction::I32TruncF32S => todo!(),
+            Instruction::I32TruncF32U => todo!(),
+            Instruction::I32TruncF64S => todo!(),
+            Instruction::I32TruncF64U => todo!(),
+            Instruction::I64ExtendI32S => todo!(),
+            Instruction::I64ExtendI32U => todo!(),
+            Instruction::I64TruncF32S => todo!(),
+            Instruction::I64TruncF32U => todo!(),
+            Instruction::I64TruncF64S => todo!(),
+            Instruction::I64TruncF64U => todo!(),
+            Instruction::F32ConvertI32S => todo!(),
+            Instruction::F32ConvertI32U => todo!(),
+            Instruction::F32ConvertI64S => todo!(),
+            Instruction::F32ConvertI64U => todo!(),
+            Instruction::F32DemoteF64 => todo!(),
+            Instruction::F64ConvertI32S => todo!(),
+            Instruction::F64ConvertI32U => todo!(),
+            Instruction::F64ConvertI64S => todo!(),
+            Instruction::F64ConvertI64U => todo!(),
+            Instruction::F64PromoteF32 => todo!(),
+            Instruction::I32Extend8S => todo!(),
+            Instruction::I32Extend16S => todo!(),
+            Instruction::I64Extend8S => todo!(),
+            Instruction::I64Extend16S => todo!(),
+            Instruction::I64Extend32S => todo!(),
+            Instruction::I32TruncSatF32S => todo!(),
+            Instruction::I32TruncSatF32U => todo!(),
+            Instruction::I32TruncSatF64S => todo!(),
+            Instruction::I32TruncSatF64U => todo!(),
+            Instruction::I64TruncSatF32S => todo!(),
+            Instruction::I64TruncSatF32U => todo!(),
+            Instruction::I64TruncSatF64S => todo!(),
+            Instruction::I64TruncSatF64U => todo!(),
+            Instruction::Br(branch_offset) => todo!(),
+        
         }
-
         // Update the program counter.
         self.state.pc = next_pc;
-
-        // Update the clk to the next cycle.
-        self.state.clk += 4;
+        let next_clk = self.state.clk;
+        
+        let next_sp = self.state.sp;
 
         let channel = self.channel();
-
+        
         // Update the channel to the next cycle.
         if !self.unconstrained {
             self.state.channel = (self.state.channel + 1) % NUM_BYTE_LOOKUP_CHANNELS;
@@ -1081,14 +851,14 @@ impl<'a> Executor<'a> {
                 self.shard(),
                 channel,
                 clk,
+                next_clk,
                 pc,
                 next_pc,
+                sp,
+                next_sp,
                 *instruction,
-                a,
-                b,
-                c,
-                memory_store_value,
-                self.memory_accesses,
+               exec_memory_records,
+             
                 exit_code,
                 lookup_id,
                 syscall_lookup_id,
@@ -1422,618 +1192,3 @@ pub const fn align(addr: u32) -> u32 {
 // TODO: FIX
 /// The number of different byte lookup channels.
 pub const NUM_BYTE_LOOKUP_CHANNELS: u8 = 16;
-
-#[cfg(test)]
-mod tests {
-
-    use sp1_stark::SP1CoreOpts;
-
-    use crate::programs::tests::{
-        fibonacci_program, panic_program, simple_memory_program, simple_program,
-        ssz_withdrawals_program,
-    };
-
-    use crate::Register;
-
-    use super::{Executor, Instruction, Opcode, Program};
-
-    fn _assert_send<T: Send>() {}
-
-    /// Runtime needs to be Send so we can use it across async calls.
-    fn _assert_runtime_is_send() {
-        _assert_send::<Executor>();
-    }
-
-    #[test]
-    fn test_simple_program_run() {
-        let program = simple_program();
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 42);
-    }
-
-    #[test]
-    fn test_fibonacci_program_run() {
-        let program = fibonacci_program();
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-    }
-
-    #[test]
-    fn test_ssz_withdrawals_program_run() {
-        let program = ssz_withdrawals_program();
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_panic() {
-        let program = panic_program();
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-    }
-
-    #[test]
-    fn test_add() {
-        // main:
-        //     addi x29, x0, 5
-        //     addi x30, x0, 37
-        //     add x31, x30, x29
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
-            Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
-        ];
-        let program = Program::new(instructions, 0, 0);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 42);
-    }
-
-    #[test]
-    fn test_sub() {
-        //     addi x29, x0, 5
-        //     addi x30, x0, 37
-        //     sub x31, x30, x29
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
-            Instruction::new(Opcode::SUB, 31, 30, 29, false, false),
-        ];
-        let program = Program::new(instructions, 0, 0);
-
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 32);
-    }
-
-    #[test]
-    fn test_xor() {
-        //     addi x29, x0, 5
-        //     addi x30, x0, 37
-        //     xor x31, x30, x29
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
-            Instruction::new(Opcode::XOR, 31, 30, 29, false, false),
-        ];
-        let program = Program::new(instructions, 0, 0);
-
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 32);
-    }
-
-    #[test]
-    fn test_or() {
-        //     addi x29, x0, 5
-        //     addi x30, x0, 37
-        //     or x31, x30, x29
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
-            Instruction::new(Opcode::OR, 31, 30, 29, false, false),
-        ];
-        let program = Program::new(instructions, 0, 0);
-
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 37);
-    }
-
-    #[test]
-    fn test_and() {
-        //     addi x29, x0, 5
-        //     addi x30, x0, 37
-        //     and x31, x30, x29
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
-            Instruction::new(Opcode::AND, 31, 30, 29, false, false),
-        ];
-        let program = Program::new(instructions, 0, 0);
-
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 5);
-    }
-
-    #[test]
-    fn test_sll() {
-        //     addi x29, x0, 5
-        //     addi x30, x0, 37
-        //     sll x31, x30, x29
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
-            Instruction::new(Opcode::SLL, 31, 30, 29, false, false),
-        ];
-        let program = Program::new(instructions, 0, 0);
-
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 1184);
-    }
-
-    #[test]
-    fn test_srl() {
-        //     addi x29, x0, 5
-        //     addi x30, x0, 37
-        //     srl x31, x30, x29
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
-            Instruction::new(Opcode::SRL, 31, 30, 29, false, false),
-        ];
-        let program = Program::new(instructions, 0, 0);
-
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 1);
-    }
-
-    #[test]
-    fn test_sra() {
-        //     addi x29, x0, 5
-        //     addi x30, x0, 37
-        //     sra x31, x30, x29
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
-            Instruction::new(Opcode::SRA, 31, 30, 29, false, false),
-        ];
-        let program = Program::new(instructions, 0, 0);
-
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 1);
-    }
-
-    #[test]
-    fn test_slt() {
-        //     addi x29, x0, 5
-        //     addi x30, x0, 37
-        //     slt x31, x30, x29
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
-            Instruction::new(Opcode::SLT, 31, 30, 29, false, false),
-        ];
-        let program = Program::new(instructions, 0, 0);
-
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 0);
-    }
-
-    #[test]
-    fn test_sltu() {
-        //     addi x29, x0, 5
-        //     addi x30, x0, 37
-        //     sltu x31, x30, x29
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
-            Instruction::new(Opcode::SLTU, 31, 30, 29, false, false),
-        ];
-        let program = Program::new(instructions, 0, 0);
-
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 0);
-    }
-
-    #[test]
-    fn test_addi() {
-        //     addi x29, x0, 5
-        //     addi x30, x29, 37
-        //     addi x31, x30, 42
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 29, 37, false, true),
-            Instruction::new(Opcode::ADD, 31, 30, 42, false, true),
-        ];
-        let program = Program::new(instructions, 0, 0);
-
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 84);
-    }
-
-    #[test]
-    fn test_addi_negative() {
-        //     addi x29, x0, 5
-        //     addi x30, x29, -1
-        //     addi x31, x30, 4
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 29, 0xFFFF_FFFF, false, true),
-            Instruction::new(Opcode::ADD, 31, 30, 4, false, true),
-        ];
-        let program = Program::new(instructions, 0, 0);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 5 - 1 + 4);
-    }
-
-    #[test]
-    fn test_xori() {
-        //     addi x29, x0, 5
-        //     xori x30, x29, 37
-        //     xori x31, x30, 42
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::XOR, 30, 29, 37, false, true),
-            Instruction::new(Opcode::XOR, 31, 30, 42, false, true),
-        ];
-        let program = Program::new(instructions, 0, 0);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 10);
-    }
-
-    #[test]
-    fn test_ori() {
-        //     addi x29, x0, 5
-        //     ori x30, x29, 37
-        //     ori x31, x30, 42
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::OR, 30, 29, 37, false, true),
-            Instruction::new(Opcode::OR, 31, 30, 42, false, true),
-        ];
-        let program = Program::new(instructions, 0, 0);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 47);
-    }
-
-    #[test]
-    fn test_andi() {
-        //     addi x29, x0, 5
-        //     andi x30, x29, 37
-        //     andi x31, x30, 42
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::AND, 30, 29, 37, false, true),
-            Instruction::new(Opcode::AND, 31, 30, 42, false, true),
-        ];
-        let program = Program::new(instructions, 0, 0);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 0);
-    }
-
-    #[test]
-    fn test_slli() {
-        //     addi x29, x0, 5
-        //     slli x31, x29, 37
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::SLL, 31, 29, 4, false, true),
-        ];
-        let program = Program::new(instructions, 0, 0);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 80);
-    }
-
-    #[test]
-    fn test_srli() {
-        //    addi x29, x0, 5
-        //    srli x31, x29, 37
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 42, false, true),
-            Instruction::new(Opcode::SRL, 31, 29, 4, false, true),
-        ];
-        let program = Program::new(instructions, 0, 0);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 2);
-    }
-
-    #[test]
-    fn test_srai() {
-        //   addi x29, x0, 5
-        //   srai x31, x29, 37
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 42, false, true),
-            Instruction::new(Opcode::SRA, 31, 29, 4, false, true),
-        ];
-        let program = Program::new(instructions, 0, 0);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 2);
-    }
-
-    #[test]
-    fn test_slti() {
-        //   addi x29, x0, 5
-        //   slti x31, x29, 37
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 42, false, true),
-            Instruction::new(Opcode::SLT, 31, 29, 37, false, true),
-        ];
-        let program = Program::new(instructions, 0, 0);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 0);
-    }
-
-    #[test]
-    fn test_sltiu() {
-        //   addi x29, x0, 5
-        //   sltiu x31, x29, 37
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 42, false, true),
-            Instruction::new(Opcode::SLTU, 31, 29, 37, false, true),
-        ];
-        let program = Program::new(instructions, 0, 0);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.register(Register::X31), 0);
-    }
-
-    #[test]
-    fn test_jalr() {
-        //   addi x11, x11, 100
-        //   jalr x5, x11, 8
-        //
-        // `JALR rd offset(rs)` reads the value at rs, adds offset to it and uses it as the
-        // destination address. It then stores the address of the next instruction in rd in case
-        // we'd want to come back here.
-
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 11, 11, 100, false, true),
-            Instruction::new(Opcode::JALR, 5, 11, 8, false, true),
-        ];
-        let program = Program::new(instructions, 0, 0);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.registers()[Register::X5 as usize], 8);
-        assert_eq!(runtime.registers()[Register::X11 as usize], 100);
-        assert_eq!(runtime.state.pc, 108);
-    }
-
-    fn simple_op_code_test(opcode: Opcode, expected: u32, a: u32, b: u32) {
-        let instructions = vec![
-            Instruction::new(Opcode::ADD, 10, 0, a, false, true),
-            Instruction::new(Opcode::ADD, 11, 0, b, false, true),
-            Instruction::new(opcode, 12, 10, 11, false, false),
-        ];
-        let program = Program::new(instructions, 0, 0);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.registers()[Register::X12 as usize], expected);
-    }
-
-    #[test]
-    #[allow(clippy::unreadable_literal)]
-    fn multiplication_tests() {
-        simple_op_code_test(Opcode::MULHU, 0x00000000, 0x00000000, 0x00000000);
-        simple_op_code_test(Opcode::MULHU, 0x00000000, 0x00000001, 0x00000001);
-        simple_op_code_test(Opcode::MULHU, 0x00000000, 0x00000003, 0x00000007);
-        simple_op_code_test(Opcode::MULHU, 0x00000000, 0x00000000, 0xffff8000);
-        simple_op_code_test(Opcode::MULHU, 0x00000000, 0x80000000, 0x00000000);
-        simple_op_code_test(Opcode::MULHU, 0x7fffc000, 0x80000000, 0xffff8000);
-        simple_op_code_test(Opcode::MULHU, 0x0001fefe, 0xaaaaaaab, 0x0002fe7d);
-        simple_op_code_test(Opcode::MULHU, 0x0001fefe, 0x0002fe7d, 0xaaaaaaab);
-        simple_op_code_test(Opcode::MULHU, 0xfe010000, 0xff000000, 0xff000000);
-        simple_op_code_test(Opcode::MULHU, 0xfffffffe, 0xffffffff, 0xffffffff);
-        simple_op_code_test(Opcode::MULHU, 0x00000000, 0xffffffff, 0x00000001);
-        simple_op_code_test(Opcode::MULHU, 0x00000000, 0x00000001, 0xffffffff);
-
-        simple_op_code_test(Opcode::MULHSU, 0x00000000, 0x00000000, 0x00000000);
-        simple_op_code_test(Opcode::MULHSU, 0x00000000, 0x00000001, 0x00000001);
-        simple_op_code_test(Opcode::MULHSU, 0x00000000, 0x00000003, 0x00000007);
-        simple_op_code_test(Opcode::MULHSU, 0x00000000, 0x00000000, 0xffff8000);
-        simple_op_code_test(Opcode::MULHSU, 0x00000000, 0x80000000, 0x00000000);
-        simple_op_code_test(Opcode::MULHSU, 0x80004000, 0x80000000, 0xffff8000);
-        simple_op_code_test(Opcode::MULHSU, 0xffff0081, 0xaaaaaaab, 0x0002fe7d);
-        simple_op_code_test(Opcode::MULHSU, 0x0001fefe, 0x0002fe7d, 0xaaaaaaab);
-        simple_op_code_test(Opcode::MULHSU, 0xff010000, 0xff000000, 0xff000000);
-        simple_op_code_test(Opcode::MULHSU, 0xffffffff, 0xffffffff, 0xffffffff);
-        simple_op_code_test(Opcode::MULHSU, 0xffffffff, 0xffffffff, 0x00000001);
-        simple_op_code_test(Opcode::MULHSU, 0x00000000, 0x00000001, 0xffffffff);
-
-        simple_op_code_test(Opcode::MULH, 0x00000000, 0x00000000, 0x00000000);
-        simple_op_code_test(Opcode::MULH, 0x00000000, 0x00000001, 0x00000001);
-        simple_op_code_test(Opcode::MULH, 0x00000000, 0x00000003, 0x00000007);
-        simple_op_code_test(Opcode::MULH, 0x00000000, 0x00000000, 0xffff8000);
-        simple_op_code_test(Opcode::MULH, 0x00000000, 0x80000000, 0x00000000);
-        simple_op_code_test(Opcode::MULH, 0x00000000, 0x80000000, 0x00000000);
-        simple_op_code_test(Opcode::MULH, 0xffff0081, 0xaaaaaaab, 0x0002fe7d);
-        simple_op_code_test(Opcode::MULH, 0xffff0081, 0x0002fe7d, 0xaaaaaaab);
-        simple_op_code_test(Opcode::MULH, 0x00010000, 0xff000000, 0xff000000);
-        simple_op_code_test(Opcode::MULH, 0x00000000, 0xffffffff, 0xffffffff);
-        simple_op_code_test(Opcode::MULH, 0xffffffff, 0xffffffff, 0x00000001);
-        simple_op_code_test(Opcode::MULH, 0xffffffff, 0x00000001, 0xffffffff);
-
-        simple_op_code_test(Opcode::MUL, 0x00001200, 0x00007e00, 0xb6db6db7);
-        simple_op_code_test(Opcode::MUL, 0x00001240, 0x00007fc0, 0xb6db6db7);
-        simple_op_code_test(Opcode::MUL, 0x00000000, 0x00000000, 0x00000000);
-        simple_op_code_test(Opcode::MUL, 0x00000001, 0x00000001, 0x00000001);
-        simple_op_code_test(Opcode::MUL, 0x00000015, 0x00000003, 0x00000007);
-        simple_op_code_test(Opcode::MUL, 0x00000000, 0x00000000, 0xffff8000);
-        simple_op_code_test(Opcode::MUL, 0x00000000, 0x80000000, 0x00000000);
-        simple_op_code_test(Opcode::MUL, 0x00000000, 0x80000000, 0xffff8000);
-        simple_op_code_test(Opcode::MUL, 0x0000ff7f, 0xaaaaaaab, 0x0002fe7d);
-        simple_op_code_test(Opcode::MUL, 0x0000ff7f, 0x0002fe7d, 0xaaaaaaab);
-        simple_op_code_test(Opcode::MUL, 0x00000000, 0xff000000, 0xff000000);
-        simple_op_code_test(Opcode::MUL, 0x00000001, 0xffffffff, 0xffffffff);
-        simple_op_code_test(Opcode::MUL, 0xffffffff, 0xffffffff, 0x00000001);
-        simple_op_code_test(Opcode::MUL, 0xffffffff, 0x00000001, 0xffffffff);
-    }
-
-    fn neg(a: u32) -> u32 {
-        u32::MAX - a + 1
-    }
-
-    #[test]
-    fn division_tests() {
-        simple_op_code_test(Opcode::DIVU, 3, 20, 6);
-        simple_op_code_test(Opcode::DIVU, 715_827_879, u32::MAX - 20 + 1, 6);
-        simple_op_code_test(Opcode::DIVU, 0, 20, u32::MAX - 6 + 1);
-        simple_op_code_test(Opcode::DIVU, 0, u32::MAX - 20 + 1, u32::MAX - 6 + 1);
-
-        simple_op_code_test(Opcode::DIVU, 1 << 31, 1 << 31, 1);
-        simple_op_code_test(Opcode::DIVU, 0, 1 << 31, u32::MAX - 1 + 1);
-
-        simple_op_code_test(Opcode::DIVU, u32::MAX, 1 << 31, 0);
-        simple_op_code_test(Opcode::DIVU, u32::MAX, 1, 0);
-        simple_op_code_test(Opcode::DIVU, u32::MAX, 0, 0);
-
-        simple_op_code_test(Opcode::DIV, 3, 18, 6);
-        simple_op_code_test(Opcode::DIV, neg(6), neg(24), 4);
-        simple_op_code_test(Opcode::DIV, neg(2), 16, neg(8));
-        simple_op_code_test(Opcode::DIV, neg(1), 0, 0);
-
-        // Overflow cases
-        simple_op_code_test(Opcode::DIV, 1 << 31, 1 << 31, neg(1));
-        simple_op_code_test(Opcode::REM, 0, 1 << 31, neg(1));
-    }
-
-    #[test]
-    fn remainder_tests() {
-        simple_op_code_test(Opcode::REM, 7, 16, 9);
-        simple_op_code_test(Opcode::REM, neg(4), neg(22), 6);
-        simple_op_code_test(Opcode::REM, 1, 25, neg(3));
-        simple_op_code_test(Opcode::REM, neg(2), neg(22), neg(4));
-        simple_op_code_test(Opcode::REM, 0, 873, 1);
-        simple_op_code_test(Opcode::REM, 0, 873, neg(1));
-        simple_op_code_test(Opcode::REM, 5, 5, 0);
-        simple_op_code_test(Opcode::REM, neg(5), neg(5), 0);
-        simple_op_code_test(Opcode::REM, 0, 0, 0);
-
-        simple_op_code_test(Opcode::REMU, 4, 18, 7);
-        simple_op_code_test(Opcode::REMU, 6, neg(20), 11);
-        simple_op_code_test(Opcode::REMU, 23, 23, neg(6));
-        simple_op_code_test(Opcode::REMU, neg(21), neg(21), neg(11));
-        simple_op_code_test(Opcode::REMU, 5, 5, 0);
-        simple_op_code_test(Opcode::REMU, neg(1), neg(1), 0);
-        simple_op_code_test(Opcode::REMU, 0, 0, 0);
-    }
-
-    #[test]
-    #[allow(clippy::unreadable_literal)]
-    fn shift_tests() {
-        simple_op_code_test(Opcode::SLL, 0x00000001, 0x00000001, 0);
-        simple_op_code_test(Opcode::SLL, 0x00000002, 0x00000001, 1);
-        simple_op_code_test(Opcode::SLL, 0x00000080, 0x00000001, 7);
-        simple_op_code_test(Opcode::SLL, 0x00004000, 0x00000001, 14);
-        simple_op_code_test(Opcode::SLL, 0x80000000, 0x00000001, 31);
-        simple_op_code_test(Opcode::SLL, 0xffffffff, 0xffffffff, 0);
-        simple_op_code_test(Opcode::SLL, 0xfffffffe, 0xffffffff, 1);
-        simple_op_code_test(Opcode::SLL, 0xffffff80, 0xffffffff, 7);
-        simple_op_code_test(Opcode::SLL, 0xffffc000, 0xffffffff, 14);
-        simple_op_code_test(Opcode::SLL, 0x80000000, 0xffffffff, 31);
-        simple_op_code_test(Opcode::SLL, 0x21212121, 0x21212121, 0);
-        simple_op_code_test(Opcode::SLL, 0x42424242, 0x21212121, 1);
-        simple_op_code_test(Opcode::SLL, 0x90909080, 0x21212121, 7);
-        simple_op_code_test(Opcode::SLL, 0x48484000, 0x21212121, 14);
-        simple_op_code_test(Opcode::SLL, 0x80000000, 0x21212121, 31);
-        simple_op_code_test(Opcode::SLL, 0x21212121, 0x21212121, 0xffffffe0);
-        simple_op_code_test(Opcode::SLL, 0x42424242, 0x21212121, 0xffffffe1);
-        simple_op_code_test(Opcode::SLL, 0x90909080, 0x21212121, 0xffffffe7);
-        simple_op_code_test(Opcode::SLL, 0x48484000, 0x21212121, 0xffffffee);
-        simple_op_code_test(Opcode::SLL, 0x00000000, 0x21212120, 0xffffffff);
-
-        simple_op_code_test(Opcode::SRL, 0xffff8000, 0xffff8000, 0);
-        simple_op_code_test(Opcode::SRL, 0x7fffc000, 0xffff8000, 1);
-        simple_op_code_test(Opcode::SRL, 0x01ffff00, 0xffff8000, 7);
-        simple_op_code_test(Opcode::SRL, 0x0003fffe, 0xffff8000, 14);
-        simple_op_code_test(Opcode::SRL, 0x0001ffff, 0xffff8001, 15);
-        simple_op_code_test(Opcode::SRL, 0xffffffff, 0xffffffff, 0);
-        simple_op_code_test(Opcode::SRL, 0x7fffffff, 0xffffffff, 1);
-        simple_op_code_test(Opcode::SRL, 0x01ffffff, 0xffffffff, 7);
-        simple_op_code_test(Opcode::SRL, 0x0003ffff, 0xffffffff, 14);
-        simple_op_code_test(Opcode::SRL, 0x00000001, 0xffffffff, 31);
-        simple_op_code_test(Opcode::SRL, 0x21212121, 0x21212121, 0);
-        simple_op_code_test(Opcode::SRL, 0x10909090, 0x21212121, 1);
-        simple_op_code_test(Opcode::SRL, 0x00424242, 0x21212121, 7);
-        simple_op_code_test(Opcode::SRL, 0x00008484, 0x21212121, 14);
-        simple_op_code_test(Opcode::SRL, 0x00000000, 0x21212121, 31);
-        simple_op_code_test(Opcode::SRL, 0x21212121, 0x21212121, 0xffffffe0);
-        simple_op_code_test(Opcode::SRL, 0x10909090, 0x21212121, 0xffffffe1);
-        simple_op_code_test(Opcode::SRL, 0x00424242, 0x21212121, 0xffffffe7);
-        simple_op_code_test(Opcode::SRL, 0x00008484, 0x21212121, 0xffffffee);
-        simple_op_code_test(Opcode::SRL, 0x00000000, 0x21212121, 0xffffffff);
-
-        simple_op_code_test(Opcode::SRA, 0x00000000, 0x00000000, 0);
-        simple_op_code_test(Opcode::SRA, 0xc0000000, 0x80000000, 1);
-        simple_op_code_test(Opcode::SRA, 0xff000000, 0x80000000, 7);
-        simple_op_code_test(Opcode::SRA, 0xfffe0000, 0x80000000, 14);
-        simple_op_code_test(Opcode::SRA, 0xffffffff, 0x80000001, 31);
-        simple_op_code_test(Opcode::SRA, 0x7fffffff, 0x7fffffff, 0);
-        simple_op_code_test(Opcode::SRA, 0x3fffffff, 0x7fffffff, 1);
-        simple_op_code_test(Opcode::SRA, 0x00ffffff, 0x7fffffff, 7);
-        simple_op_code_test(Opcode::SRA, 0x0001ffff, 0x7fffffff, 14);
-        simple_op_code_test(Opcode::SRA, 0x00000000, 0x7fffffff, 31);
-        simple_op_code_test(Opcode::SRA, 0x81818181, 0x81818181, 0);
-        simple_op_code_test(Opcode::SRA, 0xc0c0c0c0, 0x81818181, 1);
-        simple_op_code_test(Opcode::SRA, 0xff030303, 0x81818181, 7);
-        simple_op_code_test(Opcode::SRA, 0xfffe0606, 0x81818181, 14);
-        simple_op_code_test(Opcode::SRA, 0xffffffff, 0x81818181, 31);
-    }
-
-    #[test]
-    #[allow(clippy::unreadable_literal)]
-    fn test_simple_memory_program_run() {
-        let program = simple_memory_program();
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-
-        // Assert SW & LW case
-        assert_eq!(runtime.register(Register::X28), 0x12348765);
-
-        // Assert LBU cases
-        assert_eq!(runtime.register(Register::X27), 0x65);
-        assert_eq!(runtime.register(Register::X26), 0x87);
-        assert_eq!(runtime.register(Register::X25), 0x34);
-        assert_eq!(runtime.register(Register::X24), 0x12);
-
-        // Assert LB cases
-        assert_eq!(runtime.register(Register::X23), 0x65);
-        assert_eq!(runtime.register(Register::X22), 0xffffff87);
-
-        // Assert LHU cases
-        assert_eq!(runtime.register(Register::X21), 0x8765);
-        assert_eq!(runtime.register(Register::X20), 0x1234);
-
-        // Assert LH cases
-        assert_eq!(runtime.register(Register::X19), 0xffff8765);
-        assert_eq!(runtime.register(Register::X18), 0x1234);
-
-        // Assert SB cases
-        assert_eq!(runtime.register(Register::X16), 0x12348725);
-        assert_eq!(runtime.register(Register::X15), 0x12342525);
-        assert_eq!(runtime.register(Register::X14), 0x12252525);
-        assert_eq!(runtime.register(Register::X13), 0x25252525);
-
-        // Assert SH cases
-        assert_eq!(runtime.register(Register::X12), 0x12346525);
-        assert_eq!(runtime.register(Register::X11), 0x65256525);
-    }
-}

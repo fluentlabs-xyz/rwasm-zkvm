@@ -1,5 +1,5 @@
 use p3_field::PrimeField;
-use sp1_core_executor::{Instruction, Opcode};
+use sp1_core_executor::{ Opcode};
 use sp1_derive::AlignedBorrow;
 use std::{
     mem::{size_of, transmute},

@@ -5,11 +5,9 @@ use std::{collections::BTreeMap, fs::File, io::Read};
 use p3_field::Field;
 use serde::{Deserialize, Serialize};
 use sp1_stark::air::MachineProgram;
+use rwasm::engine::bytecode::Instruction;
 
-use crate::{
-    disassembler::{transpile, Elf},
-    instruction::Instruction,
-};
+
 
 /// A program that can be executed by the SP1 zkVM.
 ///
@@ -40,18 +38,13 @@ impl Program {
     ///
     /// This function may return an error if the ELF is not valid.
     pub fn from(input: &[u8]) -> eyre::Result<Self> {
-        // Decode the bytes as an ELF.
-        let elf = Elf::decode(input)?;
-
-        // Transpile the RV32IM instructions.
-        let instructions = transpile(&elf.instructions);
-
+       
         // Return the program.
         Ok(Program {
-            instructions,
-            pc_start: elf.pc_start,
-            pc_base: elf.pc_base,
-            memory_image: elf.memory_image,
+            instructions:vec![],
+            pc_start:0,
+            pc_base:0,
+            memory_image: BTreeMap::new(),
         })
     }
 

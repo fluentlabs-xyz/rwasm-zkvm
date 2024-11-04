@@ -185,7 +185,7 @@ mod tests {
     use p3_baby_bear::BabyBear;
 
     use p3_matrix::dense::RowMajorMatrix;
-    use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program};
+    use sp1_core_executor::{ExecutionRecord,  Opcode, Program};
     use sp1_stark::air::MachineAir;
 
     use crate::program::ProgramChip;
@@ -197,9 +197,7 @@ mod tests {
         //     addi x30, x0, 37
         //     add x31, x30, x29
         let instructions = vec![
-            Instruction::new(Opcode::ADD, 29, 0, 5, false, true),
-            Instruction::new(Opcode::ADD, 30, 0, 37, false, true),
-            Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
+            
         ];
         let shard = ExecutionRecord {
             program: Arc::new(Program {

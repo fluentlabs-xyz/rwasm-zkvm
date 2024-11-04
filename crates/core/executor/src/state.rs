@@ -17,6 +17,8 @@ use crate::{
     ExecutorMode,
 };
 
+pub const SP_START :u32= 0x1000;
+
 /// Holds data describing the current state of a program's execution.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ExecutionState {
@@ -36,6 +38,9 @@ pub struct ExecutionState {
 
     /// The program counter.
     pub pc: u32,
+
+    /// The stack pointer
+    pub sp: u32,
 
     /// The memory which instructions operate over. Values contain the memory value and last shard
     /// + timestamp that each memory address was accessed.
@@ -83,6 +88,7 @@ impl ExecutionState {
             clk: 0,
             channel: 0,
             pc: pc_start,
+            sp:0,
             memory: PagedMemory::new_preallocated(),
             uninitialized_memory: HashMap::default(),
             input_stream: Vec::new(),
