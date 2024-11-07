@@ -43,6 +43,9 @@ num-bigint = "0.4.6"
 thiserror = "1.0.63"
 oneshot = "0.1.8"
 
+
+rwasm ={ path = "../../../Fluent/rwasm/rwasm",default-features = false, features = ["std"]}
+
 [[bin]]
 name = "build_plonk_bn254"
 path = "scripts/build_plonk_bn254.rs"
@@ -59,3 +62,4 @@ path = "scripts/e2e.rs"
 neon = ["sp1-core-machine/neon"]
 native-gnark = ["sp1-recursion-gnark-ffi/native"]
 export-tests = []
+debug = ["sp1-core-machine/debug"]

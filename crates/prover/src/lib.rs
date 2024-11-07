@@ -17,7 +17,7 @@ pub mod init;
 pub mod types;
 pub mod utils;
 pub mod verify;
-
+mod rwasmtest;
 use std::{
     borrow::Borrow,
     path::Path,
@@ -202,6 +202,16 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         (pk, vk)
     }
 
+      /// Creates a proving key and a verifying key for a given RISC-V ELF.
+      #[instrument(name = "setup", level = "debug", skip_all)]
+      pub fn setup_with_program(&self, program:&Program) -> (SP1ProvingKey, SP1VerifyingKey) {
+         
+          let (pk, vk) = self.core_prover.setup(program);
+          let vk = SP1VerifyingKey { vk };
+          let pk = SP1ProvingKey { pk, elf: vec![], vk: vk.clone() };
+          (pk, vk)
+      }
+
     /// Generate a proof of an SP1 program with the specified inputs.
     #[instrument(name = "execute", level = "info", skip_all)]
     pub fn execute<'a>(
@@ -253,6 +263,41 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         })
     }
 
+    /// Generate shard proofs which split up and prove the valid execution of a RISC-V program with
+    /// the core prover. Uses the provided context.
+    #[instrument(name = "prove_core", level = "info", skip_all)]
+    pub fn prove_core_with_program<'a>(
+        &'a self,
+        pk: &StarkProvingKey<CoreSC>,
+        program:Program,
+        stdin: &SP1Stdin,
+        opts: SP1ProverOpts,
+        mut context: SP1Context<'a>,
+    ) -> Result<SP1CoreProof, SP1CoreProverError> {
+        context.subproof_verifier.replace(Arc::new(self));
+        
+        let (proof, public_values_stream, cycles) =
+            sp1_core_machine::utils::prove_with_context::<_, C::CoreProver>(
+                &self.core_prover,
+                pk,
+                program,
+                stdin,
+                opts.core_opts,
+                context,
+            )?;
+        Self::check_for_high_cycles(cycles);
+        let public_values = SP1PublicValues::from(&public_values_stream);
+        Ok(SP1CoreProof {
+            proof: SP1CoreProofData(proof.shard_proofs),
+            stdin: stdin.clone(),
+            public_values,
+            cycles,
+        })
+    }
+
+
+
+    
     pub fn get_recursion_core_inputs<'a>(
         &'a self,
         vk: &'a StarkVerifyingKey<CoreSC>,
