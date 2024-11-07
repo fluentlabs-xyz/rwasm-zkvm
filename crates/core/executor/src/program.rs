@@ -3,11 +3,9 @@
 use std::{collections::BTreeMap, fs::File, io::Read};
 
 use p3_field::Field;
+use rwasm::engine::bytecode::Instruction;
 use serde::{Deserialize, Serialize};
 use sp1_stark::air::MachineProgram;
-use rwasm::engine::bytecode::Instruction;
-
-
 
 /// A program that can be executed by the SP1 zkVM.
 ///
@@ -38,14 +36,8 @@ impl Program {
     ///
     /// This function may return an error if the ELF is not valid.
     pub fn from(input: &[u8]) -> eyre::Result<Self> {
-       
         // Return the program.
-        Ok(Program {
-            instructions:vec![],
-            pc_start:0,
-            pc_base:0,
-            memory_image: BTreeMap::new(),
-        })
+        Ok(Program { instructions: vec![], pc_start: 0, pc_base: 0, memory_image: BTreeMap::new() })
     }
 
     /// Disassemble a RV32IM ELF to a program that be executed by the VM from a file path.

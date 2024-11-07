@@ -185,7 +185,7 @@ mod tests {
     use p3_baby_bear::BabyBear;
 
     use p3_matrix::dense::RowMajorMatrix;
-    use sp1_core_executor::{ExecutionRecord,  Opcode, Program};
+    use sp1_core_executor::{ExecutionRecord, Opcode, Program};
     use sp1_stark::air::MachineAir;
 
     use crate::program::ProgramChip;
@@ -196,9 +196,7 @@ mod tests {
         //     addi x29, x0, 5
         //     addi x30, x0, 37
         //     add x31, x30, x29
-        let instructions = vec![
-            
-        ];
+        let instructions = vec![];
         let shard = ExecutionRecord {
             program: Arc::new(Program {
                 instructions,

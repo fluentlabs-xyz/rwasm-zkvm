@@ -46,7 +46,7 @@ tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 vec_map = { version = "0.8.2", features = ["serde"] }
 enum-map = { version = "2.7.3", features = ["serde"] }
 
-rwasm ={ git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "add-serdeser-instr",default-features = false, features = ["std"]}
+rwasm ={ path = "../../../../Fluent/rwasm/rwasm",default-features = false, features = ["std"]}
 
 [dev-dependencies]
 sp1-zkvm = { workspace = true }

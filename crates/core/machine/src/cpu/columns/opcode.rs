@@ -1,5 +1,5 @@
 use p3_field::PrimeField;
-use sp1_core_executor::{ Opcode};
+use sp1_core_executor::Opcode;
 use sp1_derive::AlignedBorrow;
 use std::{
     mem::{size_of, transmute},
@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::utils::indices_arr;
-
+use rwasm::engine::bytecode::Instruction;
 pub const NUM_OPCODE_SELECTOR_COLS: usize = size_of::<OpcodeSelectorCols<u8>>();
 pub const OPCODE_SELECTORS_COL_MAP: OpcodeSelectorCols<usize> = make_selectors_col_map();
 
@@ -64,43 +64,10 @@ pub struct OpcodeSelectorCols<T> {
 
 impl<F: PrimeField> OpcodeSelectorCols<F> {
     pub fn populate(&mut self, instruction: Instruction) {
-        self.imm_b = F::from_bool(instruction.imm_b);
-        self.imm_c = F::from_bool(instruction.imm_c);
-
         if instruction.is_alu_instruction() {
             self.is_alu = F::one();
         } else if instruction.is_ecall_instruction() {
             self.is_ecall = F::one();
-        } else if instruction.is_memory_instruction() {
-            match instruction.opcode {
-                Opcode::LB => self.is_lb = F::one(),
-                Opcode::LBU => self.is_lbu = F::one(),
-                Opcode::LHU => self.is_lhu = F::one(),
-                Opcode::LH => self.is_lh = F::one(),
-                Opcode::LW => self.is_lw = F::one(),
-                Opcode::SB => self.is_sb = F::one(),
-                Opcode::SH => self.is_sh = F::one(),
-                Opcode::SW => self.is_sw = F::one(),
-                _ => unreachable!(),
-            }
-        } else if instruction.is_branch_instruction() {
-            match instruction.opcode {
-                Opcode::BEQ => self.is_beq = F::one(),
-                Opcode::BNE => self.is_bne = F::one(),
-                Opcode::BLT => self.is_blt = F::one(),
-                Opcode::BGE => self.is_bge = F::one(),
-                Opcode::BLTU => self.is_bltu = F::one(),
-                Opcode::BGEU => self.is_bgeu = F::one(),
-                _ => unreachable!(),
-            }
-        } else if instruction.opcode == Opcode::JAL {
-            self.is_jal = F::one();
-        } else if instruction.opcode == Opcode::JALR {
-            self.is_jalr = F::one();
-        } else if instruction.opcode == Opcode::AUIPC {
-            self.is_auipc = F::one();
-        } else if instruction.opcode == Opcode::UNIMP {
-            self.is_unimpl = F::one();
         }
     }
 }

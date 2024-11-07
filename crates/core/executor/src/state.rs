@@ -17,7 +17,7 @@ use crate::{
     ExecutorMode,
 };
 
-pub const SP_START :u32= 0x1000;
+pub const SP_START: u32 = 0x1000;
 
 /// Holds data describing the current state of a program's execution.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -88,7 +88,7 @@ impl ExecutionState {
             clk: 0,
             channel: 0,
             pc: pc_start,
-            sp:0,
+            sp: 0,
             memory: PagedMemory::new_preallocated(),
             uninitialized_memory: HashMap::default(),
             input_stream: Vec::new(),

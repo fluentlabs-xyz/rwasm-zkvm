@@ -9,7 +9,7 @@ use static_assertions::const_assert;
 use super::ecall::EcallCols;
 
 pub const NUM_OPCODE_SPECIFIC_COLS: usize = size_of::<OpcodeSpecificCols<u8>>();
-
+//TODO study to use this nicely later
 /// Shared columns whose interpretation depends on the instruction being executed.
 #[derive(Clone, Copy)]
 #[repr(C)]

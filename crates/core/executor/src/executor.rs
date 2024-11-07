@@ -13,7 +13,9 @@ use thiserror::Error;
 use crate::{
     context::SP1Context,
     events::{
-        create_alu_lookup_id, create_alu_lookups, AluEvent, CpuEvent, ExecMemoryRecords, LookupId, MemoryAccessPosition, MemoryInitializeFinalizeEvent, MemoryReadRecord, MemoryRecord, MemoryWriteRecord
+        create_alu_lookup_id, create_alu_lookups, AluEvent, CpuEvent, ExecMemoryRecords, LookupId,
+        MemoryAccessPosition, MemoryInitializeFinalizeEvent, MemoryReadRecord, MemoryRecord,
+        MemoryWriteRecord,
     },
     hook::{HookEnv, HookRegistry},
     memory::{Entry, PagedMemory},
@@ -22,7 +24,7 @@ use crate::{
     state::{ExecutionState, ForkState},
     subproof::{DefaultSubproofVerifier, SubproofVerifier},
     syscalls::{default_syscall_map, Syscall, SyscallCode, SyscallContext},
-     Opcode, Program, Register,
+    Opcode, Program, Register,
 };
 use rwasm::engine::bytecode::Instruction;
 
@@ -248,9 +250,6 @@ impl<'a> Executor<'a> {
         runtime
     }
 
-  
-
-   
     /// Get the current value of a word.
     #[must_use]
     pub fn word(&mut self, addr: u32) -> u32 {
@@ -393,10 +392,6 @@ impl<'a> Executor<'a> {
         MemoryWriteRecord::new(value, shard, timestamp, prev_value, prev_shard, prev_timestamp)
     }
 
-  
-
- 
-
     /// Emit a CPU event.
     #[allow(clippy::too_many_arguments)]
     fn emit_cpu(
@@ -404,15 +399,15 @@ impl<'a> Executor<'a> {
         shard: u32,
         channel: u8,
         clk: u32,
-        next_clk:u32,
+        next_clk: u32,
         pc: u32,
         next_pc: u32,
         sp: u32,
-        next_sp:u32,
+        next_sp: u32,
         instruction: Instruction,
-        
-        exec_record:ExecMemoryRecords,
-        
+
+        exec_record: ExecMemoryRecords,
+
         exit_code: u32,
         lookup_id: LookupId,
         syscall_lookup_id: LookupId,
@@ -427,7 +422,7 @@ impl<'a> Executor<'a> {
             instruction,
             sp,
             next_sp,
-            exec_memory_list:exec_record,
+            exec_memory_list: exec_record,
             exit_code,
             alu_lookup_id: lookup_id,
             syscall_lookup_id,
@@ -439,7 +434,6 @@ impl<'a> Executor<'a> {
             jump_jal_lookup_id: create_alu_lookup_id(),
             jump_jalr_lookup_id: create_alu_lookup_id(),
             auipc_lookup_id: create_alu_lookup_id(),
-            
         };
 
         self.record.cpu_events.push(cpu_event);
@@ -487,18 +481,18 @@ impl<'a> Executor<'a> {
         }
     }
 
-    fn fetch_binary32_args_from_stack(&mut self,sp:u32)->(MemoryReadRecord,MemoryReadRecord){
-        let x_record = self.mr(sp, self.shard(),self.state.clk);
+    fn fetch_binary32_args_from_stack(&mut self, sp: u32) -> (MemoryReadRecord, MemoryReadRecord) {
+        let x_record = self.mr(sp, self.shard(), self.state.clk);
 
-        self.state.clk+=1;
-        let y_record = self.mr(sp-1, self.shard(),self.state.clk);
-        (x_record,y_record)
+        self.state.clk += 1;
+        let y_record = self.mr(sp - 1, self.shard(), self.state.clk);
+        (x_record, y_record)
     }
 
-    fn update_stack_after_binary32(&mut self,res:u32)->MemoryWriteRecord{
-        self.state.clk+=1;
+    fn update_stack_after_binary32(&mut self, res: u32) -> MemoryWriteRecord {
+        self.state.clk += 1;
         let sp = self.state.sp;
-        self.state.sp-=1;
+        self.state.sp -= 1;
         let next_sp = self.state.sp;
         self.mw(next_sp, res, self.shard(), self.state.clk)
     }
@@ -519,11 +513,13 @@ impl<'a> Executor<'a> {
 
         let mut next_pc = self.state.pc.wrapping_add(4);
 
-        let mut arg1:u32; let mut arg1_hi:u32;
-        let mut arg2:u32; let mut arg2_hi:u32;
-        let mut arg3:u32; let mut arg3_hi:u32;
-       
-       
+        let mut arg1: u32;
+        let mut arg1_hi: u32;
+        let mut arg2: u32;
+        let mut arg2_hi: u32;
+        let mut arg3: u32;
+        let mut arg3_hi: u32;
+
         if self.executor_mode == ExecutorMode::Trace {
             self.memory_accesses = MemoryAccessRecord::default();
         }
@@ -542,95 +538,96 @@ impl<'a> Executor<'a> {
         //     self.report.opcode_counts[instruction] += 1;
         // }
         //TODO: fix report
-        let arg1_record:MemoryReadRecord;
-        let arg2_record:MemoryReadRecord;
-        let arg3_record:MemoryReadRecord;
-        let res_record:MemoryWriteRecord;
+        let arg1_record: MemoryReadRecord;
+        let arg2_record: MemoryReadRecord;
+        let arg3_record: MemoryReadRecord;
+        let res_record: MemoryWriteRecord;
         let exec_memory_records = ExecMemoryRecords::new();
-        match instruction{
+        match instruction {
             // Arithmetic instructions.
-            Instruction::I32Add=>{
-                (arg1_record,arg2_record) = self.fetch_binary32_args_from_stack(sp);
+            Instruction::I32Add => {
+                (arg1_record, arg2_record) = self.fetch_binary32_args_from_stack(sp);
                 let arg1 = arg1_record.value;
                 let arg2 = arg2_record.value;
                 let res = arg1.wrapping_add(arg2);
                 res_record = self.update_stack_after_binary32(res)
             }
-           
-            Instruction::Call(syscall_id)=>{
+
+            Instruction::Call(syscall_id) => {
                 let syscall_id = syscall_id.to_u32();
-                  // System instructions.
-             {
-                // We peek at register x5 to get the syscall id. The reason we don't `self.rr` this
-                // register is that we write to it later.
-               
-                let syscall = SyscallCode::from_u32(syscall_id);
-
-                if self.print_report && !self.unconstrained {
-                    self.report.syscall_counts[syscall] += 1;
-                }
-
-                // `hint_slice` is allowed in unconstrained mode since it is used to write the hint.
-                // Other syscalls are not allowed because they can lead to non-deterministic
-                // behavior, especially since many syscalls modify memory in place,
-                // which is not permitted in unconstrained mode. This will result in
-                // non-zero memory interactions when generating a proof.
-
-                if self.unconstrained
-                    && (syscall != SyscallCode::EXIT_UNCONSTRAINED && syscall != SyscallCode::WRITE)
+                // System instructions.
                 {
-                    return Err(ExecutionError::InvalidSyscallUsage(syscall_id as u64));
-                }
+                    // We peek at register x5 to get the syscall id. The reason we don't `self.rr` this
+                    // register is that we write to it later.
 
-                let syscall_impl = self.get_syscall(syscall).cloned();
-                let mut precompile_rt = SyscallContext::new(self);
-                precompile_rt.syscall_lookup_id = syscall_lookup_id;
-                let (precompile_next_pc, precompile_cycles, returned_exit_code) =
-                    if let Some(syscall_impl) = syscall_impl {
-                        // Executing a syscall optionally returns a value to write to the t0
-                        // register. If it returns None, we just keep the
-                        // syscall_id in t0.
-                        
-                      
-                        // If the syscall is `HALT` and the exit code is non-zero, return an error.
-                        if syscall == SyscallCode::HALT && precompile_rt.exit_code != 0 {
-                            return Err(ExecutionError::HaltWithNonZeroExitCode(
+                    let syscall = SyscallCode::from_u32(syscall_id);
+
+                    if self.print_report && !self.unconstrained {
+                        self.report.syscall_counts[syscall] += 1;
+                    }
+
+                    // `hint_slice` is allowed in unconstrained mode since it is used to write the hint.
+                    // Other syscalls are not allowed because they can lead to non-deterministic
+                    // behavior, especially since many syscalls modify memory in place,
+                    // which is not permitted in unconstrained mode. This will result in
+                    // non-zero memory interactions when generating a proof.
+
+                    if self.unconstrained
+                        && (syscall != SyscallCode::EXIT_UNCONSTRAINED
+                            && syscall != SyscallCode::WRITE)
+                    {
+                        return Err(ExecutionError::InvalidSyscallUsage(syscall_id as u64));
+                    }
+
+                    let syscall_impl = self.get_syscall(syscall).cloned();
+                    let mut precompile_rt = SyscallContext::new(self);
+                    precompile_rt.syscall_lookup_id = syscall_lookup_id;
+                    let (precompile_next_pc, precompile_cycles, returned_exit_code) =
+                        if let Some(syscall_impl) = syscall_impl {
+                            // Executing a syscall optionally returns a value to write to the t0
+                            // register. If it returns None, we just keep the
+                            // syscall_id in t0.
+
+                            // If the syscall is `HALT` and the exit code is non-zero, return an error.
+                            if syscall == SyscallCode::HALT && precompile_rt.exit_code != 0 {
+                                return Err(ExecutionError::HaltWithNonZeroExitCode(
+                                    precompile_rt.exit_code,
+                                ));
+                            }
+
+                            (
+                                precompile_rt.next_pc,
+                                syscall_impl.num_extra_cycles(),
                                 precompile_rt.exit_code,
-                            ));
-                        }
+                            )
+                        } else {
+                            return Err(ExecutionError::UnsupportedSyscall(syscall_id));
+                        };
 
-                        (
-                            precompile_rt.next_pc,
-                            syscall_impl.num_extra_cycles(),
-                            precompile_rt.exit_code,
-                        )
-                    } else {
-                        return Err(ExecutionError::UnsupportedSyscall(syscall_id));
+                    // Allow the syscall impl to modify state.clk/pc (exit unconstrained does this)
+                    clk = self.state.clk;
+                    pc = self.state.pc;
+                    sp = self.state.sp;
+                    next_sp = self.state.sp;
+                    // self.rw(t0, a); TODO writeback syscall result to top of stack
+                    next_pc = precompile_next_pc;
+                    self.state.clk += precompile_cycles;
+                    exit_code = returned_exit_code;
+
+                    // Update the syscall counts.
+                    let syscall_for_count = syscall.count_map();
+                    let syscall_count =
+                        self.state.syscall_counts.entry(syscall_for_count).or_insert(0);
+                    let (threshold, multiplier) = match syscall_for_count {
+                        SyscallCode::KECCAK_PERMUTE => (self.opts.split_opts.keccak, 24),
+                        SyscallCode::SHA_EXTEND => (self.opts.split_opts.sha_extend, 48),
+                        SyscallCode::SHA_COMPRESS => (self.opts.split_opts.sha_compress, 80),
+                        _ => (self.opts.split_opts.deferred, 1),
                     };
-
-                // Allow the syscall impl to modify state.clk/pc (exit unconstrained does this)
-                clk = self.state.clk;
-                pc = self.state.pc;
-                sp = self.state.sp;
-                next_sp = self.state.sp;
-                // self.rw(t0, a); TODO writeback syscall result to top of stack
-                next_pc = precompile_next_pc;
-                self.state.clk += precompile_cycles;
-                exit_code = returned_exit_code;
-
-                // Update the syscall counts.
-                let syscall_for_count = syscall.count_map();
-                let syscall_count = self.state.syscall_counts.entry(syscall_for_count).or_insert(0);
-                let (threshold, multiplier) = match syscall_for_count {
-                    SyscallCode::KECCAK_PERMUTE => (self.opts.split_opts.keccak, 24),
-                    SyscallCode::SHA_EXTEND => (self.opts.split_opts.sha_extend, 48),
-                    SyscallCode::SHA_COMPRESS => (self.opts.split_opts.sha_compress, 80),
-                    _ => (self.opts.split_opts.deferred, 1),
-                };
-                let nonce = (((*syscall_count as usize) % threshold) * multiplier) as u32;
-                self.record.nonce_lookup.insert(syscall_lookup_id, nonce);
-                *syscall_count += 1;
-            }
+                    let nonce = (((*syscall_count as usize) % threshold) * multiplier) as u32;
+                    self.record.nonce_lookup.insert(syscall_lookup_id, nonce);
+                    *syscall_count += 1;
+                }
             }
             Instruction::LocalGet(local_depth) => todo!(),
             Instruction::LocalSet(local_depth) => todo!(),
@@ -830,16 +827,15 @@ impl<'a> Executor<'a> {
             Instruction::I64TruncSatF64S => todo!(),
             Instruction::I64TruncSatF64U => todo!(),
             Instruction::Br(branch_offset) => todo!(),
-        
         }
         // Update the program counter.
         self.state.pc = next_pc;
         let next_clk = self.state.clk;
-        
+
         let next_sp = self.state.sp;
 
         let channel = self.channel();
-        
+
         // Update the channel to the next cycle.
         if !self.unconstrained {
             self.state.channel = (self.state.channel + 1) % NUM_BYTE_LOOKUP_CHANNELS;
@@ -857,8 +853,7 @@ impl<'a> Executor<'a> {
                 sp,
                 next_sp,
                 *instruction,
-               exec_memory_records,
-             
+                exec_memory_records,
                 exit_code,
                 lookup_id,
                 syscall_lookup_id,

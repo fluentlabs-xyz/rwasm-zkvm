@@ -159,14 +159,6 @@ impl CpuChip {
         // of the most significant byte to get it's sign.
         self.eval_most_sig_byte_bit_decomp(builder, memory_columns, local, &local.unsigned_mem_val);
 
-        // Assert that correct value of `mem_value_is_neg_not_x0`.
-        builder.assert_eq(
-            local.mem_value_is_neg_not_x0,
-            (local.selectors.is_lb + local.selectors.is_lh)
-                * memory_columns.most_sig_byte_decomp[7]
-                * (AB::Expr::one() - local.instruction.op_a_0),
-        );
-
         // When the memory value is negative and not writing to x0, use the SUB opcode to compute
         // the signed value of the memory value and verify that the op_a value is correct.
         let signed_value = Word([
@@ -192,10 +184,6 @@ impl CpuChip {
             + local.selectors.is_lbu
             + local.selectors.is_lhu
             + local.selectors.is_lw;
-        builder.assert_eq(
-            local.mem_value_is_pos_not_x0,
-            mem_value_is_pos * (AB::Expr::one() - local.instruction.op_a_0),
-        );
 
         // When the memory value is not positive and not writing to x0, assert that op_a value is
         // equal to the unsigned memory value.

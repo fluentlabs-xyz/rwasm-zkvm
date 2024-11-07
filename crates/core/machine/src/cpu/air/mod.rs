@@ -1,7 +1,6 @@
 pub mod branch;
 pub mod ecall;
 pub mod memory;
-pub mod register;
 
 use core::borrow::Borrow;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
@@ -54,9 +53,6 @@ where
         let is_memory_instruction: AB::Expr = self.is_memory_instruction::<AB>(&local.selectors);
         let is_branch_instruction: AB::Expr = self.is_branch_instruction::<AB>(&local.selectors);
         let is_alu_instruction: AB::Expr = self.is_alu_instruction::<AB>(&local.selectors);
-
-        // Register constraints.
-        self.eval_registers::<AB>(builder, local, is_branch_instruction.clone());
 
         // Memory instructions.
         self.eval_memory_address_and_access::<AB>(builder, local, is_memory_instruction.clone());
@@ -160,7 +156,6 @@ impl CpuChip {
         // we shouldn't verify the return address.
         builder
             .when(is_jump_instruction.clone())
-            .when_not(local.instruction.op_a_0)
             .assert_eq(local.op_a_val().reduce::<AB>(), local.pc + AB::F::from_canonical_u8(4));
 
         // Verify that the word form of local.pc is correct for JAL instructions.

@@ -73,6 +73,8 @@ sp1-stark = { workspace = true }
 sp1-core-executor = { workspace = true }
 sp1-curves = { workspace = true }
 
+rwasm ={path = "../../../../Fluent/rwasm/rwasm",default-features = false, features = ["std"]}
+
 [dev-dependencies]
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 criterion = "0.5.1"
