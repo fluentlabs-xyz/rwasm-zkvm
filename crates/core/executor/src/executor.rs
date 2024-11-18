@@ -550,7 +550,11 @@ impl<'a> Executor<'a> {
                 let arg1 = arg1_record.value;
                 let arg2 = arg2_record.value;
                 let res = arg1.wrapping_add(arg2);
-                res_record = self.update_stack_after_binary32(res)
+                res_record = self.update_stack_after_binary32(res);
+                if instruction.is_alu_instruction()&& self.executor_mode == ExecutorMode::Trace {
+                    self.emit_alu(self.state.clk, Opcode::ADD, arg1, arg2, res, lookup_id);
+                    
+                }
             }
 
             Instruction::Call(syscall_id) => {
@@ -827,7 +831,7 @@ impl<'a> Executor<'a> {
             Instruction::I64TruncSatF64S => todo!(),
             Instruction::I64TruncSatF64U => todo!(),
             Instruction::Br(branch_offset) => todo!(),
-        }
+        };
         // Update the program counter.
         self.state.pc = next_pc;
         let next_clk = self.state.clk;

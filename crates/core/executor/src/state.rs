@@ -88,7 +88,7 @@ impl ExecutionState {
             clk: 0,
             channel: 0,
             pc: pc_start,
-            sp: 0,
+            sp: 0x00_00_20_00, 
             memory: PagedMemory::new_preallocated(),
             uninitialized_memory: HashMap::default(),
             input_stream: Vec::new(),

@@ -62,12 +62,13 @@ mod tests {
         let program = build_elf();
         setup_logger();
         let prover: SP1Prover = SP1Prover::new();
-        let opts = SP1ProverOpts::default();
+        let mut opts = SP1ProverOpts::default();
+        opts.core_opts.shard_batch_size=1;
         let context = SP1Context::default();
     
         tracing::info!("setup elf");
         let (pk, vk) = prover.setup_with_program(&program);
-    
+        
         tracing::info!("prove core");
         let stdin = SP1Stdin::new();
         let core_proof = prover.prove_core_with_program(&pk.pk,program, &stdin, opts, context).unwrap();
