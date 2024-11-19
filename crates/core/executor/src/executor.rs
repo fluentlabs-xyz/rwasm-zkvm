@@ -485,14 +485,13 @@ impl<'a> Executor<'a> {
         let x_record = self.mr(sp, self.shard(), self.state.clk);
 
         self.state.clk += 1;
-        let y_record = self.mr(sp - 1, self.shard(), self.state.clk);
+        let y_record = self.mr(sp - 4, self.shard(), self.state.clk);
         (x_record, y_record)
     }
 
     fn update_stack_after_binary32(&mut self, res: u32) -> MemoryWriteRecord {
         self.state.clk += 1;
-        let sp = self.state.sp;
-        self.state.sp -= 1;
+        self.state.sp -= 4;
         let next_sp = self.state.sp;
         self.mw(next_sp, res, self.shard(), self.state.clk)
     }

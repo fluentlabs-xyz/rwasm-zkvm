@@ -38,7 +38,7 @@ mod tests {
          let mut mem= BTreeMap::new();
         
          mem.insert(sp_value, x_value);
-         mem.insert(sp_value-1, y_value);
+         mem.insert(sp_value-4, y_value);
         
          println!("{:?}",mem);
          let instructions = vec![   Instruction::I32Add, 
