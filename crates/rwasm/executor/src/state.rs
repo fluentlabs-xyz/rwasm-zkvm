@@ -5,7 +5,7 @@ use std::{
 };
 
 use hashbrown::HashMap;
-use rwasm::Store;
+use rwasm::{RwasmStore, Store};
 use serde::{Deserialize, Serialize};
 use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, StarkVerifyingKey};
 
@@ -97,7 +97,7 @@ impl ExecutionState {
     }
 
     ///update memory state from rwasm Tracer
-    pub fn update_state(&mut self, store: &Store<()>) {
+    pub fn update_state(&mut self, store: &RwasmStore<()>) {
         let tracer = &store.tracer;
         self.clk = tracer.state.clk;
         self.current_shard = tracer.state.shard;
@@ -108,7 +108,6 @@ impl ExecutionState {
             println!("addr{},record:{:?},", *item.0, *item.1);
             self.memory.insert(*item.0, *item.1);
         }
-        
     }
 }
 

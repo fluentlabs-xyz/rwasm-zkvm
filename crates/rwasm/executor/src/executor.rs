@@ -1,8 +1,4 @@
 #[cfg(feature = "profiling")]
-use std::{fs::File, io::BufWriter};
-use std::{str::FromStr, sync::Arc};
-
-#[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
 use crate::{
     dependencies::{emit_branch_dependencies, emit_divrem_dependencies, emit_memory_dependencies},
@@ -10,14 +6,21 @@ use crate::{
     events::{ConstEvent, SysStateEvent, SyscallEvent},
     syscalls, SP_START,
 };
+use std::rc::Rc;
+#[cfg(feature = "profiling")]
+use std::{fs::File, io::BufWriter};
+use std::{str::FromStr, sync::Arc};
 
 use clap::ValueEnum;
 use enum_map::EnumMap;
 use hashbrown::HashMap;
 
-use rwasm::{ExecutionEngine, ExecutorConfig, Opcode, RwasmExecutor, Store, Tracer};
+use rwasm::{
+    always_failing_syscall_handler, CallStack, ExecutionEngine, ExecutorConfig, ImportLinker,
+    InstructionPtr, Opcode, RwasmExecutor, RwasmModule, RwasmStore, Store, Tracer, TrapCode,
+    ValueStack, ValueStackPtr,
+};
 use serde::{Deserialize, Serialize};
-use serde_json::value;
 use sp1_primitives::consts::BABYBEAR_PRIME;
 use sp1_stark::{air::PublicValues, SP1CoreOpts};
 use strum::IntoEnumIterator;
@@ -78,6 +81,11 @@ impl From<bool> for DeferredProofVerification {
     }
 }
 
+struct RwasmExecutorState {
+    pub sp: ValueStackPtr,
+    pub ip: InstructionPtr,
+}
+
 /// An executor for the SP1 RISC-V zkVM.
 ///
 /// The exeuctor is responsible for executing a user program and tracing important events which
@@ -86,9 +94,10 @@ pub struct Executor<'a> {
     /// The program.
     pub program: Arc<Program>,
 
-    pub store: Store<()>,
-
-    pub engine: ExecutionEngine,
+    pub value_stack: ValueStack,
+    pub call_stack: CallStack,
+    pub register_state: Option<RwasmExecutorState>,
+    pub store: RwasmStore<()>,
 
     /// The state of the execution.
     pub state: ExecutionState,
@@ -323,9 +332,6 @@ impl<'a> Executor<'a> {
     pub fn with_context(program: Program, opts: SP1CoreOpts, context: SP1Context<'a>) -> Self {
         // Create a shared reference to the program.
         let program = Arc::new(program);
-        let rwasm_config = ExecutorConfig::default();
-        let store = Store::new(rwasm_config, ());
-        let engine = ExecutionEngine::new();
 
         // Create a default record with the program.
         let record = ExecutionRecord::new(program.clone());
@@ -342,13 +348,24 @@ impl<'a> Executor<'a> {
         let costs: HashMap<RwasmAirId, usize> =
             costs.into_iter().map(|(k, v)| (RwasmAirId::from_str(&k).unwrap(), v)).collect();
 
+        let rwasm_config = ExecutorConfig::default();
+        let store = RwasmStore::new(
+            rwasm_config,
+            // TODO(dmitry123): "use import linker from fluentbase once tracer is merged"
+            Rc::new(ImportLinker::default()),
+            (),
+            // TODO(dmitry123): "use syscall handler from runtime"
+            always_failing_syscall_handler,
+        );
+
         Self {
             record: Box::new(record),
             records: vec![],
             state: ExecutionState::new(0u32),
             program,
-            store,
-            engine,
+            value_stack: Default::default(),
+            call_stack: Default::default(),
+            register_state: None,
             memory_accesses: MemoryAccessRecord::default(),
             shard_size: (opts.shard_size as u32) * 4,
             shard_batch_size: opts.shard_batch_size as u32,
@@ -381,6 +398,7 @@ impl<'a> Executor<'a> {
             lde_size_threshold: 0,
             event_counts: EnumMap::default(),
             io_options: context.io_options,
+            store,
         }
     }
 
@@ -1049,22 +1067,20 @@ impl<'a> Executor<'a> {
     /// Executes one cycle of the program, returning whether the program has finished.
     #[inline]
     #[allow(clippy::too_many_lines)]
-    fn execute_cycle(&mut self, executor: &mut RwasmExecutor<()>) -> Result<bool, ExecutionError> {
-        
-        let res = executor.step();
+    fn execute_cycle(&mut self, res: Result<bool, TrapCode>) -> Result<bool, ExecutionError> {
         let res = match res {
             Ok(value) => Ok(value),
             Err(err) => {
-                if err == rwasm::TrapCode::UnreachableCodeReached {
-                    return Ok(true)
+                return if err == TrapCode::UnreachableCodeReached {
+                    Ok(true)
                 } else {
                     println!("Err:{},", err);
-                    return Err(ExecutionError::Unimplemented())
+                    Err(ExecutionError::Unimplemented())
                 }
             }
         };
         let clk = self.store.tracer.state.clk;
-        let op_state = executor.store.tracer.logs.last().unwrap();
+        let op_state = self.store.tracer.logs.last().unwrap();
         let syscall = SyscallCode::default();
         println!("op_state:{op_state:?}");
         self.emit_events(
@@ -1078,9 +1094,9 @@ impl<'a> Executor<'a> {
             op_state.res,
             op_state.memory_access,
         );
-        if op_state.opcode.is_state_instrucition() {
-            //TODO: generate sys_state_event here
-        }
+        // if op_state.opcode.is_state_instrucition() {
+        //TODO: generate sys_state_event here
+        // }
 
         // Increment the clock.
         self.state.global_clk += 1;
@@ -1171,7 +1187,7 @@ impl<'a> Executor<'a> {
             }
 
             if cpu_exit || !shape_match_found {
-                self.bump_record(&mut executor.store.tracer);
+                self.bump_record();
                 self.state.current_shard += 1;
                 self.state.clk = 0;
             }
@@ -1184,11 +1200,10 @@ impl<'a> Executor<'a> {
             }
         }
         res
-       
     }
 
     /// Bump the record.
-    pub fn bump_record(&mut self, tracer:&mut Tracer) {
+    pub fn bump_record(&mut self) {
         if let Some(estimator) = &mut self.record_estimator {
             self.local_counts.local_mem = std::mem::take(&mut estimator.current_local_mem);
             // Self::estimate_riscv_event_counts(
@@ -1203,7 +1218,7 @@ impl<'a> Executor<'a> {
         self.local_counts = LocalCounts::default();
         // Copy all of the existing local memory accesses to the record's local_memory_access vec.
         if self.executor_mode == ExecutorMode::Trace {
-            for (_, event) in tracer.local_memory_event.drain() {
+            for (_, event) in self.store.tracer.local_memory_event.drain() {
                 self.record.cpu_local_memory_access.push(event);
             }
         }
@@ -1230,11 +1245,11 @@ impl<'a> Executor<'a> {
         self.executor_mode = ExecutorMode::Trace;
         self.emit_global_memory_events = emit_global_memory_events;
         self.print_report = true;
-        println!("pre_execute_records:{:?}",self.records);
-          println!("pre_execute_record:{:?}",self.record);
+        println!("pre_execute_records:{:?}", self.records);
+        println!("pre_execute_record:{:?}", self.record);
 
-        let done = self.execute()?;//TODO: fix execute 
-        println!("post_execute_record:{:?}",self.records);
+        let done = self.execute()?; //TODO: fix execute
+        println!("post_execute_record:{:?}", self.records);
         Ok((std::mem::take(&mut self.records), done))
     }
 
@@ -1262,7 +1277,7 @@ impl<'a> Executor<'a> {
         self.state.proof_stream = proof_stream;
 
         let done = tracing::debug_span!("execute").in_scope(|| self.execute())?;
-        println!("cpu events:{:?}",self.record.cpu_events);
+        println!("cpu events:{:?}", self.record.cpu_events);
         // Create a checkpoint using `memory_checkpoint`. Just include all memory if `done` since we
         // need it all for MemoryFinalize.
         let next_pc = self.state.pc;
@@ -1400,15 +1415,25 @@ impl<'a> Executor<'a> {
         let mut current_shard = self.state.current_shard;
         let mut num_shards_executed = 0;
 
-        let rwasm_config = ExecutorConfig::default();
-        let mut store = Store::new(rwasm_config, ());
-        let mut engine = ExecutionEngine::new();
-        let module = self.program.module.clone();
-        store.tracer.state.next_shard(); //shard starts with 1;
-        let mut executor = engine.create_callable_executor(&mut store, &module);
+        self.store.tracer.state.next_shard(); // shard starts with 1;
 
         loop {
-            let res = self.execute_cycle(&mut executor)?;
+            let rwasm_state = self.register_state.get_or_insert_with(|| {
+                let sp = self.value_stack.stack_ptr();
+                let ip = InstructionPtr::new(self.program.module.code_section.instr.as_ptr());
+                RwasmExecutorState { sp, ip }
+            });
+            let res: Result<bool, TrapCode>;
+            (res, rwasm_state.ip, rwasm_state.sp) = RwasmExecutor::new(
+                &self.program.module,
+                &mut self.value_stack,
+                rwasm_state.sp,
+                &mut self.call_stack,
+                rwasm_state.ip,
+                &mut self.store,
+            )
+            .step();
+            let res = self.execute_cycle(res)?;
 
             if res {
                 done = true;
@@ -1438,11 +1463,11 @@ impl<'a> Executor<'a> {
         let public_values = self.record.public_values;
 
         if done {
-            self.state.update_state(&mut executor.store);
+            self.state.update_state(&self.store);
             self.postprocess();
 
             // Push the remaining execution record with memory initialize & finalize events.
-            self.bump_record(&mut executor.store.tracer);
+            self.bump_record();
 
             // Flush stdout and stderr.
             if let Some(ref mut w) = self.io_options.stdout {
@@ -1460,7 +1485,7 @@ impl<'a> Executor<'a> {
 
         // Push the remaining execution record, if there are any CPU events.
         if !self.record.cpu_events.is_empty() {
-            self.bump_record(&mut executor.store.tracer);
+            self.bump_record();
         }
 
         // Set the global public values for all shards.
@@ -3033,22 +3058,19 @@ mod tests {
         assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value + y_value);
     }
 
-     #[test]
+    #[test]
     fn test_runstate() {
         let sp_value: u32 = SP_START;
         let x_value: u32 = 0x12345;
         let y_value: u32 = 0x54321;
 
-        let opcodes = vec![
-            Opcode::I32Const(x_value.into()),
-           
-        ];
+        let opcodes = vec![Opcode::I32Const(x_value.into())];
 
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.execute();
-        println!("record:{:?}",runtime.record);
-         println!("records:{:?}",runtime.records);
+        println!("record:{:?}", runtime.record);
+        println!("records:{:?}", runtime.records);
         assert_eq!(runtime.state.sp, sp_value - 4);
         assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value + y_value);
     }

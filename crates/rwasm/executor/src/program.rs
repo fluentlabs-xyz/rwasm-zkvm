@@ -65,7 +65,7 @@ impl Program {
     ///
     /// This function may return an error if the ELF is not valid.
     pub fn from(input: &[u8]) -> eyre::Result<Self> {
-        let module = RwasmModule::new(input);
+        let (module, _) = RwasmModule::new(input);
         let memory_image = Program::memory_image(&module);
         Ok(Program { module, memory_image, preprocessed_shape: None })
     }
