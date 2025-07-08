@@ -169,6 +169,7 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>>> StarkMachine<SC, A> {
     }
 
     /// Debugs the constraints of the given records.
+    #[allow(clippy::too_many_lines)]
     #[instrument("debug constraints", level = "debug", skip_all)]
     pub fn debug_constraints(
         &self,
@@ -229,9 +230,15 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>>> StarkMachine<SC, A> {
                                 y: SepticExtension::<Val<SC>>::from_base_fn(|i| last_row[i + 7]),
                             })
                         };
-                        println!("chip:{}",chip.name());
-                        println!("global:{:?}",global_sum);
-                        println!("local:{}",local_sum);
+                        
+                        if global_sum!=SepticDigest::zero(){
+                            println!("chip:{}",chip.name());
+                             println!("global:{:?}",global_sum);
+                        }
+                        if local_sum!=SC::Challenge::zero(){
+                            println!("chip:{}",chip.name());
+                            println!("local:{}",local_sum);
+                        }
                         (trace, (global_sum, local_sum))
                     })
                     .unzip_into_vecs(&mut permutation_traces, &mut chip_cumulative_sums);

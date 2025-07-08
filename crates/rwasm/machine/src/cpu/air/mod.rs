@@ -220,7 +220,7 @@ impl CpuChip {
     ) {
         builder.eval_memory_access(
             local.shard,
-            clk + AB::Expr::from_canonical_u8(4),
+            clk + AB::Expr::from_canonical_u8(8),
             local.sp - AB::Expr::from_canonical_u8(4),
             &local.op_res_access,
             local.instruction.is_localget + local.instruction.is_i32const,

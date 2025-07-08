@@ -246,7 +246,11 @@ impl ExecutionRecord {
     /// Get all the local memory events.
     #[inline]
     pub fn get_local_mem_events(&self) -> impl Iterator<Item = &MemoryLocalEvent> {
+        println!("local events");
         let precompile_local_mem_events = self.precompile_events.get_local_mem_events();
+        for item in self.cpu_local_memory_access.iter(){
+             println!(" event:{:?}",item);
+        }
         precompile_local_mem_events.chain(self.cpu_local_memory_access.iter())
     }
 }

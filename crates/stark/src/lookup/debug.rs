@@ -74,35 +74,29 @@ pub fn debug_interactions<SC: StarkGenericConfig, A: MachineAir<Val<SC>>>(
         pkey.chip_ordering.get(&chip.name()).map(|&index| pre_traces.get_mut(index).unwrap());
     let mut main = trace.clone();
     let height = trace.clone().height();
-    println!("chips:{}",chip.name());
     let sends = chip.sends().iter().filter(|s| s.scope == scope).collect::<Vec<_>>();
-    println!("sends len = {}",sends.len());
+
     let receives = chip.receives().iter().filter(|r| r.scope == scope).collect::<Vec<_>>();
-    println!("receive len = {}",receives.len());
-    println!("height  = {}",height);
+
     let nb_send_interactions = sends.len();
     for row in 0..height {
         for (m, interaction) in sends.iter().chain(receives.iter()).enumerate() {
             if !interaction_kinds.contains(&interaction.kind) {
                 continue;
             }
-           
+
             let mut empty = vec![];
             let preprocessed_row = preprocessed_trace
                 .as_mut()
                 .map(|t| t.row_mut(row))
                 .or_else(|| Some(&mut empty))
                 .unwrap();
-         
+
             let is_send = m < nb_send_interactions;
             let multiplicity_eval: Val<SC> =
                 interaction.multiplicity.apply(preprocessed_row, main.row_mut(row));
-                
 
             if !multiplicity_eval.is_zero() {
-                println!("multiplicity eval={}",multiplicity_eval);
-                println!("kind ={} ",interaction.kind);
-                println!("pretrace len={}",preprocessed_row.len());
                 let mut values = vec![];
                 for value in &interaction.values {
                     let expr: Val<SC> = value.apply(preprocessed_row, main.row_mut(row));
@@ -114,7 +108,7 @@ pub fn debug_interactions<SC: StarkGenericConfig, A: MachineAir<Val<SC>>>(
                     &interaction.kind.to_string(),
                     vec_to_string(values)
                 );
-               
+
                 key_to_vec_data.entry(key.clone()).or_insert_with(Vec::new).push(InteractionData {
                     chip_name: chip.name(),
                     kind: interaction.kind,
@@ -132,7 +126,7 @@ pub fn debug_interactions<SC: StarkGenericConfig, A: MachineAir<Val<SC>>>(
             }
         }
     }
-
+    println!("key_to_vec:{:?}",key_to_vec_data);
     (key_to_vec_data, key_to_count)
 }
 

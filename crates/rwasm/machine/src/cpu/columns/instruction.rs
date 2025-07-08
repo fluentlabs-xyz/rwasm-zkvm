@@ -63,6 +63,7 @@ pub struct InstructionCols<T> {
 
 impl<F: PrimeField> InstructionCols<F> {
     pub fn populate(&mut self, opcode: Opcode) {
+        self.opcode=F::from_canonical_u32(opcode.code());
         self.is_nullary = F::from_bool(opcode.is_nullary());
         self.is_unary = F::from_bool(opcode.is_unary_instruction());
         self.is_binary = F::from_bool(opcode.is_binary_instruction());

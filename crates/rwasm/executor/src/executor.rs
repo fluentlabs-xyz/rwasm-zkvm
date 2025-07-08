@@ -15,7 +15,7 @@ use clap::ValueEnum;
 use enum_map::EnumMap;
 use hashbrown::HashMap;
 
-use rwasm::{ExecutionEngine, ExecutorConfig, Opcode, RwasmExecutor, Store};
+use rwasm::{ExecutionEngine, ExecutorConfig, Opcode, RwasmExecutor, Store, Tracer};
 use serde::{Deserialize, Serialize};
 use serde_json::value;
 use sp1_primitives::consts::BABYBEAR_PRIME;
@@ -695,6 +695,7 @@ impl<'a> Executor<'a> {
         res: u32,
         record: MemoryAccessRecord,
     ) {
+        println!("emit cpu");
         self.emit_cpu(clk, next_pc, sp, arg1, arg2, res, record, 0u32);
 
         if opcode.is_alu_instruction() {
@@ -1049,8 +1050,20 @@ impl<'a> Executor<'a> {
     #[inline]
     #[allow(clippy::too_many_lines)]
     fn execute_cycle(&mut self, executor: &mut RwasmExecutor<()>) -> Result<bool, ExecutionError> {
-        let clk = self.store.tracer.state.clk;
+        
         let res = executor.step();
+        let res = match res {
+            Ok(value) => Ok(value),
+            Err(err) => {
+                if err == rwasm::TrapCode::UnreachableCodeReached {
+                    return Ok(true)
+                } else {
+                    println!("Err:{},", err);
+                    return Err(ExecutionError::Unimplemented())
+                }
+            }
+        };
+        let clk = self.store.tracer.state.clk;
         let op_state = executor.store.tracer.logs.last().unwrap();
         let syscall = SyscallCode::default();
         println!("op_state:{op_state:?}");
@@ -1158,7 +1171,7 @@ impl<'a> Executor<'a> {
             }
 
             if cpu_exit || !shape_match_found {
-                self.bump_record();
+                self.bump_record(&mut executor.store.tracer);
                 self.state.current_shard += 1;
                 self.state.clk = 0;
             }
@@ -1170,21 +1183,12 @@ impl<'a> Executor<'a> {
                 }
             }
         }
-        match res {
-            Ok(value) => Ok(value),
-            Err(err) => {
-                if err == rwasm::TrapCode::UnreachableCodeReached {
-                    Ok(true)
-                } else {
-                    println!("Err:{},", err);
-                    Err(ExecutionError::Unimplemented())
-                }
-            }
-        }
+        res
+       
     }
 
     /// Bump the record.
-    pub fn bump_record(&mut self) {
+    pub fn bump_record(&mut self, tracer:&mut Tracer) {
         if let Some(estimator) = &mut self.record_estimator {
             self.local_counts.local_mem = std::mem::take(&mut estimator.current_local_mem);
             // Self::estimate_riscv_event_counts(
@@ -1199,7 +1203,7 @@ impl<'a> Executor<'a> {
         self.local_counts = LocalCounts::default();
         // Copy all of the existing local memory accesses to the record's local_memory_access vec.
         if self.executor_mode == ExecutorMode::Trace {
-            for (_, event) in self.local_memory_access.drain() {
+            for (_, event) in tracer.local_memory_event.drain() {
                 self.record.cpu_local_memory_access.push(event);
             }
         }
@@ -1226,7 +1230,11 @@ impl<'a> Executor<'a> {
         self.executor_mode = ExecutorMode::Trace;
         self.emit_global_memory_events = emit_global_memory_events;
         self.print_report = true;
-        let done = self.execute()?;
+        println!("pre_execute_records:{:?}",self.records);
+          println!("pre_execute_record:{:?}",self.record);
+
+        let done = self.execute()?;//TODO: fix execute 
+        println!("post_execute_record:{:?}",self.records);
         Ok((std::mem::take(&mut self.records), done))
     }
 
@@ -1254,6 +1262,7 @@ impl<'a> Executor<'a> {
         self.state.proof_stream = proof_stream;
 
         let done = tracing::debug_span!("execute").in_scope(|| self.execute())?;
+        println!("cpu events:{:?}",self.record.cpu_events);
         // Create a checkpoint using `memory_checkpoint`. Just include all memory if `done` since we
         // need it all for MemoryFinalize.
         let next_pc = self.state.pc;
@@ -1429,11 +1438,11 @@ impl<'a> Executor<'a> {
         let public_values = self.record.public_values;
 
         if done {
-            self.state.update_state(&store);
+            self.state.update_state(&mut executor.store);
             self.postprocess();
 
             // Push the remaining execution record with memory initialize & finalize events.
-            self.bump_record();
+            self.bump_record(&mut executor.store.tracer);
 
             // Flush stdout and stderr.
             if let Some(ref mut w) = self.io_options.stdout {
@@ -1451,7 +1460,7 @@ impl<'a> Executor<'a> {
 
         // Push the remaining execution record, if there are any CPU events.
         if !self.record.cpu_events.is_empty() {
-            self.bump_record();
+            self.bump_record(&mut executor.store.tracer);
         }
 
         // Set the global public values for all shards.
@@ -3020,6 +3029,26 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
+        assert_eq!(runtime.state.sp, sp_value - 4);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value + y_value);
+    }
+
+     #[test]
+    fn test_runstate() {
+        let sp_value: u32 = SP_START;
+        let x_value: u32 = 0x12345;
+        let y_value: u32 = 0x54321;
+
+        let opcodes = vec![
+            Opcode::I32Const(x_value.into()),
+           
+        ];
+
+        let program = Program::from_instrs(opcodes);
+        let mut runtime = Executor::new(program, SP1CoreOpts::default());
+        runtime.execute();
+        println!("record:{:?}",runtime.record);
+         println!("records:{:?}",runtime.records);
         assert_eq!(runtime.state.sp, sp_value - 4);
         assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value + y_value);
     }

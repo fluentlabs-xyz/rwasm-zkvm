@@ -108,6 +108,7 @@ impl ExecutionState {
             println!("addr{},record:{:?},", *item.0, *item.1);
             self.memory.insert(*item.0, *item.1);
         }
+        
     }
 }
 

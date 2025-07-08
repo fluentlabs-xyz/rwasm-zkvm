@@ -44,6 +44,7 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_CPU_COLS);
 
         let chunk_size = std::cmp::max(input.cpu_events.len() / num_cpus::get(), 1);
+        println!("input.cpu_events{:?}",input.cpu_events);
         values.chunks_mut(chunk_size * NUM_CPU_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
                 rows.chunks_mut(NUM_CPU_COLS).enumerate().for_each(|(j, row)| {
@@ -56,6 +57,7 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
                         let mut byte_lookup_events = Vec::new();
                         let event = &input.cpu_events[idx];
                         let instruction = input.program.fetch(event.pc);
+                        println!("i:{} j: {}idx:{} cpu event:{:?}",i,j,idx,event);
                         self.event_to_row(
                             event,
                             cols,
