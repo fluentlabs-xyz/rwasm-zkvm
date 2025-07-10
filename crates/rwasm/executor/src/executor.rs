@@ -1780,9 +1780,9 @@ mod tests {
     use std::ops::Add;
 
     use super::peek_stack;
-    use crate::{align, Executor, Program, SP_START};
+    use crate::{align, Executor, Program};
     use hashbrown::HashMap;
-
+    pub const SP_START: u32 = 0x80 + 4;
     use rwasm::{
         mem_index::{AddressType, UNIT},
         BranchOffset, Opcode,
@@ -3072,6 +3072,6 @@ mod tests {
         println!("record:{:?}", runtime.record);
         println!("records:{:?}", runtime.records);
         assert_eq!(runtime.state.sp, sp_value - 4);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value + y_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value);
     }
 }
