@@ -1858,12 +1858,14 @@ mod tests {
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32Sub, // 32 - 4 = 28
+            Opcode::I32Const((x_value-y_value).into()),
+            Opcode::I32Eq, //stack has now 1
         ];
 
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value - y_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -1876,12 +1878,14 @@ mod tests {
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32Xor, // 5 xor 37 = 32
+            Opcode::I32Const((x_value^y_value).into()),
+            Opcode::I32Eq, //stack has now 1
         ];
 
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value ^ y_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -1894,12 +1898,14 @@ mod tests {
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32Or, // 5 or 37 = 32
+            Opcode::I32Const((x_value | y_value).into()),
+            Opcode::I32Eq, //stack has now 1
         ];
 
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value | y_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -1912,12 +1918,14 @@ mod tests {
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32And, // 5 and 37 = 32
+            Opcode::I32Const((x_value&y_value).into()),
+            Opcode::I32Eq, //stack has now 1
         ];
 
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value & y_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -1933,6 +1941,8 @@ mod tests {
             Opcode::I32Const(z_value.into()),
             Opcode::I32Add,
             Opcode::I32Add,
+            Opcode::I32Const((x_value - 1 + z_value).into()),
+            Opcode::I32Eq, //stack has now 1
         ];
 
         let program = Program::from_instrs(opcodes);
@@ -1940,7 +1950,7 @@ mod tests {
         runtime.run().unwrap();
         assert_eq!(
             runtime.state.memory.get(runtime.state.sp).unwrap().value,
-            x_value - 1 + z_value
+            1
         );
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
@@ -1958,6 +1968,8 @@ mod tests {
             Opcode::I32Const(z_value.into()),
             Opcode::I32Or, // 5 or 37 = 37
             Opcode::I32Or, // 37 or 42  = 47
+            Opcode::I32Const(( x_value | y_value | z_value).into()),
+            Opcode::I32Eq, //stack has now 1
         ];
 
         let program = Program::from_instrs(opcodes);
@@ -1965,7 +1977,7 @@ mod tests {
         runtime.run().unwrap();
         assert_eq!(
             runtime.state.memory.get(runtime.state.sp).unwrap().value,
-            x_value | y_value | z_value
+            1
         );
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
@@ -1982,6 +1994,8 @@ mod tests {
             Opcode::I32Const(z_value.into()),
             Opcode::I32And, // 5 and 37 = 32
             Opcode::I32And, // 5 and 4  = 4
+            Opcode::I32Const(( x_value & y_value & z_value).into()),
+            Opcode::I32Eq, //stack has now 1
         ];
 
         let program = Program::from_instrs(opcodes);
@@ -1989,7 +2003,7 @@ mod tests {
         runtime.run().unwrap();
         assert_eq!(
             runtime.state.memory.get(runtime.state.sp).unwrap().value,
-            x_value & y_value & z_value
+            1
         );
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
@@ -2003,12 +2017,14 @@ mod tests {
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32Mul, // 5 * 32 = 160
+            Opcode::I32Const(( x_value * y_value).into()),
+            Opcode::I32Eq, //stack has now 1
         ];
 
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value * y_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
