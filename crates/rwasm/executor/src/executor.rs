@@ -1783,10 +1783,7 @@ mod tests {
     use crate::{align, Executor, Program};
     use hashbrown::HashMap;
     pub const SP_START: u32 = 0x80 + 4;
-    use rwasm::{
-        mem_index::{AddressType, UNIT},
-        BranchOffset, Opcode,
-    };
+    use rwasm::{mem_index::{AddressType, UNIT}, BranchOffset, Op, Opcode};
     use sp1_stark::SP1CoreOpts;
 
     #[test]
@@ -1807,6 +1804,28 @@ mod tests {
         assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value + y_value);
         println!("initial sp_value {} and last state.sp {}", sp_value, runtime.state.sp);
         assert_eq!(sp_value, runtime.state.sp + 4);
+    }
+    #[test]
+    fn test_add_eq() {
+        let sp_value: u32 = SP_START;
+        let x_value: u32 = 32;
+        let y_value: u32 = 4;
+
+        let opcodes = vec![
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(y_value.into()),
+            Opcode::I32Add, // 32 + 4 = 36
+            Opcode::I32Const((x_value+y_value).into()),
+            Opcode::I32Eq, //stack has now 1
+            //Opcode::Drop,
+        ];
+
+        let program = Program::from_instrs(opcodes);
+        let mut runtime = Executor::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
+        println!("initial sp_value {} and last state.sp {}", sp_value, runtime.state.sp);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(sp_value, runtime.state.sp+4);
     }
     #[test]
     fn test_sub() {
