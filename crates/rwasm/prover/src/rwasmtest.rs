@@ -45,9 +45,9 @@ mod tests {
 
     use hashbrown::HashMap;
 
+    use rwasm::BranchOffset;
     use rwasm_executor::{Opcode, Program, SP_START};
     use rwasm_machine::utils::setup_logger;
-    use rwasm::BranchOffset;
 
     use super::super::*;
     use super::*;

@@ -9,7 +9,7 @@ pub mod test {
     use p3_baby_bear::BabyBear;
     use p3_matrix::dense::RowMajorMatrix;
     use rand::{thread_rng, Rng};
-    use rwasm_executor::{events::AluEvent, rwasm_ins_to_code, ExecutionRecord, Executor, Instruction, Opcode, Program, DEFAULT_PC_INC};
+    use rwasm_executor::{events::AluEvent, ExecutionRecord, Executor, Opcode, Program, DEFAULT_PC_INC};
     use rwasm_machine::{cpu::CpuChip, programs, rwasm::AddSubChip};
     use sp1_stark::{air::MachineAir, MachineProver, SP1CoreOpts, StarkGenericConfig};
     use std::sync::LazyLock;
@@ -27,7 +27,7 @@ pub mod test {
         let z6_value: u32 = 0x21;
 
         let instructions = vec![
-            Instruction::I32Const(z6_value.into()),
+            Opcode::I32Const(z6_value.into()),
             // Instruction::I32Const(z5_value.into()),
             // Instruction::I32Const(z4_value.into()),
             // Instruction::I32Const(z3_value.into()),
@@ -59,15 +59,16 @@ pub mod test {
         let program = build_elf();
         let mut runtime =Executor::new(program, opts);
         runtime.run();
+        println!("runtimerecordcpu:{:?}",runtime.record.cpu_events);
         let chip = CpuChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&(runtime.record).defer(),&mut ExecutionRecord::default());
         
-        // let proof = uni_stark_prove::<BabyBearPoseidon2, _>(&config, &chip, &mut challenger, trace);
+        let proof = uni_stark_prove::<BabyBearPoseidon2, _>(&config, &chip, &mut challenger, trace);
 
-        // let mut challenger = config.challenger();
-        // let result = uni_stark_verify(&config, &chip, &mut challenger, &proof).unwrap();
-        // println!("{:?}", result);
+        let mut challenger = config.challenger();
+        let result = uni_stark_verify(&config, &chip, &mut challenger, &proof).unwrap();
+        println!("{:?}", result);
     }
 
 }

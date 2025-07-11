@@ -16,9 +16,7 @@ use enum_map::EnumMap;
 use hashbrown::HashMap;
 
 use rwasm::{
-    always_failing_syscall_handler, CallStack, ExecutionEngine, ExecutorConfig, ImportLinker,
-    InstructionPtr, Opcode, RwasmExecutor, RwasmModule, RwasmStore, Store, Tracer, TrapCode,
-    ValueStack, ValueStackPtr,
+    always_failing_syscall_handler, mem::MemoryLocalEvent, CallStack, ExecutionEngine, ExecutorConfig, ImportLinker, InstructionPtr, Opcode, RwasmExecutor, RwasmModule, RwasmStore, Store, Tracer, TrapCode, ValueStack, ValueStackPtr
 };
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
@@ -35,7 +33,7 @@ use crate::{
     estimate_riscv_lde_size,
     events::{
         AluEvent, BranchEvent, CpuEvent, MemInstrEvent, MemoryInitializeFinalizeEvent,
-        MemoryLocalEvent, MemoryReadRecord, MemoryRecord, MemoryRecordEnum, MemoryWriteRecord,
+        MemoryReadRecord, MemoryRecord, MemoryRecordEnum, MemoryWriteRecord,
         NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC,
     },
     hook::{HookEnv, HookRegistry},
@@ -352,7 +350,7 @@ impl<'a> Executor<'a> {
         let store = RwasmStore::new(
             rwasm_config,
             // TODO(dmitry123): "use import linker from fluentbase once tracer is merged"
-            Rc::new(ImportLinker::default()),
+            Arc::new(ImportLinker::default()),
             (),
             // TODO(dmitry123): "use syscall handler from runtime"
             always_failing_syscall_handler,
@@ -1434,7 +1432,7 @@ impl<'a> Executor<'a> {
             )
             .step();
             let res = self.execute_cycle(res)?;
-
+            println!("self.record.cpuevent:{:?}",self.record.cpu_events);
             if res {
                 done = true;
                 break;
@@ -1461,9 +1459,9 @@ impl<'a> Executor<'a> {
 
         // Get the final public values.
         let public_values = self.record.public_values;
-
+        self.state.update_state(&self.store);
         if done {
-            self.state.update_state(&self.store);
+            
             self.postprocess();
 
             // Push the remaining execution record with memory initialize & finalize events.
@@ -1577,50 +1575,35 @@ impl<'a> Executor<'a> {
                 .push(MemoryInitializeFinalizeEvent::finalize_from_record(0, addr_0_final_record));
 
             let memory_initialize_events = &mut self.record.global_memory_initialize_events;
-            memory_initialize_events
-                .reserve_exact(self.state.memory.page_table.estimate_len() + 32);
+            
             let addr_0_initialize_event =
-                MemoryInitializeFinalizeEvent::initialize(0, 0, addr_0_record.is_some());
-            memory_initialize_events.push(addr_0_initialize_event);
-
+                MemoryInitializeFinalizeEvent{
+                    addr: 0,
+                    value: 0,
+                    shard:0,
+                    timestamp: 0,
+                    used: 0,
+                };
+            println!("addr0init:{:?}",addr_0_initialize_event);
+            println!("addr0finial:{:?}",MemoryInitializeFinalizeEvent::finalize_from_record(0, addr_0_final_record));
+          
             // Count the number of touched memory addresses manually, since `PagedMemory` doesn't
             // already know its length.
             self.report.touched_memory_addresses = 0;
-            for addr in 1..32 {
-                let record = self.state.memory.registers.get(addr);
-                if record.is_some() {
-                    self.report.touched_memory_addresses += 1;
-
-                    // Program memory is initialized in the MemoryProgram chip and doesn't require any
-                    // events, so we only send init events for other memory addresses.
-                    if !self.record.program.memory_image.contains_key(&addr) {
-                        let initial_value =
-                            self.state.uninitialized_memory.registers.get(addr).unwrap_or(&0);
-                        memory_initialize_events.push(MemoryInitializeFinalizeEvent::initialize(
-                            addr,
-                            *initial_value,
-                            true,
-                        ));
-                    }
-
-                    let record = *record.unwrap();
-                    memory_finalize_events
-                        .push(MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record));
-                }
-            }
+           
             for addr in self.state.memory.page_table.keys() {
                 self.report.touched_memory_addresses += 1;
 
                 // Program memory is initialized in the MemoryProgram chip and doesn't require any
                 // events, so we only send init events for other memory addresses.
-                if !self.record.program.memory_image.contains_key(&addr) {
-                    let initial_value = self.state.uninitialized_memory.get(addr).unwrap_or(&0);
-                    memory_initialize_events.push(MemoryInitializeFinalizeEvent::initialize(
-                        addr,
-                        *initial_value,
-                        true,
-                    ));
-                }
+            
+                let initial_value = self.state.uninitialized_memory.get(addr).unwrap_or(&0);
+                memory_initialize_events.push(MemoryInitializeFinalizeEvent::initialize(
+                    addr,
+                    *initial_value,
+                    true,
+                ));
+                
 
                 let record = *self.state.memory.get(addr).unwrap();
                 memory_finalize_events

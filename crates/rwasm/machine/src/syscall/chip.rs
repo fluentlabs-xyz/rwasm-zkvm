@@ -105,6 +105,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallChip {
                 kind: InteractionKind::Syscall as u8,
             })
             .collect_vec();
+        println!("sys global events:{:?}",events);
         output.global_interaction_events.extend(events);
     }
 

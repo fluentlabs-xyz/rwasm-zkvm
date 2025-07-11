@@ -23,7 +23,7 @@ use sp1_stark::{
     InteractionKind, Word,
 };
 use std::array;
-
+use crate::memory::global;
 /// A memory chip that can initialize or finalize values in memory.
 pub struct MemoryGlobalChip {
     pub kind: MemoryChipType,
@@ -66,12 +66,11 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
         };
 
         memory_events.sort_by_key(|event| event.addr);
-
+        let name = <global::MemoryGlobalChip as MachineAir<F>>::name(self);
         let events = memory_events.into_iter().map(|event| {
             let interaction_shard = if is_receive { event.shard } else { 0 };
             let interaction_clk = if is_receive { event.timestamp } else { 0 };
-            GlobalInteractionEvent {
-                message: [
+            let message =[
                     interaction_shard,
                     interaction_clk,
                     event.addr,
@@ -79,11 +78,17 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                     ((event.value >> 8) & 255) as u32,
                     ((event.value >> 16) & 255) as u32,
                     ((event.value >> 24) & 255) as u32,
-                ],
+                ];
+            println!("name:{},message:{:?}",name,message);
+            GlobalInteractionEvent {
+                message,
                 is_receive,
                 kind: InteractionKind::Memory as u8,
             }
         });
+        
+
+        println!("chip: memory{} events:{:?}",<global::MemoryGlobalChip as MachineAir<F>>::name(self),events);
         output.global_interaction_events.extend(events);
     }
 

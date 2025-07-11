@@ -109,6 +109,24 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                 is_receive: true,
                 kind: InteractionKind::Memory as u8,
             });
+            println!("memory recieve {:?}",[
+                    mem_event.initial_mem_access.shard,
+                    mem_event.initial_mem_access.timestamp,
+                    mem_event.addr,
+                    mem_event.initial_mem_access.value & 255,
+                    (mem_event.initial_mem_access.value >> 8) & 255,
+                    (mem_event.initial_mem_access.value >> 16) & 255,
+                    (mem_event.initial_mem_access.value >> 24) & 255,
+                ],);
+            println!("memory send {:?}",[
+                    mem_event.final_mem_access.shard,
+                    mem_event.final_mem_access.timestamp,
+                    mem_event.addr,
+                    mem_event.final_mem_access.value & 255,
+                    (mem_event.final_mem_access.value >> 8) & 255,
+                    (mem_event.final_mem_access.value >> 16) & 255,
+                    (mem_event.final_mem_access.value >> 24) & 255,
+                ],);
             events.push(GlobalInteractionEvent {
                 message: [
                     mem_event.final_mem_access.shard,
@@ -123,7 +141,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                 kind: InteractionKind::Memory as u8,
             });
         });
-
+         println!("chip: memorylocal: events:{:?}",events);
         output.global_interaction_events.extend(events);
     }
 

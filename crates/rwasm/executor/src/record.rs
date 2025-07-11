@@ -324,6 +324,7 @@ impl MachineRecord for ExecutionRecord {
         self.global_memory_initialize_events.append(&mut other.global_memory_initialize_events);
         self.global_memory_finalize_events.append(&mut other.global_memory_finalize_events);
         self.cpu_local_memory_access.append(&mut other.cpu_local_memory_access);
+        println!("other global:{:?}",other.global_interaction_events);
         self.global_interaction_events.append(&mut other.global_interaction_events);
     }
 

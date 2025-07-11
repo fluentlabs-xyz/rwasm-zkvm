@@ -128,7 +128,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryProgramChip {
                 kind: InteractionKind::Memory as u8,
             });
         });
-
+        println!("chip: memoryprogram: events:{:?}",events);
         output.global_interaction_events.extend(events);
     }
 
