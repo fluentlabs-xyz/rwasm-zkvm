@@ -1461,7 +1461,7 @@ impl<'a> Executor<'a> {
         let public_values = self.record.public_values;
         self.state.update_state(&self.store);
         if done {
-            
+
             self.postprocess();
 
             // Push the remaining execution record with memory initialize & finalize events.
@@ -1575,7 +1575,7 @@ impl<'a> Executor<'a> {
                 .push(MemoryInitializeFinalizeEvent::finalize_from_record(0, addr_0_final_record));
 
             let memory_initialize_events = &mut self.record.global_memory_initialize_events;
-            
+
             let addr_0_initialize_event =
                 MemoryInitializeFinalizeEvent{
                     addr: 0,
@@ -1586,24 +1586,24 @@ impl<'a> Executor<'a> {
                 };
             println!("addr0init:{:?}",addr_0_initialize_event);
             println!("addr0finial:{:?}",MemoryInitializeFinalizeEvent::finalize_from_record(0, addr_0_final_record));
-          
+
             // Count the number of touched memory addresses manually, since `PagedMemory` doesn't
             // already know its length.
             self.report.touched_memory_addresses = 0;
-           
+
             for addr in self.state.memory.page_table.keys() {
                 self.report.touched_memory_addresses += 1;
 
                 // Program memory is initialized in the MemoryProgram chip and doesn't require any
                 // events, so we only send init events for other memory addresses.
-            
+
                 let initial_value = self.state.uninitialized_memory.get(addr).unwrap_or(&0);
                 memory_initialize_events.push(MemoryInitializeFinalizeEvent::initialize(
                     addr,
                     *initial_value,
                     true,
                 ));
-                
+
 
                 let record = *self.state.memory.get(addr).unwrap();
                 memory_finalize_events
@@ -1760,13 +1760,12 @@ pub const fn align(addr: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Add;
-
     use super::peek_stack;
     use crate::{align, Executor, Program};
     use hashbrown::HashMap;
-    pub const SP_START: u32 = 0x80 + 4;
-    use rwasm::{mem_index::{AddressType, UNIT}, BranchOffset, Op, Opcode};
+   // pub const SP_START: u32 = 0x80 + 4;
+    use rwasm::{mem_index::{AddressType, UNIT}, BranchOffset, Opcode};
+    use rwasm::mem_index::SP_START;
     use sp1_stark::SP1CoreOpts;
 
     #[test]
