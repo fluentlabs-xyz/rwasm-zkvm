@@ -44,7 +44,7 @@ use crate::{
 pub const DEFAULT_PC_INC: u32 = 4;
 /// This is used in the `InstrEvent` to indicate that the instruction is not from the CPU.
 /// A valid pc should be divisible by 4, so we use 1 to indicate that the pc is not used.
-pub const UNUSED_PC: u32 = 1;
+pub const UNUSED_PC: u32 = 1<<24;
 
 /// The maximum number of instructions in a program.
 pub const MAX_PROGRAM_SIZE: usize = 1 << 22;

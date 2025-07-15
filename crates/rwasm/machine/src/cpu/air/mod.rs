@@ -219,12 +219,79 @@ impl CpuChip {
         local: &CpuCols<AB::Var>,
         clk: AB::Expr,
     ) {
-        builder.eval_memory_access(
+        self.eval_op_memory_increase_sp(builder, local, clk.clone());
+        self.eval_binary_op_memory(builder, local, clk.clone());
+        self.eval_unary_op_memory(builder, local, clk.clone());
+    }
+
+    pub(crate) fn eval_op_memory_increase_sp<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &CpuCols<AB::Var>,
+        clk: AB::Expr,)
+        {
+            builder.eval_memory_access(
             local.shard,
             clk+ AB::Expr::from_canonical_u8(1) ,
             local.sp - AB::Expr::from_canonical_u8(4),
             &local.op_res_access,
             local.instruction.is_localget + local.instruction.is_i32const,
+        );
+    }
+
+    
+
+     pub(crate) fn eval_unary_op_memory<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &CpuCols<AB::Var>,
+        clk: AB::Expr,)
+        {
+            builder.eval_memory_access(
+            local.shard,
+            clk.clone()+ AB::Expr::from_canonical_u8(1) ,
+            local.sp,
+            &local.op_res_access,
+            local.instruction.is_unary,
+        );
+
+         builder.eval_memory_access(
+            local.shard,
+            clk.clone(),
+            local.sp,
+            &local.op_arg1_access,
+            local.instruction.is_unary,
+        );
+    }
+
+      pub(crate) fn eval_binary_op_memory<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &CpuCols<AB::Var>,
+        clk: AB::Expr,)
+        {
+            builder.eval_memory_access(
+            local.shard,
+            clk.clone()+ AB::Expr::from_canonical_u8(1) ,
+            local.sp +AB::Expr::from_canonical_u8(4),
+            &local.op_res_access,
+            local.instruction.is_binary
+        );
+
+         builder.eval_memory_access(
+            local.shard,
+            clk.clone() ,
+            local.sp,
+            &local.op_arg2_access,
+            local.instruction.is_binary,
+        );
+
+         builder.eval_memory_access(
+            local.shard,
+            clk.clone(),
+            local.sp +AB::Expr::from_canonical_u8(4) ,
+            &local.op_arg1_access,
+            local.instruction.is_binary,
         );
     }
 }

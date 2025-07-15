@@ -720,7 +720,7 @@ impl<'a> Executor<'a> {
         self.emit_cpu(clk,pc, next_pc, sp, next_sp,arg1, arg2, res, record, 0u32);
 
         if opcode.is_alu_instruction() {
-            self.emit_alu_event(opcode, arg1, arg2, res);
+            self.emit_alu_event(pc,opcode, arg1, arg2, res);
         } else if opcode.is_memory_load_instruction() || opcode.is_memory_store_instruction() {
             self.emit_mem_instr_event(opcode, arg1, arg2, res, record);
         } else if opcode.is_branch_instruction() {
@@ -772,9 +772,9 @@ impl<'a> Executor<'a> {
     }
 
     /// Emit an ALU event.
-    fn emit_alu_event(&mut self, opcode: Opcode, arg1: u32, arg2: u32, res: u32) {
+    fn emit_alu_event(&mut self,pc:u32 , opcode: Opcode, arg1: u32, arg2: u32, res: u32) {
         let event =
-            AluEvent { pc: self.state.pc, opcode, a: res, b: arg1, c: arg2, code: opcode.code() };
+            AluEvent { pc,opcode, a: res, b: arg1, c: arg2, code: opcode.code() };
         match opcode {
             Opcode::I32Add => {
                 self.record.add_events.push(event);

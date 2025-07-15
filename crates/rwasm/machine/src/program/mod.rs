@@ -85,8 +85,8 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
                     if idx < nb_rows {
                         let cols: &mut ProgramPreprocessedCols<F> = row.borrow_mut();
                         let instruction = program.fetch(idx as u32);
-                        let pc = (idx as u32 * 4); //TODO: find pc_base
-                        cols.pc = F::from_canonical_u32(pc);
+                        let pc = idx; //TODO: find pc_base
+                        cols.pc = F::from_canonical_usize(pc);
                         cols.instruction.populate(instruction);
                     }
                 });
@@ -123,7 +123,7 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             .iter()
             .enumerate()
             .map(|(i, _)| {
-                let pc = (i as u32 * 4); //TODO: do we have pc base?
+                let pc = (i as u32); //TODO: do we have pc base?
                 let mut row = [F::zero(); NUM_PROGRAM_MULT_COLS];
                 let cols: &mut ProgramMultiplicityCols<F> = row.as_mut_slice().borrow_mut();
                 cols.multiplicity =

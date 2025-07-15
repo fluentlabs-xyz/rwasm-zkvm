@@ -78,14 +78,14 @@ mod tests {
 
         let instructions = vec![
             Opcode::I32Const(z6_value.into()),
-            // Opcode::I32Const(z5_value.into()),
+            Opcode::I32Const(z5_value.into()),
             // Opcode::I32Const(z4_value.into()),
             // Opcode::I32Const(z3_value.into()),
             // Opcode::I32Const(z2_value.into()),
             // Opcode::I32Const(z1_value.into()),
             // Opcode::I32Const(y_value.into()),
             // Opcode::I32Const(x_value.into()),
-            // Opcode::I32Add,
+            Opcode::I32Add,
             // Opcode::I32Sub,
             // Opcode::I32Mul,
             // Opcode::I32DivS,
