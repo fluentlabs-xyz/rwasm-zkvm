@@ -17,8 +17,7 @@ use crate::{
     ExecutorMode, SP1ReduceProof,
 };
 
-// The starting address of satck
-pub const SP_START: u32 = 0x1000 + 4;
+pub use rwasm::mem_index::SP_START;
 // The starting address of function frame
 pub const FUNFRAMEP_START: u32 = SP_START + 4096;
 

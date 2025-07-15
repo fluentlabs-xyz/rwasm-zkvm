@@ -52,7 +52,10 @@ use crate::{
 
 /// The default increment for the program counter.  Is used for all opcodes except
 /// for branches and jumps.
-pub const DEFAULT_PC_INC: u32 = 4;
+pub const DEFAULT_PC_INC: u32 = 1;
+///The default increment for the clk. we increase clk for two becaseu we have 
+/// a reading phase and a writing phase.
+pub const DEFAULT_CLK_INC: u32 = 2*DEFAULT_PC_INC;
 /// This is used in the `InstrEvent` to indicate that the opcode is not from the CPU.
 /// A valid pc should be divisible by 4, so we use 1 to indicate that the pc is not used.
 pub const UNUSED_PC: u32 = 1;
@@ -702,8 +705,10 @@ impl<'a> Executor<'a> {
     fn emit_events(
         &mut self,
         clk: u32,
+        pc:u32,
         next_pc: u32,
         sp: u32,
+        next_sp:u32,
         opcode: Opcode,
         syscall_code: SyscallCode,
         arg1: u32,
@@ -712,7 +717,7 @@ impl<'a> Executor<'a> {
         record: MemoryAccessRecord,
     ) {
         println!("emit cpu");
-        self.emit_cpu(clk, next_pc, sp, arg1, arg2, res, record, 0u32);
+        self.emit_cpu(clk,pc, next_pc, sp, next_sp,arg1, arg2, res, record, 0u32);
 
         if opcode.is_alu_instruction() {
             self.emit_alu_event(opcode, arg1, arg2, res);
@@ -740,8 +745,10 @@ impl<'a> Executor<'a> {
     fn emit_cpu(
         &mut self,
         clk: u32,
+        pc:u32,
         next_pc: u32,
         sp: u32,
+        next_sp:u32,
         arg1: u32,
         arg2: u32,
         res: u32,
@@ -750,10 +757,10 @@ impl<'a> Executor<'a> {
     ) {
         self.record.cpu_events.push(CpuEvent {
             clk,
-            pc: self.state.pc,
+            pc,
             next_pc,
             sp,
-            next_sp: self.state.sp,
+            next_sp,
             res,
             res_record: record.res_record,
             arg1,
@@ -1077,14 +1084,16 @@ impl<'a> Executor<'a> {
                 }
             }
         };
-        let clk = self.store.tracer.state.clk;
+        
         let op_state = self.store.tracer.logs.last().unwrap();
         let syscall = SyscallCode::default();
         println!("op_state:{op_state:?}");
         self.emit_events(
-            clk,
+            op_state.clk,
+            op_state.pc,
             op_state.next_pc,
             op_state.sp,
+            op_state.next_sp,
             op_state.opcode,
             syscall,
             op_state.arg1,
@@ -1569,45 +1578,52 @@ impl<'a> Executor<'a> {
 
             let addr_0_final_record = match addr_0_record {
                 Some(record) => record,
-                None => &MemoryRecord { value: 0, shard: 0, timestamp: 1 },
+                None => &MemoryRecord { value: 0, shard: 0, timestamp: 0 },
             };
+
             memory_finalize_events
                 .push(MemoryInitializeFinalizeEvent::finalize_from_record(0, addr_0_final_record));
 
             let memory_initialize_events = &mut self.record.global_memory_initialize_events;
+            let addr_0_initialize_event = MemoryInitializeFinalizeEvent::initialize(0, 0, true);
+            memory_initialize_events.push(addr_0_initialize_event);
 
-            let addr_0_initialize_event =
-                MemoryInitializeFinalizeEvent{
-                    addr: 0,
-                    value: 0,
-                    shard:0,
-                    timestamp: 0,
-                    used: 0,
-                };
-            println!("addr0init:{:?}",addr_0_initialize_event);
-            println!("addr0finial:{:?}",MemoryInitializeFinalizeEvent::finalize_from_record(0, addr_0_final_record));
-
+            // let memory_initialize_events = &mut self.record.global_memory_initialize_events;
+            // let addr_0_init = MemoryInitializeFinalizeEvent { addr: 0, value: 0, shard: 1, timestamp: 1, used: 1 };
+            // let addr_0_final =  MemoryInitializeFinalizeEvent{ addr: 0, value: 0, shard: 1, timestamp: 2, used: 1 };
+            // let addr_0_initialize_event =
+            //     MemoryInitializeFinalizeEvent::initialize(0, 0, true);
+            // println!("addr0init:{:?}",addr_0_initialize_event);
+            // memory_initialize_events.push(addr_0_init);
+            // memory_finalize_events.push(addr_0_final);
+          
+           
             // Count the number of touched memory addresses manually, since `PagedMemory` doesn't
             // already know its length.
             self.report.touched_memory_addresses = 0;
 
             for addr in self.state.memory.page_table.keys() {
+                println!("addr:{}",addr);
                 self.report.touched_memory_addresses += 1;
 
                 // Program memory is initialized in the MemoryProgram chip and doesn't require any
                 // events, so we only send init events for other memory addresses.
 
                 let initial_value = self.state.uninitialized_memory.get(addr).unwrap_or(&0);
-                memory_initialize_events.push(MemoryInitializeFinalizeEvent::initialize(
+                let init_event = MemoryInitializeFinalizeEvent::initialize(
                     addr,
                     *initial_value,
                     true,
-                ));
-
+                );
+                 println!("init_event:{:?}",init_event);
+                memory_initialize_events.push(init_event);
+                
 
                 let record = *self.state.memory.get(addr).unwrap();
+                let final_event =MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record);
+                println!("final_event:{:?}",final_event);
                 memory_finalize_events
-                    .push(MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record));
+                    .push(final_event);
             }
         }
     }
@@ -1763,9 +1779,8 @@ mod tests {
     use super::peek_stack;
     use crate::{align, Executor, Program};
     use hashbrown::HashMap;
-   // pub const SP_START: u32 = 0x80 + 4;
-    use rwasm::{mem_index::{AddressType, UNIT}, BranchOffset, Opcode};
-    use rwasm::mem_index::SP_START;
+    
+    use rwasm::{mem_index::{AddressType, SP_START, UNIT}, BranchOffset, Op, Opcode};
     use sp1_stark::SP1CoreOpts;
 
     #[test]
@@ -1785,7 +1800,7 @@ mod tests {
         runtime.run().unwrap();
         assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value + y_value);
         println!("initial sp_value {} and last state.sp {}", sp_value, runtime.state.sp);
-        assert_eq!(sp_value, runtime.state.sp + 4);
+        assert_eq!(sp_value, runtime.state.sp +4 );
     }
     #[test]
     fn test_add_eq() {

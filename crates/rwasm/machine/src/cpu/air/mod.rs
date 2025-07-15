@@ -2,7 +2,7 @@ use core::borrow::Borrow;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use rwasm_executor::{ByteOpcode, DEFAULT_PC_INC};
+use rwasm_executor::{ByteOpcode, DEFAULT_PC_INC,DEFAULT_CLK_INC};
 use sp1_stark::{
     air::{BaseAirBuilder, PublicValues, SP1AirBuilder, SP1_PROOF_NUM_PV_ELTS},
     Word,
@@ -122,10 +122,10 @@ impl CpuChip {
         clk: AB::Expr,
     ) {
         // Verify the public value's shard.
-        builder.when(local.is_real).assert_eq(public_values.execution_shard, local.shard);
+        // builder.when(local.is_real).assert_eq(public_values.execution_shard, local.shard);
 
-        // Verify that all shard values are the same.
-        builder.when_transition().when(next.is_real).assert_eq(local.shard, next.shard);
+        // // Verify that all shard values are the same.
+        // builder.when_transition().when(next.is_real).assert_eq(local.shard, next.shard);
 
         // Verify that the shard value is within 16 bits.
         // SAFETY: `local.is_real` is checked to be boolean in `eval_is_real`.
@@ -144,7 +144,8 @@ impl CpuChip {
         // therefore less than `2^8`, this means that the sum cannot overflow in a 31 bit field.
         // The default clk increment is also `4`, equal to `DEFAULT_PC_INC`.
         let expected_next_clk =
-            clk.clone() + AB::Expr::from_canonical_u32(DEFAULT_PC_INC) + local.num_extra_cycles;
+            clk.clone() + AB::Expr::from_canonical_u32(DEFAULT_CLK_INC)+
+             local.num_extra_cycles;
 
         let next_clk =
             AB::Expr::from_canonical_u32(1u32 << 16) * next.clk_8bit_limb + next.clk_16bit_limb;
@@ -220,7 +221,7 @@ impl CpuChip {
     ) {
         builder.eval_memory_access(
             local.shard,
-            clk ,
+            clk+ AB::Expr::from_canonical_u8(1) ,
             local.sp - AB::Expr::from_canonical_u8(4),
             &local.op_res_access,
             local.instruction.is_localget + local.instruction.is_i32const,

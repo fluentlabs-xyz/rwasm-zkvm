@@ -29,7 +29,14 @@ pub fn run_rwasm_prover(mut program: Program) {
     match core_proof {
         Ok(_) => {
             tracing::info!("verify core");
-            prover.verify(&core_proof.unwrap().proof, &vk).unwrap();
+            let result =prover.verify(&core_proof.unwrap().proof, &vk);
+            match result {
+                Ok(_) => (),
+                Err(err) => {
+                    println!("err:{}",err);
+                    panic!();
+                },
+            }
         }
         Err(err) => {
             println!("{}", err);

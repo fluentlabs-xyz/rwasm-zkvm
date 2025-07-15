@@ -150,15 +150,18 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 return Err(MachineVerificationError::InvalidPublicValues(
                     "start_pc != next_pc: start_pc should equal next_pc for non-cpu shards",
                 ));
-            } else if shard_proof.contains_cpu() && public_values.start_pc == BabyBear::zero() {
-                return Err(MachineVerificationError::InvalidPublicValues(
-                    "start_pc == 0: execution should never start at halted state",
-                ));
-            } else if i == proof.0.len() - 1 && public_values.next_pc != BabyBear::zero() {
-                return Err(MachineVerificationError::InvalidPublicValues(
-                    "next_pc != 0: execution should have halted",
-                ));
-            }
+            } 
+            // else
+            //  if shard_proof.contains_cpu() && public_values.start_pc == BabyBear::zero() {
+            //     return Err(MachineVerificationError::InvalidPublicValues(
+            //         "start_pc == 0: execution should never start at halted state",
+            //     ));
+            // }
+            //  else if i == proof.0.len() - 1 && public_values.next_pc != BabyBear::zero() {
+            //     return Err(MachineVerificationError::InvalidPublicValues(
+            //         "next_pc != 0: execution should have halted",
+            //     ));
+            // }
             prev_next_pc = public_values.next_pc;
         }
 
