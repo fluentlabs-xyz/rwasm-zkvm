@@ -477,8 +477,8 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             let shard_proofs: Vec<ShardProof<_>> = proof_rx.iter().collect();
             let (public_values_stream, cycles) = handle.join().unwrap().unwrap();
             let public_values = SP1PublicValues::from(&public_values_stream);
-            println!("shard_proof:{:?}",shard_proofs.len());
-            println!("public_values:{:?}",public_values);
+            println!("shard_proof:{:?}", shard_proofs.len());
+            println!("public_values:{:?}", public_values);
             Self::check_for_high_cycles(cycles);
             Ok(SP1CoreProof {
                 proof: SP1CoreProofData(shard_proofs),
@@ -1427,13 +1427,16 @@ pub mod tests {
     #![allow(clippy::print_stdout)]
 
     use std::{
-        collections::BTreeSet, error::Error, fs::File, io::{Read, Write}
+        collections::BTreeSet,
+        error::Error,
+        fs::File,
+        io::{Read, Write},
     };
 
     use super::*;
 
     use crate::build::try_build_plonk_bn254_artifacts_dev;
-    use anyhow::{ Result};
+    use anyhow::Result;
     use build::{build_constraints_and_witness, try_build_groth16_bn254_artifacts_dev};
     use p3_field::PrimeField32;
 
@@ -1510,11 +1513,11 @@ pub mod tests {
             tracing::info!("verify core");
             let result = prover.verify(&core_proof.proof, &vk);
             match result {
-                Ok(_) =>(),
+                Ok(_) => (),
                 Err(err) => {
-                    println!("err:{:?}",err);
+                    println!("err:{:?}", err);
                     return Err(anyhow::Error::from(err));
-                },
+                }
             }
         }
 

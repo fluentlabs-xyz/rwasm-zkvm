@@ -66,4 +66,4 @@ pub fn rv32im_costs() -> HashMap<RwasmAirId, usize> {
 ///  these are psudeo rwasm opcode for chips
 pub const I32MULH_CODE: u32 = 0x0101;
 pub const I32MULHU_CODE: u32 = 0x0102;
-pub const I32MULHSU_CODE: u32 = 0x0102;
+pub const I32MULHSU_CODE: u32 = 0x0103;
