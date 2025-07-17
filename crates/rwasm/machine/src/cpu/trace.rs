@@ -240,7 +240,9 @@ impl CpuChip {
 
     fn populate_alu<F: PrimeField>(&self, cols: &mut CpuCols<F>, event:&CpuEvent,opcode:Opcode) {
         match opcode {
-            Opcode::I32GtS
+            Opcode::I32LtS
+            |Opcode::I32LtU
+            |Opcode::I32GtS
             | Opcode::I32GtU
             | Opcode::I32GeS
             | Opcode::I32GeU
@@ -254,6 +256,7 @@ impl CpuChip {
                 alu.arg1_gt_arg2 = F::from_bool(event.arg1 > event.arg2);
                 alu.arg1_lt_arg2 = F::from_bool(event.arg1 < event.arg2);
                 alu.res_bool = F::from_canonical_u32(event.res);
+                
             }
             _ => {
                 return;

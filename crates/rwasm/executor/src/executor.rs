@@ -826,11 +826,7 @@ impl<'a> Executor<'a> {
                 };
                 let lt_comp_event = AluEvent {
                     pc:UNUSED_PC,
-                    opcode: if use_signed_comparison{
-                        Opcode::I32LtS
-                    }else{
-                        Opcode::I32LtU
-                    },
+                    opcode: cmp_ins,
                     a: arg1_lt_arg2 as u32,
                     b: event.b,
                     c: event.c,
@@ -838,19 +834,18 @@ impl<'a> Executor<'a> {
                 };
                 let gt_comp_event = AluEvent {
                     pc: UNUSED_PC,
-                    opcode: if use_signed_comparison{
-                        Opcode::I32LtS
-                    }else{
-                        Opcode::I32LtU
-                    },
+                    opcode: cmp_ins,
                     a: arg1_gt_arg2 as u32,
                     b: event.c,
                     c: event.b,
                     code: cmp_ins.code(),
                 };
-               
+                if opcode==Opcode::I32LtS{
+                     println!("gt event:{:?}",gt_comp_event);
+               println!("lt event:{:?}",lt_comp_event);
+                }
+              
                 self.record.lt_events.push(gt_comp_event);
-                
                 
                 self.record.lt_events.push(lt_comp_event);
             }

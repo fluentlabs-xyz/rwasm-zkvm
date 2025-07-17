@@ -184,7 +184,7 @@ where
         // Get the cpu opcode, which corresponds to the opcode being sent in the CPU table.
         let cpu_opcode = local.is_xor * AB::Expr::from_canonical_u32(Opcode::I32Xor.code())
             + local.is_or * AB::Expr::from_canonical_u32(Opcode::I32Or.code())
-            + local.is_and * AB::Expr::from_canonical_u32(Opcode::I32Add.code());
+            + local.is_and * AB::Expr::from_canonical_u32(Opcode::I32And.code());
 
         // Receive the arguments.
         // SAFETY: This checks the following.

@@ -112,7 +112,7 @@ impl<F: PrimeField> InstructionCols<F> {
             Opcode::I32Eq => self.is_i32eq = F::one(),
             Opcode::I32Ne => self.is_i32ne = F::one(),
             Opcode::I32LtU => self.is_i32ltu =F::one(),
-            Opcode::I32LtS => self.is_i32ltu =F::one(),
+            Opcode::I32LtS => self.is_i32lts =F::one(),
             Opcode::I32GtS => self.is_i32gts = F::one(),
             Opcode::I32GtU => self.is_i32gtu = F::one(),
             Opcode::I32LeS => self.is_i32les = F::one(),

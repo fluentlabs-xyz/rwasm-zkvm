@@ -123,14 +123,14 @@ mod tests {
             Opcode::I32Const(z8_value.into()),
             Opcode::I32Ne,
             Opcode::I32Eq,
-            // Opcode::I32GtS,
-            // Opcode::I32GtU,
-            // Opcode::I32LeS,
-            // Opcode::I32LeU,
-            // Opcode::I32GeS,
-            // Opcode::I32GeU,
-            // Opcode::I32LtS,
-            // Opcode::I32Eqz,
+            Opcode::I32GtS,
+            Opcode::I32GtU,
+            Opcode::I32LeS,
+            Opcode::I32LeU,
+            Opcode::I32GeS,
+            Opcode::I32GeU,
+            Opcode::I32LtS,
+            Opcode::I32Eqz,
         ];
 
         let program = Program::from_instrs(instructions);

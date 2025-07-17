@@ -114,8 +114,10 @@ impl CpuChip {
         );
 
         // Calculate a_lt_b <==> a < b (using appropriate signedness).
-        let use_signed_comparison =
-            local.instruction.is_i32ges + local.instruction.is_i32gts + local.instruction.is_i32les;
+        let use_signed_comparison = local.instruction.is_i32ges
+            + local.instruction.is_i32gts
+            + local.instruction.is_i32les
+            + local.instruction.is_i32lts;
         let comparison_alu = local.alu_cols;
         let is_comparison = local.instruction.is_comparison_alu;
         // assert that all comparison variable are bool
@@ -134,13 +136,12 @@ impl CpuChip {
         builder
             .when(comparison_alu.arg1_eq_arg2)
             .assert_word_eq(local.op_b_val(), local.op_c_val());
-
         builder
             .when(local.instruction.is_i32lts + local.instruction.is_i32ltu)
             .assert_eq(local.alu_cols.res_bool.clone(), local.alu_cols.arg1_lt_arg2);
         builder.when(local.instruction.is_i32les + local.instruction.is_i32leu).assert_eq(
             local.alu_cols.res_bool,
-            local.alu_cols.arg1_eq_arg2 +local.alu_cols.arg1_lt_arg2,
+            local.alu_cols.arg1_eq_arg2 + local.alu_cols.arg1_lt_arg2,
         );
         builder
             .when(local.instruction.is_i32gts + local.instruction.is_i32gtu)
@@ -149,8 +150,12 @@ impl CpuChip {
             local.alu_cols.res_bool,
             local.alu_cols.arg1_eq_arg2 + local.alu_cols.arg1_gt_arg2,
         );
-        builder.when(local.instruction.is_i32ne).assert_eq(AB::Expr::one()-local.alu_cols.res_bool, local.alu_cols.arg1_eq_arg2);
-        builder.when(local.instruction.is_i32eqz+local.instruction.is_i32eq).assert_eq(local.alu_cols.res_bool, local.alu_cols.arg1_eq_arg2);
+        builder
+            .when(local.instruction.is_i32ne)
+            .assert_eq(AB::Expr::one() - local.alu_cols.res_bool, local.alu_cols.arg1_eq_arg2);
+        builder
+            .when(local.instruction.is_i32eqz + local.instruction.is_i32eq)
+            .assert_eq(local.alu_cols.res_bool, local.alu_cols.arg1_eq_arg2);
         builder.when(local.instruction.is_i32eqz).assert_word_zero(local.op_c_val());
         // Send to the ALU table to verify correct calculation of addr_word.
         builder.send_instruction(
