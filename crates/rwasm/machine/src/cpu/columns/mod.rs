@@ -1,7 +1,8 @@
 mod instruction;
 
 pub use instruction::*;
-
+mod alu;
+pub use alu::*;
 use p3_util::indices_arr;
 use sp1_derive::AlignedBorrow;
 use sp1_stark::Word;
@@ -44,9 +45,8 @@ pub struct CpuCols<T: Copy> {
     /// Columns related to the instruction.
     pub instruction: InstructionCols<T>,
 
-    /// Whether op_a should not be changed by the instruction.  This should be true for
-    /// memory store and branch instructions.
-    pub op_a_immutable: T,
+    ///Alu cols:
+    pub alu_cols:AluCols<T>,
 
     /// Whether this is a memory instruction.
     pub is_memory: T,

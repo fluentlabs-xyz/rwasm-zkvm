@@ -3,7 +3,10 @@ use p3_field::PrimeField;
 use sp1_derive::AlignedBorrow;
 use sp1_stark::Word;
 use std::{iter::once, mem::size_of, vec::IntoIter};
+use std::mem::{transmute};
+use p3_util::indices_arr;
 pub const NUM_INSTRUCTION_COLS: usize = size_of::<InstructionCols<u8>>();
+pub const INSTRUCTION_COL_MAP: InstructionCols<usize> = make_col_map();
 use rwasm::Opcode;
 /// The column layout for instructions.
 #[derive(AlignedBorrow, Clone, Copy, Default, Debug)]
@@ -27,7 +30,6 @@ pub struct InstructionCols<T> {
     /// Table selectors for opcodes.
     pub is_ecall: T,
 
-    pub is_auipc: T,
     pub is_unimpl: T,
     pub is_i32les: T,
     pub is_i32leu: T,
@@ -37,6 +39,8 @@ pub struct InstructionCols<T> {
     pub is_i32geu: T,
     pub is_i32eq: T,
     pub is_i32ne: T,
+    pub is_i32lts:T,
+    pub is_i32ltu:T,
     pub is_i32eqz: T,
 
     pub is_i32load: T,
@@ -79,10 +83,10 @@ impl<F: PrimeField> InstructionCols<F> {
         let aux_vale = opcode.aux_value();
 
         if opcode.is_alu_instruction() {
-            // I32 Lts and I32 Ltu can use sp1 circuit directly so
-            // they do not need go to compare
             match opcode {
-                Opcode::I32GtS
+                 Opcode::I32LtS
+                | Opcode::I32LtU
+                | Opcode::I32GtS
                 | Opcode::I32GtU
                 | Opcode::I32GeS
                 | Opcode::I32GeU
@@ -107,6 +111,8 @@ impl<F: PrimeField> InstructionCols<F> {
             }
             Opcode::I32Eq => self.is_i32eq = F::one(),
             Opcode::I32Ne => self.is_i32ne = F::one(),
+            Opcode::I32LtU => self.is_i32ltu =F::one(),
+            Opcode::I32LtS => self.is_i32ltu =F::one(),
             Opcode::I32GtS => self.is_i32gts = F::one(),
             Opcode::I32GtU => self.is_i32gtu = F::one(),
             Opcode::I32LeS => self.is_i32les = F::one(),
@@ -153,8 +159,9 @@ impl<T> IntoIterator for InstructionCols<T> {
             self.is_branching,
             self.is_memory,
             self.is_ecall,
-            self.is_auipc,
             self.is_unimpl,
+            self.is_i32lts,
+            self.is_i32ltu,
             self.is_i32les,
             self.is_i32leu,
             self.is_i32ges,
@@ -186,4 +193,9 @@ impl<T> IntoIterator for InstructionCols<T> {
 
         columns.into_iter()
     }
+}
+/// Creates the column map for the CPU.
+const fn make_col_map() -> InstructionCols<usize> {
+    let indices_arr = indices_arr::<NUM_INSTRUCTION_COLS>();
+    unsafe { transmute::<[usize; NUM_INSTRUCTION_COLS], InstructionCols<usize>>(indices_arr) }
 }

@@ -58,7 +58,7 @@ pub const DEFAULT_PC_INC: u32 = 1;
 pub const DEFAULT_CLK_INC: u32 = 2*DEFAULT_PC_INC;
 /// This is used in the `InstrEvent` to indicate that the opcode is not from the CPU.
 /// A valid pc should be divisible by 4, so we use 1 to indicate that the pc is not used.
-pub const UNUSED_PC: u32 = 1;
+pub const UNUSED_PC: u32 = 1<<24;
 
 /// The maximum number of opcodes in a program.
 pub const MAX_PROGRAM_SIZE: usize = 1 << 22;
@@ -772,6 +772,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Emit an ALU event.
+    #[allow(clippy::too_many_lines)]
     fn emit_alu_event(&mut self,pc:u32 , opcode: Opcode, arg1: u32, arg2: u32, res: u32) {
         let event =
             AluEvent { pc,opcode, a: res, b: arg1, c: arg2, code: opcode.code() };
@@ -799,7 +800,6 @@ impl<'a> Executor<'a> {
             | Opcode::I32LeU
             | Opcode::I32LtS
             | Opcode::I32LtU
-            | Opcode::I32LeU
             | Opcode::I32Eq
             | Opcode::I32Eqz
             | Opcode::I32Ne => {
@@ -825,8 +825,12 @@ impl<'a> Executor<'a> {
                     }
                 };
                 let lt_comp_event = AluEvent {
-                    pc: UNUSED_PC,
-                    opcode: cmp_ins,
+                    pc:UNUSED_PC,
+                    opcode: if use_signed_comparison{
+                        Opcode::I32LtS
+                    }else{
+                        Opcode::I32LtU
+                    },
                     a: arg1_lt_arg2 as u32,
                     b: event.b,
                     c: event.c,
@@ -834,13 +838,20 @@ impl<'a> Executor<'a> {
                 };
                 let gt_comp_event = AluEvent {
                     pc: UNUSED_PC,
-                    opcode: cmp_ins,
+                    opcode: if use_signed_comparison{
+                        Opcode::I32LtS
+                    }else{
+                        Opcode::I32LtU
+                    },
                     a: arg1_gt_arg2 as u32,
                     b: event.c,
                     c: event.b,
                     code: cmp_ins.code(),
                 };
+               
                 self.record.lt_events.push(gt_comp_event);
+                
+                
                 self.record.lt_events.push(lt_comp_event);
             }
             Opcode::I32Mul => {

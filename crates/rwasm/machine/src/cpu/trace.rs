@@ -44,7 +44,7 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_CPU_COLS);
 
         let chunk_size = std::cmp::max(input.cpu_events.len() / num_cpus::get(), 1);
-        println!("input.cpu_events{:?}",input.cpu_events);
+        println!("input.cpu_events{:?}", input.cpu_events);
         values.chunks_mut(chunk_size * NUM_CPU_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
                 rows.chunks_mut(NUM_CPU_COLS).enumerate().for_each(|(j, row)| {
@@ -57,7 +57,7 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
                         let mut byte_lookup_events = Vec::new();
                         let event = &input.cpu_events[idx];
                         let instruction = input.program.fetch(event.pc);
-                        println!("i:{} j: {}idx:{} cpu event:{:?}",i,j,idx,event);
+                        println!("i:{} j: {}idx:{} cpu event:{:?}", i, j, idx, event);
                         self.event_to_row(
                             event,
                             cols,
@@ -125,16 +125,14 @@ impl CpuChip {
     ) {
         // Populate shard and clk columns.
         self.populate_shard_clk(cols, event, blu_events, shard);
-
+        self.populate_alu(cols, event,instruction);
         // Populate basic fields.
         cols.pc = F::from_canonical_u32(event.pc);
         cols.next_pc = F::from_canonical_u32(event.next_pc);
         cols.sp = F::from_canonical_u32(event.sp);
         cols.next_sp = F::from_canonical_u32(event.next_sp);
         cols.instruction.populate(instruction);
-        cols.op_a_immutable = F::from_bool(
-            instruction.is_memory_store_instruction() || instruction.is_branch_instruction(),
-        );
+
         cols.is_memory = F::from_bool(
             instruction.is_memory_load_instruction() || instruction.is_memory_store_instruction(),
         );
@@ -238,5 +236,28 @@ impl CpuChip {
             0,
             clk_8bit_limb as u8,
         ));
+    }
+
+    fn populate_alu<F: PrimeField>(&self, cols: &mut CpuCols<F>, event:&CpuEvent,opcode:Opcode) {
+        match opcode {
+            Opcode::I32GtS
+            | Opcode::I32GtU
+            | Opcode::I32GeS
+            | Opcode::I32GeU
+            | Opcode::I32LeS
+            | Opcode::I32LeU
+            | Opcode::I32Eqz
+            | Opcode::I32Eq
+            | Opcode::I32Ne => {
+                let  alu = &mut cols.alu_cols;
+                alu.arg1_eq_arg2 = F::from_bool(event.arg1 == event.arg2);
+                alu.arg1_gt_arg2 = F::from_bool(event.arg1 > event.arg2);
+                alu.arg1_lt_arg2 = F::from_bool(event.arg1 < event.arg2);
+                alu.res_bool = F::from_canonical_u32(event.res);
+            }
+            _ => {
+                return;
+            }
+        }
     }
 }
