@@ -717,7 +717,12 @@ impl<'a> Executor<'a> {
         record: MemoryAccessRecord,
     ) {
         println!("emit cpu");
-        self.emit_cpu(clk,pc, next_pc, sp, next_sp,arg1, arg2, res, record, 0u32);
+        if !opcode.is_memory_instruction(){
+              self.emit_cpu(clk,pc, next_pc, sp, next_sp,arg1, arg2, res, record, 0u32);
+        } else{
+            self.emit_cpu(clk,pc, next_pc, sp, next_sp,arg1, opcode.aux_value(), arg2, record, 0u32);
+        }
+      
 
         if opcode.is_alu_instruction() {
             self.emit_alu_event(pc,opcode, arg1, arg2, res);
@@ -880,11 +885,11 @@ impl<'a> Executor<'a> {
             pc: self.state.pc,
             opcode,
             raw_addr: arg1,
-            offset: arg2,
+            offset: opcode.aux_value(),
             res,
             mem_access: record.memory.expect("Must have memory access"),
         };
-
+        println!("mem event:{:?}",event);
         self.record.memory_instr_events.push(event);
         emit_memory_dependencies(self, event);
     }
@@ -1093,7 +1098,9 @@ impl<'a> Executor<'a> {
         
         let op_state = self.store.tracer.logs.last().unwrap();
         let syscall = SyscallCode::default();
-        println!("op_state:{op_state:?}");
+       
+        self.state.clk=op_state.clk;
+        self.state.pc=op_state.pc;
         self.emit_events(
             op_state.clk,
             op_state.pc,

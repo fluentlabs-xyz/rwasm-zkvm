@@ -206,24 +206,26 @@ mod tests {
     }
 
     fn build_elf5() -> Program {
-        let addr: u32 = 0x10000;
-        let addr_2: u32 = 0x10004;
-        let addr_3: u32 = 0x10008;
+        let addr: u32 = 0x40000;
+        let addr_2: u32 = 0x40004;
+        let addr_3: u32 = 0x40008;
 
         let x_value: u32 = 0x10007;
         let x_2_value: u32 = 0x10008;
 
-        let x_3_value: u32 = 0x1000C;
+        let x_3_value: u32 = 0x200AA;
 
         let instructions = vec![
-            Opcode::I32Const(x_3_value.into()),
+            Opcode::I32Const(0x10.into()),
+            Opcode::MemoryGrow,
             Opcode::I32Const(addr_3.into()),
-            Opcode::I32Const(x_2_value.into()),
-            Opcode::I32Const(addr_2.into()),
-            Opcode::I32Const(addr.into()),
-            Opcode::I32Const(x_value.into()),
-            Opcode::I32Store(0),
-            Opcode::I32Store16(0),
+            Opcode::I32Const(x_3_value.into()),
+            // Opcode::I32Const(x_2_value.into()),
+            // Opcode::I32Const(addr_2.into()),
+            // Opcode::I32Const(addr.into()),
+            // Opcode::I32Const(x_value.into()),
+            // Opcode::I32Store(0),
+            // Opcode::I32Store16(0),
             Opcode::I32Store8(0),
         ];
 

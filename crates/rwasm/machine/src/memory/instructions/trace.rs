@@ -91,10 +91,11 @@ impl MemoryInstructionsChip {
         assert!(cols.shard != F::zero());
         cols.clk = F::from_canonical_u32(event.clk);
         cols.pc = F::from_canonical_u32(event.pc);
-        cols.op_a_value = event.res.into();
-        cols.op_b_value = event.raw_addr.into();
+        cols.aligned_addr = event.res.into();
+        cols.raw_addr = event.raw_addr.into();
         let offset: u32 = event.opcode.aux_value();
-        cols.op_c_value = offset.into();
+        cols.instr_offset = offset.into();
+        println!("offset: {}", offset);
 
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);

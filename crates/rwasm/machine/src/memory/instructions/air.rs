@@ -70,9 +70,9 @@ where
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
             AB::Expr::zero(),
             opcode,
-            local.op_a_value,
-            local.op_b_value,
-            local.op_c_value,
+            local.aligned_addr,
+            local.raw_addr,
+            local.instr_offset,
             AB::Expr::one(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -119,8 +119,8 @@ impl MemoryInstructionsChip {
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(Opcode::I32Add.code()),
             local.addr_word,
-            local.op_b_value,
-            local.op_c_value,
+            local.raw_addr,
+            local.instr_offset,
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -250,7 +250,7 @@ impl MemoryInstructionsChip {
 
         // Compute the expected stored value for a SB instruction.
         let one = AB::Expr::one();
-        let a_val = local.op_a_value;
+        let a_val = local.aligned_addr;
         let mem_val = *local.memory_access.value();
         let prev_mem_val = *local.memory_access.prev_value();
         let sb_expected_stored_value = Word([

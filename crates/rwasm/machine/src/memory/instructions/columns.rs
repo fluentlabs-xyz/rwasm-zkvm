@@ -22,11 +22,11 @@ pub struct MemoryInstructionsColumns<T> {
     pub clk: T,
 
     /// The value of the first operand.
-    pub op_a_value: Word<T>,
+    pub aligned_addr: Word<T>,
     /// The value of the second operand.
-    pub op_b_value: Word<T>,
+    pub raw_addr: Word<T>,
     /// The value of the third operand.
-    pub op_c_value: Word<T>,
+    pub instr_offset: Word<T>,
 
     pub is_i32load: T,
     pub is_i32load16s: T,
