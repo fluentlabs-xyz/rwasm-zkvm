@@ -220,12 +220,12 @@ mod tests {
             Opcode::MemoryGrow,
             Opcode::I32Const(addr_3.into()),
             Opcode::I32Const(x_3_value.into()),
-            // Opcode::I32Const(x_2_value.into()),
-            // Opcode::I32Const(addr_2.into()),
-            // Opcode::I32Const(addr.into()),
-            // Opcode::I32Const(x_value.into()),
-            // Opcode::I32Store(0),
-            // Opcode::I32Store16(0),
+            Opcode::I32Const(x_2_value.into()),
+            Opcode::I32Const(addr_2.into()),
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Store(0),
+            Opcode::I32Store16(0),
             Opcode::I32Store8(0),
         ];
 
