@@ -3,6 +3,7 @@ use std::borrow::Borrow;
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
+use rwasm::mem_index::GLOBAL_MEM_START;
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::{
@@ -47,8 +48,15 @@ where
         builder.assert_bool(local.is_i32store16);
         builder.assert_bool(local.is_i32store);
         builder.assert_bool(is_real.clone());
-
-        self.eval_memory_address_and_access::<AB>(builder, local, is_real.clone());
+        let is_store = local.is_i32store8
+            + local.is_i32store16
+            + local.is_i32store;
+        let is_load =  local.is_i32load
+            + local.is_i32load16s
+            + local.is_i32load16u
+            + local.is_i32load8s
+            + local.is_i32load8u;
+        self.eval_memory_address_and_access::<AB>(builder, local, is_real.clone(),is_load,is_store);
         self.eval_memory_load::<AB>(builder, local);
         self.eval_memory_store::<AB>(builder, local);
 
@@ -109,6 +117,8 @@ impl MemoryInstructionsChip {
         builder: &mut AB,
         local: &MemoryInstructionsColumns<AB::Var>,
         is_real: AB::Expr,
+        is_load:AB::Expr,
+        is_store:AB::Expr,
     ) {
         // Send to the ALU table to verify correct calculation of addr_word.
         builder.send_instruction(
@@ -118,9 +128,26 @@ impl MemoryInstructionsChip {
             AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(Opcode::I32Add.code()),
-            local.addr_word,
+            local.memory_addr,
             local.raw_addr,
             local.instr_offset,
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            is_real.clone(),
+        );
+
+        // Send to the ALU table to verify correct calculation of addr_word.
+        builder.send_instruction(
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNUSED_PC),
+            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(Opcode::I32Add.code()),
+            local.addr_word,
+              Word::<AB::Expr>::from(GLOBAL_MEM_START),
+            local.memory_addr,
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -191,7 +218,15 @@ impl MemoryInstructionsChip {
             local.clk,
             local.addr_aligned,
             &local.memory_access,
-            is_real.clone(),
+            is_load.clone(),
+        );
+
+         builder.eval_memory_access(
+            local.shard,
+            local.clk+AB::Expr::one(),
+            local.addr_aligned,
+            &local.memory_access,
+            is_store.clone(),
         );
 
         // On memory load instructions, make sure that the memory value is not changed.

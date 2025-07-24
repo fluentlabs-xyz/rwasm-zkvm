@@ -5,7 +5,7 @@ use crate::{
     utils::{get_msb, get_quotient_and_remainder, is_signed_operation},
     Executor, I32MULHU_CODE, I32MULH_CODE, UNUSED_PC,
 };
-
+use rwasm::mem_index::GLOBAL_MEM_START;
 /// Emits the dependencies for division and remainder operations.
 #[allow(clippy::too_many_lines)]
 pub fn emit_divrem_dependencies(executor: &mut Executor, event: AluEvent) {
@@ -118,7 +118,7 @@ pub fn emit_memory_dependencies(executor: &mut Executor, event: MemInstrEvent) {
         let offset = event.opcode.aux_value();
         let memory_addr = event.raw_addr.wrapping_add(offset);
         // Add event to ALU check to check that addr == b + c
-        let add_event = AluEvent {
+        let add1_event = AluEvent {
             pc: UNUSED_PC,
             opcode: Opcode::I32Add,
             a: memory_addr,
@@ -126,7 +126,19 @@ pub fn emit_memory_dependencies(executor: &mut Executor, event: MemInstrEvent) {
             c: offset,
             code: Opcode::I32Add.code(),
         };
-        executor.record.add_events.push(add_event);
+
+         let add2_event = AluEvent {
+            pc: UNUSED_PC,
+            opcode: Opcode::I32Add,
+            a: memory_addr+GLOBAL_MEM_START,
+            b: GLOBAL_MEM_START,
+            c: memory_addr,
+            code: Opcode::I32Add.code(),
+        };
+
+        
+        executor.record.add_events.push(add1_event);
+             executor.record.add_events.push(add2_event);
         let addr_offset = (memory_addr % 4_u32) as u8;
         let mem_value = event.mem_access.value();
 

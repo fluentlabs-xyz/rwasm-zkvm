@@ -6,6 +6,7 @@ use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
+use rwasm::mem_index::GLOBAL_MEM_START;
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
     ByteOpcode, ExecutionRecord, Opcode, Program,
@@ -102,8 +103,11 @@ impl MemoryInstructionsChip {
 
         // Populate addr_word and addr_aligned columns.
         let memory_addr = event.raw_addr.wrapping_add(offset);
-        let aligned_addr = memory_addr - memory_addr % WORD_SIZE as u32;
-        cols.addr_word = memory_addr.into();
+        let aligned_addr = memory_addr+GLOBAL_MEM_START - memory_addr % WORD_SIZE as u32;
+        let virtual_addr = memory_addr+GLOBAL_MEM_START;
+
+        cols.addr_word = virtual_addr.into();
+        cols.memory_addr=memory_addr.into();
         cols.addr_word_range_checker.populate(cols.addr_word, blu);
         cols.addr_aligned = F::from_canonical_u32(aligned_addr);
 
@@ -187,7 +191,7 @@ impl MemoryInstructionsChip {
         cols.is_i32store = F::from_bool(matches!(event.opcode, Opcode::I32Store(_)));
 
         // Add event to byte lookup for byte range checking each byte in the memory addr
-        let addr_bytes = memory_addr.to_le_bytes();
+        let addr_bytes = virtual_addr.to_le_bytes();
         blu.add_byte_lookup_event(ByteLookupEvent {
             opcode: ByteOpcode::U8Range,
             a1: 0,

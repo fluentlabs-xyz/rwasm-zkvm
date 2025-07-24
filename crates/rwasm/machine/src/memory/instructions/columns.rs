@@ -37,6 +37,8 @@ pub struct MemoryInstructionsColumns<T> {
     pub is_i32store16: T,
     pub is_i32store8: T,
 
+
+    pub memory_addr:Word<T>,
     /// The relationships among addr_word, addr_aligned, and addr_offset is as follows:
     /// addr_aligned = addr_word - addr_offset
     /// addr_offset = addr_word % 4
