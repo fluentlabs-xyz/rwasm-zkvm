@@ -58,7 +58,7 @@ where
 
         self.eval_alu_n_branch(builder, local);
 
-        self.eval_memory(builder,local);
+        self.eval_memory(builder, local);
         // Check that the shard and clk is updated correctly.
         self.eval_shard_clk(builder, local, next, public_values, clk.clone());
 
@@ -197,12 +197,8 @@ impl CpuChip {
         );
     }
 
-    fn eval_memory<AB: SP1AirBuilder>(
-        &self,
-        builder: &mut AB,
-        local: &CpuCols<AB::Var>,
-    ) {
-         builder.send_instruction(
+    fn eval_memory<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CpuCols<AB::Var>) {
+        builder.send_instruction(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,
@@ -215,7 +211,7 @@ impl CpuChip {
             local.is_memory,
             local.is_syscall,
             local.is_halt,
-            local.instruction.is_memory
+            local.instruction.is_memory,
         );
     }
 
@@ -362,7 +358,12 @@ impl CpuChip {
             clk.clone() + AB::Expr::from_canonical_u8(1),
             local.sp,
             &local.op_res_access,
-            local.instruction.is_unary,
+            local.instruction.is_unary
+                + local.instruction.is_i32load
+                + local.instruction.is_i32load16s
+                + local.instruction.is_i32load16u
+                + local.instruction.is_i32load8s
+                + local.instruction.is_i32load8u,
         );
 
         builder.eval_memory_access(
@@ -370,7 +371,12 @@ impl CpuChip {
             clk.clone(),
             local.sp,
             &local.op_arg1_access,
-            local.instruction.is_unary,
+            local.instruction.is_unary
+                + local.instruction.is_i32load
+                + local.instruction.is_i32load16s
+                + local.instruction.is_i32load16u
+                + local.instruction.is_i32load8s
+                + local.instruction.is_i32load8u,
         );
     }
 
@@ -393,8 +399,10 @@ impl CpuChip {
             clk.clone(),
             local.sp,
             &local.op_arg2_access,
-            local.instruction.is_binary+local.instruction.is_i32store+local.instruction.is_i32store16+
-            local.instruction.is_i32store8,
+            local.instruction.is_binary
+                + local.instruction.is_i32store
+                + local.instruction.is_i32store16
+                + local.instruction.is_i32store8,
         );
 
         builder.eval_memory_access(
@@ -402,8 +410,10 @@ impl CpuChip {
             clk.clone(),
             local.sp + AB::Expr::from_canonical_u8(4),
             &local.op_arg1_access,
-            local.instruction.is_binary+local.instruction.is_i32store+local.instruction.is_i32store16+
-            local.instruction.is_i32store8,
+            local.instruction.is_binary
+                + local.instruction.is_i32store
+                + local.instruction.is_i32store16
+                + local.instruction.is_i32store8,
         );
     }
 }

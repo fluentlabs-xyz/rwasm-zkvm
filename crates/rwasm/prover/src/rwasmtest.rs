@@ -168,16 +168,14 @@ mod tests {
     }
 
     fn build_elf4() -> Program {
-        let sp_value: u32 = SP_START;
-        let addr: u32 = 0x10000;
-        let addr_2: u32 = 0x10004;
-        let addr_3: u32 = 0x10008;
-        let addr_4: u32 = 0x1000C;
-        let addr_5: u32 = 0x10010;
-        let x_value: u32 = 0x10004;
-        let x_2_value: u32 = 0x10008;
-        let x_3_value: u32 = 0x1000C;
+        let addr: u32 = 0x40000;
+        let addr_2: u32 = 0x40004;
+        let addr_3: u32 = 0x40008;
 
+        let x_value: u32 = 0x10007;
+        let x_2_value: u32 = 0x10008;
+
+        let x_3_value: u32 = 0x200AA;
         // let mut mem = HashMap::new();
         // mem.insert(sp_value, addr);
         // mem.insert(sp_value - 4, addr_2);
@@ -190,13 +188,23 @@ mod tests {
 
         //  println!("{:?}", mem);
         let instructions = vec![
+            Opcode::I32Const(0x10.into()),
+            Opcode::MemoryGrow,
+            Opcode::I32Const(addr_3.into()),
+            Opcode::I32Const(x_3_value.into()),
+            Opcode::I32Const(x_2_value.into()),
+            Opcode::I32Const(addr_2.into()),
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Store(0),
+            Opcode::I32Store16(0),
+            Opcode::I32Store8(0),
+            Opcode::I32Const(addr_3.into()),
+            Opcode::I32Const(addr_2.into()),
+            Opcode::I32Const(addr.into()),
             Opcode::I32Load(0),
-            Opcode::I32Load16U(0),
-            Opcode::I32Add,
-            Opcode::I32Load8U(0x10000),
-            Opcode::I32Add,
-            Opcode::I32Load16S(0),
-            Opcode::I32Load8S(0),
+            // Opcode::I32Load16U(0),
+            // Opcode::I32Load8U(0),
         ];
 
         let program = Program::from_instrs(instructions);
