@@ -55,6 +55,10 @@ pub struct MemInstrEvent {
     pub res: u32,
     /// The memory access record for memory operations.
     pub mem_access: MemoryRecordEnum,
+
+     /// The memory access record for memory operations.
+    pub mem_access_hi: Option<MemoryRecordEnum>,
+
 }
 
 impl MemInstrEvent {
@@ -71,8 +75,9 @@ impl MemInstrEvent {
         res: u32,
 
         mem_access: MemoryRecordEnum,
+        mem_access_hi:Option<MemoryRecordEnum>,
     ) -> Self {
-        Self { shard, clk, pc, opcode, raw_addr, offset, res, mem_access }
+        Self { shard, clk, pc, opcode, raw_addr, offset, res, mem_access,mem_access_hi }
     }
 }
 

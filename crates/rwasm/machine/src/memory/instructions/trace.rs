@@ -6,7 +6,10 @@ use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
-use rwasm::mem_index::GLOBAL_MEM_START;
+use rwasm::{
+    is_multi_align,
+    mem_index::{AddressType, GLOBAL_MEM_START, UNIT},
+};
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
     ByteOpcode, ExecutionRecord, Opcode, Program,
@@ -92,7 +95,7 @@ impl MemoryInstructionsChip {
         assert!(cols.shard != F::zero());
         cols.clk = F::from_canonical_u32(event.clk);
         cols.pc = F::from_canonical_u32(event.pc);
-        cols.aligned_addr = event.res.into();
+        cols.res = event.res.into();
         cols.raw_addr = event.raw_addr.into();
         let offset: u32 = event.opcode.aux_value();
         cols.instr_offset = offset.into();
@@ -100,19 +103,33 @@ impl MemoryInstructionsChip {
 
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
-
+        
         // Populate addr_word and addr_aligned columns.
         let memory_addr = event.raw_addr.wrapping_add(offset);
-        let aligned_addr = memory_addr+GLOBAL_MEM_START - memory_addr % WORD_SIZE as u32;
-        let virtual_addr = memory_addr+GLOBAL_MEM_START;
+        let typed_addr = AddressType::GlobalMemory(memory_addr - memory_addr % WORD_SIZE as u32);
 
+        let aligned_addr = typed_addr.to_virtual_addr();
+        let aligned_addr_hi = aligned_addr + UNIT;
+        let virtual_addr = AddressType::GlobalMemory(memory_addr).to_virtual_addr();
+        let is_multi_aligned = is_multi_align(event.opcode, memory_addr);
+        if is_multi_aligned {
+            cols.memory_access_hi.populate(event.mem_access_hi.unwrap(), blu);
+            if event.opcode.is_memory_load_instruction() {
+                cols.is_multi_aligned_load = F::from_bool(true);
+            } else {
+                cols.is_multi_aligned_store = F::from_bool(true);
+            }
+        }
         cols.addr_word = virtual_addr.into();
-        cols.memory_addr=memory_addr.into();
+        cols.memory_addr = memory_addr.into();
         cols.addr_word_range_checker.populate(cols.addr_word, blu);
-        cols.addr_aligned = F::from_canonical_u32(aligned_addr);
 
+        cols.addr_aligned = F::from_canonical_u32(aligned_addr);
+        cols.addr_aligned_hi = F::from_canonical_u32(aligned_addr_hi);
         // Populate the aa_least_sig_byte_decomp columns.
         assert!(aligned_addr % 4 == 0);
+        // Populate the aa_least_sig_byte_decomp columns.
+        assert!(aligned_addr_hi % 4 == 0);
         // Populate memory offsets.
         let addr_ls_two_bits = (memory_addr % WORD_SIZE as u32) as u8;
         cols.addr_ls_two_bits = F::from_canonical_u8(addr_ls_two_bits);
@@ -145,9 +162,10 @@ impl MemoryInstructionsChip {
                         (mem_value.to_le_bytes()[addr_ls_two_bits as usize] as u32).into();
                 }
                 Opcode::I32Load16S(_) | Opcode::I32Load16U(_) => {
-                    let value = match (addr_ls_two_bits >> 1) % 2 {
+                    let value = match addr_ls_two_bits {
                         0 => mem_value & 0x0000FFFF,
-                        1 => (mem_value & 0xFFFF0000) >> 16,
+                        2 => (mem_value & 0xFFFF0000) >> 16,
+                        1 => (mem_value & 0x00FFFF00) >> 8,
                         _ => unreachable!(),
                     };
                     cols.unsigned_mem_val = value.into();

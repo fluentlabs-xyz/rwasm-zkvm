@@ -1,4 +1,4 @@
-use rwasm::Opcode;
+use rwasm::{is_multi_align, mem_index::UNIT, Opcode};
 
 use crate::{
     events::{AluEvent, BranchEvent, MemInstrEvent, MemoryRecord},
@@ -127,20 +127,57 @@ pub fn emit_memory_dependencies(executor: &mut Executor, event: MemInstrEvent) {
             code: Opcode::I32Add.code(),
         };
 
-         let add2_event = AluEvent {
+        let add2_event = AluEvent {
             pc: UNUSED_PC,
             opcode: Opcode::I32Add,
-            a: memory_addr+GLOBAL_MEM_START,
+            a: memory_addr + GLOBAL_MEM_START,
             b: GLOBAL_MEM_START,
             c: memory_addr,
             code: Opcode::I32Add.code(),
         };
+        // match event.mem_access_hi {
+        //     Some(record) => {
+        //         let add3_event = AluEvent {
+        //             pc: UNUSED_PC,
+        //             opcode: Opcode::I32Add,
+        //             a: memory_addr + GLOBAL_MEM_START + UNIT,
+        //             b: memory_addr + GLOBAL_MEM_START,
+        //             c: UNIT,
+        //             code: Opcode::I32Add.code(),
+        //         };
+        //         executor.record.add_events.push(add3_event);
+        //     }
+        //     None => (),
+        // }
 
-        
         executor.record.add_events.push(add1_event);
-             executor.record.add_events.push(add2_event);
+        executor.record.add_events.push(add2_event);
         let addr_offset = (memory_addr % 4_u32) as u8;
-        let mem_value = event.mem_access.value();
+        let mut mem_value = event.mem_access.value();
+        if is_multi_align(event.opcode, memory_addr) {
+             let mem_value_hi = event.mem_access_hi.unwrap().value();
+              let unalignment = memory_addr % 4;
+            match event.opcode {
+                Opcode::I32Load16S(_) | Opcode::I32Load16U(_) | Opcode::I32Store16(_) => {
+                    let low_bits:[u8;4]=mem_value.to_le_bytes();
+                    let hi_bits :[u8;4]= mem_value_hi.to_le_bytes();
+                    mem_value=u32::from_le_bytes([low_bits[1],low_bits[2],low_bits[3],hi_bits[0]]);
+                    
+                }
+
+                Opcode::I32Load(_) | Opcode::I32Store(_) => {
+                   let low_bits:[u8;4]=mem_value.to_le_bytes();
+                    let hi_bits :[u8;4]= mem_value_hi.to_le_bytes();
+                   mem_value= match unalignment{
+                        1=>u32::from_le_bytes([low_bits[1],low_bits[2],low_bits[3],hi_bits[0]]),
+                        2=>u32::from_le_bytes([low_bits[2],low_bits[3],hi_bits[0],hi_bits[1]]),
+                        3=>u32::from_le_bytes([low_bits[3],hi_bits[0],hi_bits[1],hi_bits[2]]),
+                        _=>unreachable!(),
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
 
         if matches!(event.opcode, Opcode::I32Load8S(_) | Opcode::I32Load16S(_)) {
             let (unsigned_mem_val, most_sig_mem_value_byte, sign_value) = match event.opcode {

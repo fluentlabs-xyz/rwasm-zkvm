@@ -22,7 +22,7 @@ pub struct MemoryInstructionsColumns<T> {
     pub clk: T,
 
     /// The value of the first operand.
-    pub aligned_addr: Word<T>,
+    pub res: Word<T>,
     /// The value of the second operand.
     pub raw_addr: Word<T>,
     /// The value of the third operand.
@@ -37,8 +37,7 @@ pub struct MemoryInstructionsColumns<T> {
     pub is_i32store16: T,
     pub is_i32store8: T,
 
-
-    pub memory_addr:Word<T>,
+    pub memory_addr: Word<T>,
     /// The relationships among addr_word, addr_aligned, and addr_offset is as follows:
     /// addr_aligned = addr_word - addr_offset
     /// addr_offset = addr_word % 4
@@ -47,6 +46,13 @@ pub struct MemoryInstructionsColumns<T> {
 
     /// The aligned address.
     pub addr_aligned: T,
+
+    /// The aligned high address.
+    pub addr_aligned_hi: T,
+
+    ///
+    pub is_multi_aligned_load: T,
+    pub is_multi_aligned_store: T,
     /// The address's least significant two bits.
     pub addr_ls_two_bits: T,
 
@@ -59,9 +65,14 @@ pub struct MemoryInstructionsColumns<T> {
 
     /// Gadget to verify that the address word is within the Baby-Bear field.
     pub addr_word_range_checker: BabyBearWordRangeChecker<T>,
+    /// Gadget to verify that the address word is within the Baby-Bear field.
+    pub addr_word_hi_range_checker: BabyBearWordRangeChecker<T>,
 
     /// Memory consistency columns for the memory access.
     pub memory_access: MemoryReadWriteCols<T>,
+
+    /// Memory consistency columns for the memory access.
+    pub memory_access_hi: MemoryReadWriteCols<T>,
 
     /// Used for load memory instructions to store the unsigned memory value.
     pub unsigned_mem_val: Word<T>,

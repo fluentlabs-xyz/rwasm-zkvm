@@ -3,7 +3,7 @@ use std::borrow::Borrow;
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use rwasm::mem_index::GLOBAL_MEM_START;
+use rwasm::mem_index::{GLOBAL_MEM_START, UNIT};
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::{
@@ -48,15 +48,38 @@ where
         builder.assert_bool(local.is_i32store16);
         builder.assert_bool(local.is_i32store);
         builder.assert_bool(is_real.clone());
-        let is_store = local.is_i32store8
-            + local.is_i32store16
-            + local.is_i32store;
-        let is_load =  local.is_i32load
+
+        builder
+            .when(local.is_multi_aligned_load)
+            .when(local.is_i32load)
+            .assert_one(local.ls_bits_is_one + local.ls_bits_is_two + local.ls_bits_is_three);
+        builder
+            .when(local.is_multi_aligned_load)
+            .when(local.is_i32load16s + local.is_i32load16u)
+            .assert_one(local.ls_bits_is_three);
+        builder
+            .when(local.is_multi_aligned_store)
+            .when(local.is_i32store)
+            .assert_one(local.ls_bits_is_one + local.ls_bits_is_two + local.ls_bits_is_three);
+        builder
+            .when(local.is_multi_aligned_store)
+            .when(local.is_i32store16)
+            .assert_one(local.ls_bits_is_three);
+        let is_store = local.is_i32store8 + local.is_i32store16 + local.is_i32store;
+        let is_load = local.is_i32load
             + local.is_i32load16s
             + local.is_i32load16u
             + local.is_i32load8s
             + local.is_i32load8u;
-        self.eval_memory_address_and_access::<AB>(builder, local, is_real.clone(),is_load,is_store);
+        
+
+        self.eval_memory_address_and_access::<AB>(
+            builder,
+            local,
+            is_real.clone(),
+            is_load,
+            is_store,
+        );
         self.eval_memory_load::<AB>(builder, local);
         self.eval_memory_store::<AB>(builder, local);
 
@@ -78,7 +101,7 @@ where
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
             AB::Expr::zero(),
             opcode,
-            local.aligned_addr,
+            local.res,
             local.raw_addr,
             local.instr_offset,
             AB::Expr::one(),
@@ -117,8 +140,8 @@ impl MemoryInstructionsChip {
         builder: &mut AB,
         local: &MemoryInstructionsColumns<AB::Var>,
         is_real: AB::Expr,
-        is_load:AB::Expr,
-        is_store:AB::Expr,
+        is_load: AB::Expr,
+        is_store: AB::Expr,
     ) {
         // Send to the ALU table to verify correct calculation of addr_word.
         builder.send_instruction(
@@ -146,7 +169,7 @@ impl MemoryInstructionsChip {
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(Opcode::I32Add.code()),
             local.addr_word,
-              Word::<AB::Expr>::from(GLOBAL_MEM_START),
+            Word::<AB::Expr>::from(GLOBAL_MEM_START),
             local.memory_addr,
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -221,12 +244,28 @@ impl MemoryInstructionsChip {
             is_load.clone(),
         );
 
-         builder.eval_memory_access(
+        builder.eval_memory_access(
             local.shard,
-            local.clk+AB::Expr::one(),
+            local.clk,
+            local.addr_aligned,
+            &local.memory_access_hi,
+            local.is_multi_aligned_load.clone(),
+        );
+
+        builder.eval_memory_access(
+            local.shard,
+            local.clk + AB::Expr::one(),
             local.addr_aligned,
             &local.memory_access,
             is_store.clone(),
+        );
+
+        builder.eval_memory_access(
+            local.shard,
+            local.clk + AB::Expr::one(),
+            local.addr_aligned+AB::Expr::from_canonical_u32(UNIT),
+            &local.memory_access_hi,
+            local.is_multi_aligned_store.clone(),
         );
 
         // On memory load instructions, make sure that the memory value is not changed.
@@ -239,6 +278,8 @@ impl MemoryInstructionsChip {
                     + local.is_i32load,
             )
             .assert_word_eq(*local.memory_access.value(), *local.memory_access.prev_value());
+        builder.when(local.is_multi_aligned_load)
+            .assert_word_eq(*local.memory_access_hi.value(), *local.memory_access_hi.prev_value());
     }
 
     /// Evaluates constraints related to loading from memory.
@@ -285,14 +326,16 @@ impl MemoryInstructionsChip {
 
         // Compute the expected stored value for a SB instruction.
         let one = AB::Expr::one();
-        let a_val = local.aligned_addr;
+        let a_val = local.res;
         let mem_val = *local.memory_access.value();
         let prev_mem_val = *local.memory_access.prev_value();
+        let mem_val_hi = *local.memory_access_hi.value();
+        let prev_mem_val_hi = *local.memory_access_hi.prev_value();
         let sb_expected_stored_value = Word([
             a_val[0] * offset_is_zero.clone()
                 + (one.clone() - offset_is_zero.clone()) * prev_mem_val[0],
-            a_val[0] * local.ls_bits_is_one
-                + (one.clone() - local.ls_bits_is_one) * prev_mem_val[1],
+            a_val[0] * local.ls_bits_is_one.clone()
+                + (one.clone() - local.ls_bits_is_one.clone()) * prev_mem_val[1],
             a_val[0] * local.ls_bits_is_two
                 + (one.clone() - local.ls_bits_is_two) * prev_mem_val[2],
             a_val[0] * local.ls_bits_is_three
@@ -302,32 +345,84 @@ impl MemoryInstructionsChip {
             .when(local.is_i32store8)
             .assert_word_eq(mem_val.map(|x| x.into()), sb_expected_stored_value);
 
-        // When the instruction is SH, make sure both offset one and three are off.
-        builder
-            .when(local.is_i32store16)
-            .assert_zero(local.ls_bits_is_one + local.ls_bits_is_three);
+        // // When the instruction is SH, make sure both offset one and three are off.
+        // builder
+        //     .when(local.is_i32store16)
+        //     .assert_zero(local.ls_bits_is_one + local.ls_bits_is_three);
 
-        // When the instruction is SW, ensure that the offset is 0.
-        builder.when(local.is_i32store).assert_one(offset_is_zero.clone());
+        // // When the instruction is SW, ensure that the offset is 0.
+        // builder.when(local.is_i32store).assert_one(offset_is_zero.clone());
 
         // Compute the expected stored value for a SH instruction.
-        let a_is_lower_half = offset_is_zero;
-        let a_is_upper_half = local.ls_bits_is_two;
-        let sh_expected_stored_value = Word([
-            a_val[0] * a_is_lower_half.clone()
-                + (one.clone() - a_is_lower_half.clone()) * prev_mem_val[0],
-            a_val[1] * a_is_lower_half.clone() + (one.clone() - a_is_lower_half) * prev_mem_val[1],
-            a_val[0] * a_is_upper_half + (one.clone() - a_is_upper_half) * prev_mem_val[2],
-            a_val[1] * a_is_upper_half + (one.clone() - a_is_upper_half) * prev_mem_val[3],
+       
+        let ls_bits_is_two = local.ls_bits_is_two;
+        let ls_bits_is_three = local.ls_bits_is_three;
+        let ls_bits_is_one = local.ls_bits_is_one;
+        let store16_expected_stored_value_lw = Word([
+            a_val[0] * offset_is_zero.clone()
+                + (one.clone() - offset_is_zero.clone()) * prev_mem_val[0],
+            a_val[1] * offset_is_zero.clone()
+                + (ls_bits_is_two.clone() + ls_bits_is_three.clone()) * prev_mem_val[1]
+                + ls_bits_is_one * a_val[0],
+            a_val[0] * ls_bits_is_two.clone()
+                + (ls_bits_is_one.clone()) * a_val[1]
+                + (ls_bits_is_three.clone() + offset_is_zero.clone()) * prev_mem_val[2],
+            a_val[1] * ls_bits_is_two.clone()
+                + a_val[0]
+                    * ls_bits_is_three.clone()+(ls_bits_is_one.clone() + offset_is_zero.clone())
+                    * prev_mem_val[3],
+        ]);
+        let store16_expected_stored_value_hi = Word([
+            ls_bits_is_three * a_val[1]
+                + (ls_bits_is_one.clone() + offset_is_zero.clone() + ls_bits_is_two.clone())
+                    * prev_mem_val_hi[0],
+            prev_mem_val_hi[1] *one.clone(),
+            prev_mem_val_hi[2]*one.clone(),
+            prev_mem_val_hi[3]*one.clone(),
         ]);
         builder
             .when(local.is_i32store16)
-            .assert_word_eq(mem_val.map(|x| x.into()), sh_expected_stored_value);
+            .assert_word_eq(mem_val.map(|x| x.into()), store16_expected_stored_value_lw);
+        builder
+            .when(local.is_i32store16)
+            .assert_word_eq(mem_val_hi.map(|x| x.into()), store16_expected_stored_value_hi);
+
+        let store_expected_stored_value_lw = Word([
+            a_val[0] * offset_is_zero.clone() + prev_mem_val[0] * (one.clone() - offset_is_zero.clone()),
+            a_val[0] * ls_bits_is_one.clone()
+                + a_val[1] * offset_is_zero.clone()
+                + prev_mem_val[1] * (ls_bits_is_three.clone() + ls_bits_is_two.clone()),
+            a_val[0] * ls_bits_is_two.clone()
+                + a_val[1] * ls_bits_is_one.clone()
+                + a_val[2] * offset_is_zero.clone()
+                + prev_mem_val[2] * ls_bits_is_three.clone(),
+            a_val[0] * ls_bits_is_three.clone()
+                + a_val[1] * ls_bits_is_two.clone()
+                + a_val[2] * ls_bits_is_one.clone()
+                + a_val[3] * offset_is_zero.clone(),
+        ]);
+
+        let store_expected_stored_value_hi = Word([
+            prev_mem_val_hi[0] * offset_is_zero.clone()
+                + a_val[3] * ls_bits_is_one.clone()
+                + a_val[2] * ls_bits_is_two.clone()
+                + a_val[1] * ls_bits_is_three.clone(),
+            prev_mem_val_hi[1] * (offset_is_zero.clone() + ls_bits_is_one.clone())
+                + a_val[3] * ls_bits_is_two.clone()
+                + a_val[2] * ls_bits_is_three.clone(),
+            prev_mem_val_hi[2]*(offset_is_zero.clone()+ls_bits_is_one.clone()+ls_bits_is_two.clone())
+            +a_val[3]*ls_bits_is_three,
+            prev_mem_val_hi[3].into(),
+        ]);
 
         // When the instruction is SW, just use the word without masking.
         builder
             .when(local.is_i32store)
-            .assert_word_eq(mem_val.map(|x| x.into()), a_val.map(|x| x.into()));
+            .assert_word_eq(mem_val.map(|x| x.into()), store_expected_stored_value_lw);
+         builder
+            .when(local.is_i32store)
+            .assert_word_eq(mem_val_hi.map(|x| x.into()), store_expected_stored_value_hi);
+
     }
 
     /// This function is used to evaluate the unsigned memory value for the load memory
