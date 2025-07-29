@@ -2801,6 +2801,29 @@ mod tests {
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
     }
 
+     #[test]
+    fn test_load_unaligned() {
+        let sp_value: u32 = SP_START;
+        let x_value: u32 = 0x1103_0507;
+        
+        let addr: u32 = 0x10000;
+
+        let opcodes = vec![
+            Opcode::I32Const(2.into()),
+            Opcode::MemoryGrow,
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Store(0u32),
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Load(3u32),
+           
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut runtime = Executor::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
+        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 0x11);
+        assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
+    }
     #[test]
     fn test_load16u() {
         let sp_value: u32 = SP_START;

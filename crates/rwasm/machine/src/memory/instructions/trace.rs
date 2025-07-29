@@ -96,6 +96,7 @@ impl MemoryInstructionsChip {
         cols.clk = F::from_canonical_u32(event.clk);
         cols.pc = F::from_canonical_u32(event.pc);
         cols.res = event.res.into();
+        println!("res:{}",event.res);
         cols.raw_addr = event.raw_addr.into();
         let offset: u32 = event.opcode.aux_value();
         cols.instr_offset = offset.into();

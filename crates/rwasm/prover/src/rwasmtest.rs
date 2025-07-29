@@ -387,6 +387,30 @@ mod tests {
         program
       
     }
+
+     fn build_load_unaligned()->Program {
+        let sp_value: u32 = SP_START;
+        let x_value: u32 = 0x1103_0507;
+        
+        let addr: u32 = 0x10000;
+
+        let opcodes = vec![
+            Opcode::I32Const(2.into()),
+            Opcode::MemoryGrow,
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Store(0u32),
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Load(3u32),
+           
+        ];
+        let program = Program::from_instrs(opcodes);
+        program
+    }
+
+    
+
+    
     // fn build_elf_call() -> Program {
     //     let sp_value: u32 = SP_START;
     //     let x_value: u32 = 0x3;
@@ -542,6 +566,12 @@ mod tests {
     #[test]
     fn test_rwasm_unaligned_store(){
         let program=build_store_unaligned();
+        run_rwasm_prover(program);
+    }
+
+     #[test]
+    fn test_rwasm_unaligned_load(){
+        let program=build_load_unaligned();
         run_rwasm_prover(program);
     }
     // #[test]

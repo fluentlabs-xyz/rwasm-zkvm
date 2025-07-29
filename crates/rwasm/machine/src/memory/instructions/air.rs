@@ -247,7 +247,7 @@ impl MemoryInstructionsChip {
         builder.eval_memory_access(
             local.shard,
             local.clk,
-            local.addr_aligned,
+           local.addr_aligned+AB::Expr::from_canonical_u32(UNIT),
             &local.memory_access_hi,
             local.is_multi_aligned_load.clone(),
         );
@@ -433,15 +433,18 @@ impl MemoryInstructionsChip {
         local: &MemoryInstructionsColumns<AB::Var>,
     ) {
         let mem_val = *local.memory_access.value();
+        let mem_val_hi = *local.memory_access_hi.value();
 
         // Compute the offset_is_zero flag.  The other offset flags are already constrained by the
         // method `eval_memory_address_and_access`, which is called in
         // `eval_memory_address_and_access`.
-        let offset_is_zero =
+        let ls_bits_is_zero =
             AB::Expr::one() - local.ls_bits_is_one - local.ls_bits_is_two - local.ls_bits_is_three;
-
+        let ls_bits_is_one = local.ls_bits_is_one;
+        let ls_bits_is_two = local.ls_bits_is_two;
+        let ls_bits_is_three = local.ls_bits_is_three;
         // Compute the byte value.
-        let mem_byte = mem_val[0] * offset_is_zero.clone()
+        let mem_byte = mem_val[0] * ls_bits_is_zero.clone()
             + mem_val[1] * local.ls_bits_is_one
             + mem_val[2] * local.ls_bits_is_two
             + mem_val[3] * local.ls_bits_is_three;
@@ -452,28 +455,37 @@ impl MemoryInstructionsChip {
             .when(local.is_i32load8s + local.is_i32load8u)
             .assert_word_eq(byte_value, local.unsigned_mem_val.map(|x| x.into()));
 
-        // When the instruction is LH or LHU, ensure that offset is either zero or two.
-        builder
-            .when(local.is_i32load16s + local.is_i32load16u)
-            .assert_zero(local.ls_bits_is_one + local.ls_bits_is_three);
+        
 
-        // When the instruction is LW, ensure that the offset is zero.
-        builder.when(local.is_i32load).assert_one(offset_is_zero.clone());
 
-        let use_lower_half = offset_is_zero;
-        let use_upper_half = local.ls_bits_is_two;
+        
         let half_value = Word([
-            use_lower_half.clone() * mem_val[0] + use_upper_half * mem_val[2],
-            use_lower_half * mem_val[1] + use_upper_half * mem_val[3],
+           ls_bits_is_zero.clone() * mem_val[0] + ls_bits_is_two.clone() * mem_val[2]
+           +ls_bits_is_one.clone()*mem_val[1]+ ls_bits_is_three.clone()*mem_val[3],
+           ls_bits_is_zero.clone() * mem_val[1] + ls_bits_is_two.clone() * mem_val[3]+
+           ls_bits_is_one.clone() *mem_val[2]+ls_bits_is_three.clone()*mem_val_hi[0],
             AB::Expr::zero(),
             AB::Expr::zero(),
         ]);
         builder
             .when(local.is_i32load16s + local.is_i32load16u)
             .assert_word_eq(half_value, local.unsigned_mem_val.map(|x| x.into()));
+        let val = Word([
+             ls_bits_is_zero.clone() * mem_val[0] + ls_bits_is_two.clone() * mem_val[2]
+           +ls_bits_is_one.clone() * mem_val[1]+ls_bits_is_three.clone()*mem_val[3],
+            
+           ls_bits_is_zero.clone() * mem_val[1] + ls_bits_is_two.clone() * mem_val[3]+
+           ls_bits_is_one.clone() *mem_val[2]+ls_bits_is_three.clone()*mem_val_hi[0],
+           
+          
+        ls_bits_is_zero.clone() *mem_val[2]+ls_bits_is_one.clone() * mem_val[3]+
+        ls_bits_is_two.clone() *mem_val_hi[0]+ls_bits_is_three.clone() *mem_val_hi[1],
+        ls_bits_is_zero.clone() *mem_val[3] +ls_bits_is_one.clone()*mem_val_hi[0]+
+        ls_bits_is_two.clone() *mem_val_hi[1]+ls_bits_is_three.clone()*mem_val_hi[2],
+        ]);
+       
+        builder.when(local.is_i32load).assert_word_eq(val, local.res);
 
-        // When the instruction is LW, just use the word.
-        builder.when(local.is_i32load).assert_word_eq(mem_val, local.unsigned_mem_val);
     }
 
     /// Evaluates the offset value flags.

@@ -65,8 +65,7 @@ pub struct MemoryInstructionsColumns<T> {
 
     /// Gadget to verify that the address word is within the Baby-Bear field.
     pub addr_word_range_checker: BabyBearWordRangeChecker<T>,
-    /// Gadget to verify that the address word is within the Baby-Bear field.
-    pub addr_word_hi_range_checker: BabyBearWordRangeChecker<T>,
+   
 
     /// Memory consistency columns for the memory access.
     pub memory_access: MemoryReadWriteCols<T>,
