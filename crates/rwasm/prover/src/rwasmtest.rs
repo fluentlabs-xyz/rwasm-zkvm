@@ -54,6 +54,7 @@ mod tests {
 
     use rwasm::BranchOffset;
     use rwasm_executor::{Opcode, Program, SP_START};
+    use rwasm_machine::program;
     use rwasm_machine::utils::setup_logger;
 
     use super::super::*;
@@ -367,6 +368,25 @@ mod tests {
 
         program
     }
+
+       fn build_store_unaligned()->Program {
+        let sp_value: u32 = SP_START;
+        let x_value: u32 = 0x0103_0507;
+        
+        let addr: u32 = 0x10000;
+
+        let opcodes = vec![
+            Opcode::I32Const(2.into()),
+            Opcode::MemoryGrow,
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Store(3u32),
+           
+        ];
+        let program = Program::from_instrs(opcodes);
+        program
+      
+    }
     // fn build_elf_call() -> Program {
     //     let sp_value: u32 = SP_START;
     //     let x_value: u32 = 0x3;
@@ -516,6 +536,12 @@ mod tests {
     #[test]
     fn test_rwasm_another1() {
         let program = build_elf_const_another();
+        run_rwasm_prover(program);
+    }
+
+    #[test]
+    fn test_rwasm_unaligned_store(){
+        let program=build_store_unaligned();
         run_rwasm_prover(program);
     }
     // #[test]
