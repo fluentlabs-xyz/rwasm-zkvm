@@ -231,6 +231,25 @@ mod tests {
         //  memory_image: BTreeMap::new() };
         program
     }
+    fn build_elf_load5() -> Program {
+        let sp_value: u32 = SP_START;
+        let x_value: u32 = 0xFFFF_0005;
+        let addr: u32 = 0x10000;
+
+        let instructions = vec![
+            Opcode::I32Const(2.into()),
+            Opcode::MemoryGrow,
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Store16(0u32),
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Load16U(0u32),
+        ];
+
+        let program = Program::from_instrs(instructions);
+        //  memory_image: BTreeMap::new() };
+        program
+    }
     fn build_elf5() -> Program {
         let addr: u32 = 0x40000;
         let addr_2: u32 = 0x40004;
@@ -465,6 +484,11 @@ mod tests {
     #[test]
     fn test_rwasm_proof_load4() {
         let program = build_elf_load4();
+        run_rwasm_prover(program);
+    }
+    #[test]
+    fn test_rwasm_proof_load5() {
+        let program = build_elf_load5();
         run_rwasm_prover(program);
     }
     #[test]
