@@ -126,13 +126,15 @@ pub struct ConstEvent {
 }
 
 impl ConstEvent {
-    /// Create a new [`BranchEvent`].
+    /// Create a new [`ConstEvent`].
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(pc: u32, opcode: Opcode, value: u32) -> Self {
         Self { pc, opcode, value }
     }
 }
+
+
 ///TODO: this event is for changing the state of rwasm engine. not finished yet.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]

@@ -3,6 +3,7 @@ use core::borrow::Borrow;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
+use rwasm::mem_index::UNIT;
 use rwasm_executor::{ByteOpcode, Opcode, DEFAULT_CLK_INC, DEFAULT_PC_INC};
 use sp1_stark::{
     air::{BaseAirBuilder, PublicValues, SP1AirBuilder, SP1_PROOF_NUM_PV_ELTS},
@@ -59,6 +60,8 @@ where
         self.eval_alu_n_branch(builder, local);
 
         self.eval_memory(builder, local);
+        self.eval_local(builder, local, clk.clone());
+
         // Check that the shard and clk is updated correctly.
         self.eval_shard_clk(builder, local, next, public_values, clk.clone());
 
@@ -66,7 +69,9 @@ where
         self.eval_pc(builder, local, next, public_values);
 
         //Check memory for instruction operation
-        self.eval_op_memory(builder, local, clk);
+        self.eval_op_memory_sp(builder, local, clk);
+        //check sp consistence
+        builder.when(local.is_real).when(next.is_real).assert_eq(local.next_sp, next.sp);
 
         // Always range check the word value in `op_a`, as JUMP instructions and `HINT_LEN` syscall may witness
         // an invalid word and write it to memory.
@@ -215,6 +220,48 @@ impl CpuChip {
         );
     }
 
+    fn eval_local<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &CpuCols<AB::Var>,
+        clk: AB::Expr,
+    ) {
+        builder.eval_memory_access(
+            local.shard,
+            clk.clone(),
+            local.sp
+                + local.instruction.aux_val.reduce::<AB>() * AB::Expr::from_canonical_u32(UNIT)
+                - AB::Expr::from_canonical_u32(UNIT),
+            &local.op_arg1_access,
+            local.instruction.is_localget,
+        );
+
+        builder.eval_memory_access(
+            local.shard,
+            clk.clone(),
+            local.sp,
+            &local.op_arg1_access,
+            local.instruction.is_localset+local.instruction.is_localtee,
+        );
+
+        builder.eval_memory_access(
+            local.shard,
+            clk.clone()+AB::Expr::one(),
+            local.next_sp
+                + local.instruction.aux_val.reduce::<AB>() * AB::Expr::from_canonical_u32(UNIT)
+                - AB::Expr::from_canonical_u32(UNIT),
+            &local.op_res_access,
+            local.instruction.is_localset + local.instruction.is_localtee,
+        );
+
+        builder
+            .when(local.instruction.is_localset)
+            .assert_eq(local.next_sp, local.sp + AB::Expr::from_canonical_u32(UNIT));
+        builder.when(local.instruction.is_localtee).assert_eq(local.next_sp, local.sp);
+        // assert that what has been read is write to memory
+        builder.when(local.instruction.is_local).assert_word_eq(local.op_a_val(), local.op_b_val());
+    }
+
     /// Constraints related to the shard and clk.
     ///
     /// This method ensures that all of the shard values are the same and that the clk starts at 0
@@ -321,15 +368,15 @@ impl CpuChip {
         builder.when_transition().when(local.is_halt).assert_zero(next.is_real);
     }
 
-    pub(crate) fn eval_op_memory<AB: SP1AirBuilder>(
+    pub(crate) fn eval_op_memory_sp<AB: SP1AirBuilder>(
         &self,
         builder: &mut AB,
         local: &CpuCols<AB::Var>,
         clk: AB::Expr,
     ) {
         self.eval_op_memory_increase_sp(builder, local, clk.clone());
-        self.eval_binary_op_memory(builder, local, clk.clone());
-        self.eval_unary_op_memory(builder, local, clk.clone());
+        self.eval_binary_op_memory_sp(builder, local, clk.clone());
+        self.eval_unary_op_memory_sp(builder, local, clk.clone());
     }
 
     pub(crate) fn eval_op_memory_increase_sp<AB: SP1AirBuilder>(
@@ -345,9 +392,13 @@ impl CpuChip {
             &local.op_res_access,
             local.instruction.is_localget + local.instruction.is_i32const,
         );
+
+        builder
+            .when(local.instruction.is_localget + local.instruction.is_i32const)
+            .assert_eq(local.sp - AB::Expr::from_canonical_u32(UNIT), local.next_sp);
     }
 
-    pub(crate) fn eval_unary_op_memory<AB: SP1AirBuilder>(
+    pub(crate) fn eval_unary_op_memory_sp<AB: SP1AirBuilder>(
         &self,
         builder: &mut AB,
         local: &CpuCols<AB::Var>,
@@ -378,9 +429,19 @@ impl CpuChip {
                 + local.instruction.is_i32load8s
                 + local.instruction.is_i32load8u,
         );
+        builder
+            .when(
+                local.instruction.is_unary
+                    + local.instruction.is_i32load
+                    + local.instruction.is_i32load16s
+                    + local.instruction.is_i32load16u
+                    + local.instruction.is_i32load8s
+                    + local.instruction.is_i32load8u,
+            )
+            .assert_eq(local.sp, local.next_sp);
     }
 
-    pub(crate) fn eval_binary_op_memory<AB: SP1AirBuilder>(
+    pub(crate) fn eval_binary_op_memory_sp<AB: SP1AirBuilder>(
         &self,
         builder: &mut AB,
         local: &CpuCols<AB::Var>,
@@ -415,6 +476,14 @@ impl CpuChip {
                 + local.instruction.is_i32store16
                 + local.instruction.is_i32store8,
         );
+        builder
+            .when(
+                local.instruction.is_binary
+                    + local.instruction.is_i32store
+                    + local.instruction.is_i32store16
+                    + local.instruction.is_i32store8,
+            )
+            .assert_eq(local.sp + AB::Expr::from_canonical_u32(UNIT), local.next_sp);
     }
 }
 

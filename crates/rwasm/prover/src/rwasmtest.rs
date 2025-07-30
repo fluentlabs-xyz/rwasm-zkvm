@@ -332,19 +332,19 @@ mod tests {
         let sp_value: u32 = SP_START;
         let x_value: u32 = 0x1234;
         let x_2_value: u32 = x_value + 5;
-        let depth = 5 * 4;
-        let under_depth = depth - 4;
+        let depth = 5;
+        let under_depth = depth - 2;
         let constant = x_value;
-        // let mut mem = HashMap::new();
-        // mem.insert(sp_value, x_value);
-        // mem.insert(sp_value - depth, x_2_value);
 
-        //  println!("{:?}", mem);
         let instructions = vec![
+            Opcode::I32Const(x_2_value.into()),
+            Opcode::I32Const((x_value + 123).into()),
+            Opcode::I32Const((x_value + 456).into()),
+            Opcode::I32Const((x_value + 789).into()),
+            Opcode::I32Const((x_value).into()),
             Opcode::LocalGet(depth),
             Opcode::LocalSet(under_depth),
             Opcode::LocalTee(under_depth),
-            Opcode::I32Const(constant.into()),
         ];
 
         let program = Program::from_instrs(instructions);
@@ -369,10 +369,10 @@ mod tests {
         program
     }
 
-       fn build_store_unaligned()->Program {
+    fn build_store_unaligned() -> Program {
         let sp_value: u32 = SP_START;
         let x_value: u32 = 0x0103_0507;
-        
+
         let addr: u32 = 0x10000;
 
         let opcodes = vec![
@@ -381,17 +381,15 @@ mod tests {
             Opcode::I32Const(addr.into()),
             Opcode::I32Const(x_value.into()),
             Opcode::I32Store(3u32),
-           
         ];
         let program = Program::from_instrs(opcodes);
         program
-      
     }
 
-     fn build_load_unaligned()->Program {
+    fn build_load_unaligned() -> Program {
         let sp_value: u32 = SP_START;
         let x_value: u32 = 0x1103_0507;
-        
+
         let addr: u32 = 0x10000;
 
         let opcodes = vec![
@@ -402,15 +400,11 @@ mod tests {
             Opcode::I32Store(0u32),
             Opcode::I32Const(addr.into()),
             Opcode::I32Load(3u32),
-           
         ];
         let program = Program::from_instrs(opcodes);
         program
     }
 
-    
-
-    
     // fn build_elf_call() -> Program {
     //     let sp_value: u32 = SP_START;
     //     let x_value: u32 = 0x3;
@@ -564,14 +558,14 @@ mod tests {
     }
 
     #[test]
-    fn test_rwasm_unaligned_store(){
-        let program=build_store_unaligned();
+    fn test_rwasm_unaligned_store() {
+        let program = build_store_unaligned();
         run_rwasm_prover(program);
     }
 
-     #[test]
-    fn test_rwasm_unaligned_load(){
-        let program=build_load_unaligned();
+    #[test]
+    fn test_rwasm_unaligned_load() {
+        let program = build_load_unaligned();
         run_rwasm_prover(program);
     }
     // #[test]

@@ -77,7 +77,14 @@ impl<F: PrimeField> InstructionCols<F> {
         self.is_call = F::from_bool(opcode.is_call_instruction());
         match opcode {
             Opcode::LocalGet(_) | Opcode::LocalSet(_) | Opcode::LocalTee(_) => {
-                self.is_branching = F::one()
+                
+                self.is_local=F::one();
+                match opcode {
+                    Opcode::LocalGet(_)=>self.is_localget=F::one(),
+                    Opcode::LocalSet(_)=>self.is_localset=F::one(),
+                    Opcode::LocalTee(_)=>self.is_localtee=F::one(),
+                    _=>(),
+                }
             }
             _ => (),
         }
@@ -99,6 +106,7 @@ impl<F: PrimeField> InstructionCols<F> {
                     self.is_comparison_alu = F::one();
                 }
                 _ => {
+                    println!("ordinary:");
                     self.is_ordinary_alu = F::one();
                 }
             }
