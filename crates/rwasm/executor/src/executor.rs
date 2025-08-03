@@ -1758,18 +1758,18 @@ impl Default for ExecutorMode {
 }
 fn peek_stack(rt: &Executor) {
     let start = SP_START;
-    for idx in (1..10) {
+    for idx in (1..16) {
         let rec = rt.state.memory.get(SP_START - 4 * idx);
         match rec {
             Some(rec) => {
-                println!("addr: {}pos:{},val:{}", SP_START - 4 * idx, idx, rec.value);
+                println!("addr: {}, pos:{},val:{}", SP_START - 4 * idx, idx, rec.value);
             }
             None => {
                 println!("pos:{},empty", idx);
             }
         }
     }
-    for idx in (1..10) {
+    for idx in (1..16) {
         let rec = rt.state.memory.get(SP_START + 4 * idx);
         match rec {
             Some(rec) => {
@@ -3051,8 +3051,9 @@ mod tests {
             Opcode::I32Const((x_value + 3).into()),
             Opcode::I32Const((x_value + 4).into()),
             Opcode::I32Const((x_value + 5).into()),
+            Opcode::I32Const((x_value + 6).into()),
             Opcode::I32Const((x_value).into()),
-            Opcode::LocalSet(5u32),
+            Opcode::LocalSet(3u32),
         ];
 
         let program = Program::from_instrs(opcodes);
@@ -3061,8 +3062,8 @@ mod tests {
         runtime.run().unwrap();
         peek_stack(&runtime);
         println!("after sp: {}", runtime.state.sp);
-        println!("after pos{}", (SP_START - runtime.state.sp) / 4);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp + 3 * UNIT).unwrap().value, x_value);
+        println!("after pos: {}", (SP_START - runtime.state.sp) / 4);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + 2 * UNIT).unwrap().value, x_value);
     }
     #[test]
     fn test_locals() {
