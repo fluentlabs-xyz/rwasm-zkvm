@@ -2801,6 +2801,9 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
+        peek_stack(&runtime);
+        println!("stack pointer: {}", runtime.state.sp);
+
         assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value);
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
     }
