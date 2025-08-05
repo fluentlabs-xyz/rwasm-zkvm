@@ -901,7 +901,7 @@ impl<'a> Executor<'a> {
         let event = BranchEvent { pc: self.state.pc, next_pc, opcode, res, arg1, arg2 };
          println!("br event:{:?}",event);
         self.record.branch_events.push(event);
-       
+
         emit_branch_dependencies(self, event);
     }
 
@@ -2794,6 +2794,8 @@ mod tests {
             Opcode::I32Const(addr.into()),
             Opcode::I32Const(x_value.into()),
             Opcode::I32Store(3u32),
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Load(3u32),
 
         ];
         let program = Program::from_instrs(opcodes);
