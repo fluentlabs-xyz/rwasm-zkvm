@@ -6,6 +6,7 @@ use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
+
 use rwasm_executor::{
     events::{BranchEvent, ByteLookupEvent, ByteRecord},
     ExecutionRecord, Opcode, Program,
@@ -35,7 +36,7 @@ impl<F: PrimeField32> MachineAir<F> for BranchChip {
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
         let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_BRANCH_COLS);
-
+        println!("!!! make branching evnet");
         let blu_events = values
             .chunks_mut(chunk_size * NUM_BRANCH_COLS)
             .enumerate()
@@ -82,23 +83,48 @@ impl BranchChip {
         cols: &mut BranchColumns<F>,
         blu: &mut HashMap<ByteLookupEvent, usize>,
     ) {
-        cols.op_a_value = event.res.into();
-        cols.op_b_value = event.arg1.into();
-        cols.op_c_value = event.arg2.into();
-
+        cols.offset_value = event.res.into();
+        cols.op_arg1_value = event.arg1.into();
+        cols.op_arg2_value = event.arg2.into();
+        cols.target = match event.opcode {
+            Opcode::BrTable(_)=>{
+                
+               (event.opcode.aux_value() - 1).into()
+            },
+            _=>0.into(),
+        };
+        cols.br_table_offset_value= match event.opcode{
+             Opcode::BrTable(_)=>{
+                
+                let max_index = event.opcode.aux_value() - 1;
+                let index = event.arg1;
+                let normalized_index = std::cmp::min(index, max_index);
+                (2*normalized_index+1).into()
+            },
+            _=>0.into(),
+        };
         let a_eq_zero = event.arg1 == 0;
         let a_gt_zero = event.arg1 > 0;
 
         cols.a_eq_zero = F::from_bool(a_eq_zero);
 
         cols.a_gt_zero = F::from_bool(a_gt_zero);
+        cols.a_lt_target = F::from_bool(event.arg1 < event.opcode.aux_value() - 1);
 
         let branching = match event.opcode {
             Opcode::Br(_) => true,
+            Opcode::BrTable(_) => true,
             Opcode::BrIfEqz(_) => a_eq_zero,
             Opcode::BrIfNez(_) => !a_eq_zero,
             _ => unreachable!(),
         };
+        match event.opcode {
+            Opcode::Br(_) => cols.is_br=F::from_bool(true),
+            Opcode::BrTable(_) => cols.is_brtable=F::from_bool(true),
+            Opcode::BrIfEqz(_) =>cols.is_brifeqz=F::from_bool(true),
+            Opcode::BrIfNez(_) => cols.is_brifnez=F::from_bool(true),
+            _=>unreachable!(),
+        }
 
         cols.pc = event.pc.into();
         cols.next_pc = event.next_pc.into();
@@ -107,6 +133,12 @@ impl BranchChip {
 
         if branching {
             cols.is_branching = F::one();
+            if let Opcode::BrTable(_)=event.opcode{
+                cols.is_branching_table=F::from_bool(true);
+                
+            }else{
+                 cols.is_branching_non_table=F::from_bool(true);
+            }
         } else {
             cols.not_branching = F::one();
         }

@@ -46,7 +46,7 @@ pub struct CpuCols<T: Copy> {
     pub instruction: InstructionCols<T>,
 
     ///Alu cols:
-    pub alu_cols:AluCols<T>,
+    pub alu_cols: AluCols<T>,
 
     /// Whether this is a memory instruction.
     pub is_memory: T,
@@ -71,17 +71,17 @@ pub struct CpuCols<T: Copy> {
 
 impl<T: Copy> CpuCols<T> {
     /// Gets the value of the first operand.
-    pub fn op_a_val(&self) -> Word<T> {
+    pub fn op_res_val(&self) -> Word<T> {
         *self.op_res_access.value()
     }
 
     /// Gets the value of the second operand.
-    pub fn op_b_val(&self) -> Word<T> {
+    pub fn op_arg1_val(&self) -> Word<T> {
         *self.op_arg1_access.value()
     }
 
     /// Gets the value of the third operand.
-    pub fn op_c_val(&self) -> Word<T> {
+    pub fn op_arg2_val(&self) -> Word<T> {
         *self.op_arg2_access.value()
     }
 }

@@ -289,7 +289,7 @@ mod tests {
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(x_value.into()),
-            Opcode::Br(4.into()),
+            Opcode::Br(3.into()),
             Opcode::I32Shl,
             Opcode::I32Shl,
             Opcode::I32Shl,
@@ -299,32 +299,113 @@ mod tests {
         program
     }
 
-    fn build_elf_branching() -> Program {
-        let sp_value: u32 = SP_START;
-        let x_value: u32 = 0x0;
-        let x_2_value: u32 = 0x10008;
-        let x_3_value: u32 = 0x1000C;
+    fn build_elf_brifnez() -> Program {
+        let x_value: u32 = 0x1;
+        let addr: u32 = 0x10000;
 
-        // let mut mem = HashMap::new();
-        // mem.insert(sp_value, x_value);
-        // mem.insert(sp_value - 4, x_2_value);
-        // mem.insert(sp_value - 8, x_3_value);
-
-        //  println!("{:?}", mem);
         let instructions = vec![
-            Opcode::Br(20.into()),
-            Opcode::I32Add,
-            Opcode::I32Add,
-            Opcode::I32Add,
-            Opcode::BrIfNez(12.into()),
-            Opcode::I32Add,
-            Opcode::BrIfNez(BranchOffset::from(-8i32)),
-            Opcode::I32Add,
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::BrIfNez(3.into()),
+            Opcode::I32Shl,
+            Opcode::I32Shl,
+            Opcode::I32Shl,
         ];
 
         let program = Program::from_instrs(instructions);
-        //  memory_image: BTreeMap::new() };
+        program
+    }
 
+    fn build_elf_brifeqz() -> Program {
+        let x_value: u32 = 0x1;
+        let addr: u32 = 0x10000;
+
+        let instructions = vec![
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(0.into()),
+            Opcode::BrIfEqz(3.into()),
+            Opcode::I32Shl,
+            Opcode::I32Shl,
+            Opcode::I32Shl,
+        ];
+
+        let program = Program::from_instrs(instructions);
+        program
+    }
+
+    fn build_elf_nobr_brifeqz() -> Program {
+        let x_value: u32 = 0x1;
+        let addr: u32 = 0x10000;
+
+        let instructions = vec![
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(1.into()),
+            Opcode::BrIfEqz(3.into()),
+            Opcode::I32Shl,
+        ];
+
+        let program = Program::from_instrs(instructions);
+        program
+    }
+
+    fn build_elf_nobr_brifnez() -> Program {
+        let x_value: u32 = 0x1;
+        let addr: u32 = 0x10000;
+
+        let instructions = vec![
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(0.into()),
+            Opcode::BrIfNez(3.into()),
+            Opcode::I32Shl,
+        ];
+
+        let program = Program::from_instrs(instructions);
+        program
+    }
+
+    fn build_elf_brtable_index() -> Program {
+        let x_value: u32 = 0x1;
+        let addr: u32 = 0x10000;
+
+        let instructions = vec![
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(1.into()),
+            Opcode::BrTable(3u32),
+            Opcode::I32Shl,
+            Opcode::I32Shl,
+            Opcode::I32Shl,
+        ];
+
+        let program = Program::from_instrs(instructions);
+        program
+    }
+
+    fn build_elf_brtable_max_index() -> Program {
+        let x_value: u32 = 0x1;
+        let addr: u32 = 0x10000;
+
+        let instructions = vec![
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(10.into()),
+            Opcode::BrTable(2u32),
+            Opcode::I32Shl,
+            Opcode::I32Shl,
+            Opcode::I32Shl,
+        ];
+
+        let program = Program::from_instrs(instructions);
         program
     }
 
@@ -540,8 +621,38 @@ mod tests {
         run_rwasm_prover(program);
     }
     #[test]
-    fn test_rwasm_branching() {
-        let program = build_elf_branching();
+    fn test_rwasm_brifnez() {
+        let program = build_elf_brifnez();
+        run_rwasm_prover(program);
+    }
+
+    #[test]
+    fn test_rwasm_brifeqz() {
+        let program = build_elf_brifeqz();
+        run_rwasm_prover(program);
+    }
+
+    #[test]
+    fn test_rwasm_no_brifeqz() {
+        let program = build_elf_nobr_brifeqz();
+        run_rwasm_prover(program);
+    }
+
+    #[test]
+    fn test_rwasm_no_brifnez() {
+        let program = build_elf_nobr_brifnez();
+        run_rwasm_prover(program);
+    }
+
+    #[test]
+    fn test_rwasm_brtable_index() {
+        let program = build_elf_brtable_index();
+        run_rwasm_prover(program);
+    }
+
+    #[test]
+    fn test_rwasm_brtable_max_index() {
+        let program = build_elf_brtable_max_index();
         run_rwasm_prover(program);
     }
 

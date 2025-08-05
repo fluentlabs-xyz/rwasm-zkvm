@@ -19,16 +19,21 @@ pub struct BranchColumns<T> {
     pub next_pc_range_checker: BabyBearWordRangeChecker<T>,
 
     /// The value of the first operand.
-    pub op_a_value: Word<T>,
+    pub offset_value: Word<T>,
     /// The value of the second operand.
-    pub op_b_value: Word<T>,
+    pub op_arg1_value: Word<T>,
     /// The value of the third operand.
-    pub op_c_value: Word<T>,
+    pub op_arg2_value: Word<T>,
+
+    pub target:Word<T>,
+
+    pub br_table_offset_value:Word<T>,
 
     /// Branch Instructions.
     pub is_br: T,
     pub is_brifnez: T,
     pub is_brifeqz: T,
+    pub is_brtable: T,
 
     /// The is_branching column is equal to:
     ///
@@ -38,6 +43,9 @@ pub struct BranchColumns<T> {
     /// > (is_bge | is_bgeu) & (a_eq_b | a_gt_b)
     pub is_branching: T,
 
+    pub is_branching_table :T,
+
+    pub is_branching_non_table :T,
     /// The not branching column is equal to:
     ///
     /// > is_beq & !a_eq_b ||
@@ -53,6 +61,9 @@ pub struct BranchColumns<T> {
     /// Whether a equals zerp.
     pub a_eq_zero: T,
 
-    /// Whether a is zero.
+    /// Whether a is greater than zero.
     pub a_gt_zero: T,
+
+    /// Whether a greater than target.
+    pub a_lt_target: T,
 }

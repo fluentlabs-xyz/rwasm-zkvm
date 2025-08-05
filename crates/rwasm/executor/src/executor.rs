@@ -899,7 +899,9 @@ impl<'a> Executor<'a> {
     #[inline]
     fn emit_branch_event(&mut self, opcode: Opcode, arg1: u32, arg2: u32, res: u32, next_pc: u32) {
         let event = BranchEvent { pc: self.state.pc, next_pc, opcode, res, arg1, arg2 };
+         println!("br event:{:?}",event);
         self.record.branch_events.push(event);
+       
         emit_branch_dependencies(self, event);
     }
 

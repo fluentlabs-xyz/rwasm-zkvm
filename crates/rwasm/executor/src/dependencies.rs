@@ -1,3 +1,5 @@
+use std::cmp;
+
 use rwasm::{is_multi_align, mem_index::UNIT, Opcode};
 
 use crate::{
@@ -213,15 +215,13 @@ pub fn emit_memory_dependencies(executor: &mut Executor, event: MemInstrEvent) {
         }
     }
 }
-
 /// Emit the dependencies for branch opcodes.
 pub fn emit_branch_dependencies(executor: &mut Executor, event: BranchEvent) {
     if event.opcode.is_branch_instruction() {
         let offset = event.opcode.aux_value();
         let a_eq_zero = event.arg1 == 0;
-
         let a_gt_zero = event.arg1 > 0;
-
+        let a_lt_target = event.arg1 < event.opcode.aux_value() - 1;
         let cmp_ins = Opcode::I32LtU;
         // Add the ALU events for the comparisons
         match event.opcode {
@@ -236,26 +236,56 @@ pub fn emit_branch_dependencies(executor: &mut Executor, event: BranchEvent) {
                 };
                 executor.record.lt_events.push(gt_comp_event);
             }
+
+            Opcode::BrTable(_) => {
+                let gt_comp_event = AluEvent {
+                    pc: UNUSED_PC,
+                    opcode: cmp_ins,
+                    a: a_lt_target as u32,
+                    b: event.arg1,
+                    c: event.opcode.aux_value() - 1,
+                    code: cmp_ins.code(),
+                };
+                executor.record.lt_events.push(gt_comp_event);
+            }
             _ => (),
         }
 
         let branching = match event.opcode {
             Opcode::BrIfEqz(_) => a_eq_zero,
             Opcode::BrIfNez(_) => a_gt_zero,
-            Opcode::Br(_) => true,
+            Opcode::Br(_) | Opcode::BrTable(_) => true,
             _ => unreachable!(),
         };
         if branching {
-            let next_pc = ((event.pc).wrapping_add(offset)) as u32;
-            let add_event = AluEvent {
-                pc: UNUSED_PC,
-                opcode: Opcode::I32Add,
-                a: next_pc,
-                b: event.pc,
-                c: offset as u32,
-                code: Opcode::I32Add.code(),
-            };
-            executor.record.add_events.push(add_event);
+            if let Opcode::BrTable(_) = event.opcode {
+                let index = event.arg1;
+                let targets = event.opcode.aux_value();
+                let max_index = targets as usize - 1;
+                let normalized_index = cmp::min(index as usize, max_index);
+                let offset = 2 * normalized_index + 1;
+
+                let add_event = AluEvent {
+                    pc: UNUSED_PC,
+                    opcode: Opcode::I32Add,
+                    a: event.next_pc,
+                    b: event.pc,
+                    c: offset as u32,
+                    code: Opcode::I32Add.code(),
+                };
+                executor.record.add_events.push(add_event);
+            } else {
+                let next_pc = (event.pc).wrapping_add(offset);
+                let add_event = AluEvent {
+                    pc: UNUSED_PC,
+                    opcode: Opcode::I32Add,
+                    a: next_pc,
+                    b: event.pc,
+                    c: offset,
+                    code: Opcode::I32Add.code(),
+                };
+                executor.record.add_events.push(add_event);
+            }
         }
     }
 }

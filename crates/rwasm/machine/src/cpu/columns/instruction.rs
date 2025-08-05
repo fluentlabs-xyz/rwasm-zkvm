@@ -7,7 +7,7 @@ use std::mem::{transmute};
 use p3_util::indices_arr;
 pub const NUM_INSTRUCTION_COLS: usize = size_of::<InstructionCols<u8>>();
 pub const INSTRUCTION_COL_MAP: InstructionCols<usize> = make_col_map();
-use rwasm::Opcode;
+use rwasm::{Op, Opcode};
 /// The column layout for instructions.
 #[derive(AlignedBorrow, Clone, Copy, Default, Debug)]
 #[repr(C)]
@@ -55,7 +55,7 @@ pub struct InstructionCols<T> {
     pub is_br: T,
     pub is_brifnez: T,
     pub is_brifeqz: T,
-
+    pub is_brtable: T,
     pub is_localget: T,
     pub is_localset: T,
     pub is_localtee: T,
@@ -142,6 +142,7 @@ impl<F: PrimeField> InstructionCols<F> {
             Opcode::Br(_) => self.is_br = F::one(),
             Opcode::BrIfEqz(_) => self.is_brifeqz = F::one(),
             Opcode::BrIfNez(_) => self.is_brifnez = F::one(),
+            Opcode::BrTable(_) => self.is_brtable = F::one(),
             Opcode::LocalGet(_) => self.is_localget = F::one(),
             Opcode::LocalSet(_) => self.is_localset = F::one(),
             Opcode::LocalTee(_) => self.is_localtee = F::one(),
@@ -191,6 +192,7 @@ impl<T> IntoIterator for InstructionCols<T> {
             self.is_br,
             self.is_brifeqz,
             self.is_brifnez,
+            self.is_brtable,
             self.is_localget,
             self.is_localset,
             self.is_localtee,
