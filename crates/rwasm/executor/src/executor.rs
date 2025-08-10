@@ -3522,4 +3522,146 @@ mod tests {
         assert_eq!(runtime.state.sp, sp_value - 4);
         assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value);
     }
+    #[test]
+    fn test_call_chain_incrementers() {
+        // inc(x) = x + 1
+        let inc_fn = vec![
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Add,
+            Opcode::Return,        // function returns here
+        ];
+
+        // Main: x -> inc -> inc -> (== expected) -> Return
+        // Count main ops carefully and include the final Return to avoid fall-through.
+        // main ops: I32Const(x), CallInternal, CallInternal, I32Const(expected), I32Eq, Return  => 6
+        let main_len = 6;
+        let inc_pos = main_len as u32; // function starts right after main
+
+        let x = 41u32;
+        let expected = x + 2;
+
+        let mut ops = Vec::new();
+        ops.push(Opcode::I32Const(x.into()));
+        ops.push(Opcode::CallInternal(inc_pos.into()));  // x+1
+        ops.push(Opcode::CallInternal(inc_pos.into()));  // (x+1)+1
+        ops.push(Opcode::I32Const(expected.into()));
+        ops.push(Opcode::I32Eq);                         // 1 if equal
+        ops.push(Opcode::Return);                        // <-- prevent fall-through into inc_fn
+
+        // append function
+        ops.extend(inc_fn);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+    #[test]
+    fn test_store_then_load_via_function() {
+        let addr: u32 = 0x10000;         // inside 2 pages (0..=0x1FFFF), 32-bit store is safe
+        let val:  u32 = 0xDEAD_BEEF;
+
+        // function expects: [ ..., addr, addr, value ]
+        // does: store(addr, value); load(addr); return
+        let fun = vec![
+            Opcode::I32Store(0u32),
+            Opcode::I32Load(0u32),
+            Opcode::Return,
+        ];
+
+        // main ops:
+        //   MemoryGrow(2)
+        //   push addr, addr, val
+        //   CallInternal(fun_pos)
+        //   == val
+        //   Return   <-- prevent fall-through into 'fun'
+        let main_len = 2 /*grow*/ + 3 /*pushes*/ + 1 /*call*/ + 2 /*eq*/ + 1 /*ret*/;
+        let fun_pos = main_len as u32;
+
+        let mut ops = Vec::new();
+        ops.push(Opcode::I32Const(2.into()));
+        ops.push(Opcode::MemoryGrow);
+
+        // push in order: addr, addr, value (value must be on top for store)
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Const(val.into()));
+
+        ops.push(Opcode::CallInternal(fun_pos.into()));
+
+        // compare with expected
+        ops.push(Opcode::I32Const(val.into()));
+        ops.push(Opcode::I32Eq);
+
+        // stop main; don't fall through into the function body
+        ops.push(Opcode::Return);
+
+        // append function
+        ops.extend(fun);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+
+        // sanity: at least one mem event and one call event
+        let mem_events: usize = rt.records.iter().map(|r| r.memory_instr_events.len()).sum();
+        let call_events: usize = rt.records.iter().map(|r| r.call_events.len()).sum();
+        assert!(mem_events >= 2);
+        assert!(call_events >= 1);
+    }
+    // --- call mix: xor + and + final combine through calls ---
+    #[test]
+    fn test_call_mix_bitwise_and_arith() {
+        let xor_fn = vec![Opcode::I32Xor, Opcode::Return]; // len 2
+        let and_fn = vec![Opcode::I32And, Opcode::Return]; // len 2
+
+        let a = 0xAAAA5555u32;
+        let b = 0x0F0F0F0Fu32;
+        let c = 0xF0F0FF00u32;
+        let d = 0x00FF00FFu32;
+        let expected = (a ^ b).wrapping_add(c & d);
+
+        // main has:
+        //   a,b,CallInternal(xor)            -> 3
+        //   c,d,CallInternal(and)            -> 3
+        //   I32Add                           -> 1
+        //   I32Const(expected), I32Eq        -> 2
+        //   Return                           -> 1
+        // total = 10
+        let main_len = 10u32;
+        let xor_pos = main_len;                           // function 1 starts right after main
+        let and_pos = xor_pos + xor_fn.len() as u32;      // function 2 follows
+
+        let mut ops = Vec::new();
+        // (a ^ b) via xor_fn
+        ops.push(Opcode::I32Const(a.into()));
+        ops.push(Opcode::I32Const(b.into()));
+        ops.push(Opcode::CallInternal(xor_pos.into()));
+
+        // (c & d) via and_fn
+        ops.push(Opcode::I32Const(c.into()));
+        ops.push(Opcode::I32Const(d.into()));
+        ops.push(Opcode::CallInternal(and_pos.into()));
+
+        // sum them
+        ops.push(Opcode::I32Add);
+
+        // compare with expected
+        ops.push(Opcode::I32Const(expected.into()));
+        ops.push(Opcode::I32Eq);
+
+        // IMPORTANT: prevent fall-through into function code
+        ops.push(Opcode::Return);
+
+        // append functions
+        ops.extend(xor_fn);
+        ops.extend(and_fn);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
 }
