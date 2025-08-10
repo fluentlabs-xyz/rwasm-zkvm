@@ -1873,7 +1873,7 @@ pub const fn align(addr: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::peek_stack;
-    use crate::{align, Executor, Program};
+    use crate::{align, ExecutionError, Executor, Program};
     use hashbrown::HashMap;
 
     use rwasm::{
@@ -1882,6 +1882,263 @@ mod tests {
     };
     use sp1_stark::SP1CoreOpts;
 
+    #[test]
+    fn test_align_various() {
+        // align() returns the nearest word boundary below or equal to addr
+        assert_eq!(align(0), 0);
+        assert_eq!(align(1), 0);
+        assert_eq!(align(3), 0);
+        assert_eq!(align(4), 4);
+        assert_eq!(align(7), 4);
+        assert_eq!(align(8), 8);
+        assert_eq!(align(0xFFFF_FFFF), 0xFFFF_FFFC);
+    }
+    #[test]
+    fn test_word_and_byte_reads() {
+        // Directly exercise mw/word/byte helpers (little-endian view)
+        let program = Program::from_instrs(vec![]);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+
+        // Uninitialized words read as 0
+        assert_eq!(rt.word(8), 0);
+
+        // Write a word and check byte-level reads
+        let val: u32 = 0x11_22_33_44;
+        rt.mw(8, val, /*shard=*/0, /*timestamp=*/1, None);
+
+        assert_eq!(rt.word(8), val);
+        assert_eq!(rt.byte(8),  0x44); // least-significant byte at lowest address
+        assert_eq!(rt.byte(9),  0x33);
+        assert_eq!(rt.byte(10), 0x22);
+        assert_eq!(rt.byte(11), 0x11);
+    }
+    #[test]
+    fn test_cycle_limit_exceeded() {
+        // With max_cycles = 0, any execution should exceed the limit on the first step
+        let program = Program::from_instrs(vec![Opcode::I32Const(1u32.into())]);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.max_cycles = Some(0);
+
+        let err = rt.run().expect_err("expected cycle limit to be exceeded");
+        assert!(matches!(err, ExecutionError::ExceededCycleLimit(0)));
+    }
+    #[test]
+    fn test_add_overflow_wraps() {
+        let sp0 = SP_START;
+        let opcodes = vec![
+            Opcode::I32Const(u32::MAX.into()),
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Add, // wraps to 0
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 0);
+        assert_eq!(sp0, rt.state.sp + 4);
+    }
+    #[test]
+    fn test_sub_underflow_wraps() {
+        let sp0 = SP_START;
+        let expected = u32::MAX; // 0 - 1 = 0xffffffff (wrap)
+        let opcodes = vec![
+            Opcode::I32Const(0u32.into()),
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Sub,
+            Opcode::I32Const(expected.into()),
+            Opcode::I32Eq,
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(sp0, rt.state.sp + 4);
+    }
+    #[test]
+    fn test_branch_ifnez_not_taken() {
+        // Mirrors build_elf_branching but uses 0 so the branch is NOT taken,
+        // thus both trailing adds execute and final becomes 15.
+        let x = 1u32;
+        let opcodes = vec![
+            Opcode::I32Const(x.into()),            // 1
+            Opcode::I32Const((x + 1).into()),      // 2
+            Opcode::I32Const((x + 2).into()),      // 3
+            Opcode::I32Add,                        // 2 + 3 = 5
+            Opcode::I32Add,                        // 1 + 5 = 6
+            Opcode::I32Const(0u32.into()),         // 0 -> branch NOT taken
+            Opcode::BrIfNez(BranchOffset::from(16i32)),
+            Opcode::I32Const((x + 3).into()),      // 4
+            Opcode::I32Const((x + 4).into()),      // 5
+            Opcode::I32Add,                        // 4 + 5 = 9
+            Opcode::I32Add,                        // 6 + 9 = 15
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 15);
+    }
+    // ---  store8 + store8 -> load16U (endianness sanity) ---
+    #[test]
+    fn test_store8_then_load16u() {
+        let sp0 = SP_START;
+        let addr: u32 = 0x10000;
+        let lo = 0xAAu32;
+        let hi = 0xBBu32; // expect 0xBBAA when read as 16-bit little endian
+        let expected = (hi << 8) | lo;
+
+        let opcodes = vec![
+            Opcode::I32Const(2.into()),
+            Opcode::MemoryGrow,
+            // write low byte
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Const(lo.into()),
+            Opcode::I32Store8(0u32),
+            // write high byte
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Const(hi.into()),
+            Opcode::I32Store8(1u32),
+            // read 16 bits
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Load16U(0u32),
+            // compare
+            Opcode::I32Const(expected.into()),
+            Opcode::I32Eq,
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(sp0, rt.state.sp + 2 * UNIT);
+    }
+
+    // ---  LtS vs LtU should diverge for (-1, 1) ---
+    #[test]
+    fn test_lts_vs_ltu_diverge() {
+        let x = neg(1); // 0xffffffff == -1 (signed)
+        let y = 1u32;
+        // Check: (x <_s y) == 1 AND (x <_u y) == 0
+        let opcodes = vec![
+            // signed LT should be true
+            Opcode::I32Const(x.into()), Opcode::I32Const(y.into()), Opcode::I32LtS,
+            Opcode::I32Const(1u32.into()), Opcode::I32Eq,
+            // unsigned LT should be false
+            Opcode::I32Const(x.into()), Opcode::I32Const(y.into()), Opcode::I32LtU,
+            Opcode::I32Const(0u32.into()), Opcode::I32Eq,
+            // both must be true -> AND == 1
+            Opcode::I32And,
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+
+    //--- GtS vs GtU should diverge for (0x80000000, 0) ---
+    #[test]
+    fn test_gts_vs_gtu_diverge() {
+        let x = 0x8000_0000u32; // negative if signed
+        let y = 0u32;
+        // Check: (x >_s y) == 0 AND (x >_u y) == 1
+        let opcodes = vec![
+            // signed GT should be false
+            Opcode::I32Const(x.into()), Opcode::I32Const(y.into()), Opcode::I32GtS,
+            Opcode::I32Const(0u32.into()), Opcode::I32Eq,
+            // unsigned GT should be true
+            Opcode::I32Const(x.into()), Opcode::I32Const(y.into()), Opcode::I32GtU,
+            Opcode::I32Const(1u32.into()), Opcode::I32Eq,
+            // both checks true -> AND == 1
+            Opcode::I32And,
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+
+    // --- shift counts are masked mod 32 (33 -> 1, 65 -> 1) ---
+    #[test]
+    fn test_shift_count_masking() {
+        let sp0 = SP_START;
+        let opcodes = vec![
+            // 1 << 33 == 1 << (33 % 32) == 2
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Const(33u32.into()),
+            Opcode::I32Shl,
+            Opcode::I32Const(2u32.into()),
+            Opcode::I32Eq,
+            // 8 >> 65 == 8 >> 1 == 4 (logical)
+            Opcode::I32Const(8u32.into()),
+            Opcode::I32Const(65u32.into()),
+            Opcode::I32ShrU,
+            Opcode::I32Const(4u32.into()),
+            Opcode::I32Eq,
+            // both equalities true
+            Opcode::I32And,
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(sp0, rt.state.sp + 4);
+    }
+
+    // --- div/rem identity: a = b*q + r (signed, non-overflow case) ---
+    #[test]
+    fn test_divrem_identity_signed() {
+        let a: u32 = 123;           // +123
+        let b: u32 = neg(7);        // -7
+        let opcodes = vec![
+            // q = a / b (signed)
+            Opcode::I32Const(a.into()),
+            Opcode::I32Const(b.into()),
+            Opcode::I32DivS,                // q
+            Opcode::I32Const(b.into()),
+            Opcode::I32Mul,                 // b*q
+
+            // r = a % b (signed)
+            Opcode::I32Const(a.into()),
+            Opcode::I32Const(b.into()),
+            Opcode::I32RemS,                // r
+
+            // b*q + r
+            Opcode::I32Add,
+
+            // compare to a
+            Opcode::I32Const(a.into()),
+            Opcode::I32Eq,
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+    // --- unaligned mw/mr must panic (addr % 4 != 0) ---
+    #[test]
+    #[should_panic(expected = "Invalid memory access")]
+    fn test_mw_unaligned_panics() {
+        let program = Program::from_instrs(vec![]);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        // force unaligned write
+        rt.mw(2, 0xDEAD_BEEFu32, 0, 1, None);
+    }
+    // --- event emission sanity: add should produce CPU & ALU events ---
+    #[test]
+    fn test_event_emission_add() {
+        let opcodes = vec![
+            Opcode::I32Const(10u32.into()),
+            Opcode::I32Const(20u32.into()),
+            Opcode::I32Add,
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+
+        // After run(), shards are in rt.records
+        let total_cpu: usize = rt.records.iter().map(|r| r.cpu_events.len()).sum();
+        let total_add: usize = rt.records.iter().map(|r| r.add_events.len()).sum();
+
+        assert!(total_cpu > 0, "expected CPU events");
+        assert!(total_add > 0, "expected at least one add ALU event");
+    }
     #[test]
     fn test_add() {
         let sp_value: u32 = SP_START;
