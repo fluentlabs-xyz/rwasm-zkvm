@@ -3664,4 +3664,278 @@ mod tests {
         rt.run().unwrap();
         assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
     }
+    #[test]
+    fn test_stack_after_nested_calls() {
+        // inc(z) = z + 1
+        let inc_fn = vec![
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Add,
+            Opcode::Return,
+        ]; // len = 3
+
+        // f(x,y) = (x + y) + 1  ==  I32Add ; CallInternal(inc_pos) ; Return
+        // We'll compute inc_pos after setting main_len.
+        // Placeholder only to get its length (3):
+        let f_body_len = 3;
+
+        // main has: I32Const(x), I32Const(y), CallInternal(f_pos), I32Const(expected), I32Eq, Return
+        let main_len = 6u32;
+
+        // final layout: [ main | f | inc ]
+        let f_pos  = main_len;
+        let inc_pos = f_pos + f_body_len as u32;
+
+        // build f with the correct inc_pos
+        let f = vec![
+            Opcode::I32Add,
+            Opcode::CallInternal(inc_pos.into()),
+            Opcode::Return,
+        ];
+
+        let x = 10u32;
+        let y = 31u32;
+        let expected = x + y + 1;
+
+        // build main
+        let mut ops = Vec::new();
+        ops.push(Opcode::I32Const(x.into()));
+        ops.push(Opcode::I32Const(y.into()));
+        ops.push(Opcode::CallInternal(f_pos.into()));
+        ops.push(Opcode::I32Const(expected.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return); // <-- prevent fall-through into f
+
+        // append functions
+        ops.extend(f);
+        ops.extend(inc_fn);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        let sp0 = rt.state.sp;
+        rt.run().unwrap();
+
+        // one boolean result left on stack
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.sp, sp0 - 4);
+    }
+    // --- multiple calls with memory byte assembly inside a function ---
+    #[test]
+    fn test_call_build_u32_from_bytes() {
+        // build32(addr, b0,b1,b2,b3): store8 at offsets 0..3, then load32
+        let fun = vec![
+            Opcode::I32Store8(0u32), // pops (value, addr)
+            Opcode::I32Store8(1u32),
+            Opcode::I32Store8(2u32),
+            Opcode::I32Store8(3u32),
+            Opcode::I32Load(0u32),   // pops addr, pushes word
+            Opcode::Return,
+        ];
+
+        // main = grow(4), push 9 items (addr sequencing below), call, cmp, return
+        // total main_len = 2 (grow) + 9 (pushes) + 1 (call) + 2 (cmp) + 1 (ret) = 15
+        let main_len = 15u32;
+        let fun_pos  = main_len;
+
+        let addr: u32 = 0x30000; // needs 4 pages (4 * 64KiB = 262,144 bytes)
+        let b0 = 0x11u32; let b1 = 0x22u32; let b2 = 0x33u32; let b3 = 0x44u32;
+        let expected = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+
+        let mut ops = Vec::new();
+        // Allocate 4 pages
+        ops.push(Opcode::I32Const(4.into()));
+        ops.push(Opcode::MemoryGrow);
+
+        // Stack on function entry must be (top right):
+        // [ addr(load), addr(b3), b3, addr(b2), b2, addr(b1), b1, addr(b0), b0 ]
+        // so each store8 pops value then addr in order b0, b1, b2, b3; and one addr remains for load.
+        ops.push(Opcode::I32Const(addr.into())); // for final load (bottom-most)
+        ops.push(Opcode::I32Const(addr.into())); ops.push(Opcode::I32Const(b3.into()));
+        ops.push(Opcode::I32Const(addr.into())); ops.push(Opcode::I32Const(b2.into()));
+        ops.push(Opcode::I32Const(addr.into())); ops.push(Opcode::I32Const(b1.into()));
+        ops.push(Opcode::I32Const(addr.into())); ops.push(Opcode::I32Const(b0.into()));
+
+        // Call the function
+        ops.push(Opcode::CallInternal(fun_pos.into()));
+
+        // Compare with expected, then return to avoid fall-through into function body
+        ops.push(Opcode::I32Const(expected.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return);
+
+        // Append function
+        ops.extend(fun);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+    // --- chain calls: (((x+1)+1)*2) then >> 1 => x+2 (sanity of order) ---
+    #[test]
+    fn test_chain_calls_and_shifts() {
+        let inc = vec![
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Add,
+            Opcode::Return,
+        ]; // len 3
+
+        let times2 = vec![
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Shl,
+            Opcode::Return,
+        ]; // len 3
+
+        // main: const x, call inc, call inc, call times2, const 1, shrU, const expected, eq, return => 9
+        let main_len = 9u32;
+
+        let inc1_pos   = main_len;
+        let inc2_pos   = inc1_pos + inc.len() as u32;
+        let times2_pos = inc2_pos + inc.len() as u32;
+
+        let x = 100u32;
+        let expected = x + 2;
+
+        let mut ops = Vec::new();
+        ops.push(Opcode::I32Const(x.into()));                 // x
+        ops.push(Opcode::CallInternal(inc1_pos.into()));      // x+1
+        ops.push(Opcode::CallInternal(inc2_pos.into()));      // x+2
+        ops.push(Opcode::CallInternal(times2_pos.into()));    // (x+2)*2
+        ops.push(Opcode::I32Const(1u32.into()));              // shift by 1
+        ops.push(Opcode::I32ShrU);                            // ((x+2)*2) >> 1 == x+2
+        ops.push(Opcode::I32Const(expected.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return);                             // prevent fall-through
+
+        // append functions
+        ops.extend(inc.clone());
+        ops.extend(inc);
+        ops.extend(times2);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+    // --- function that conditionally skips work with Br (simple jump) ---
+    #[test]
+    fn test_function_with_simple_br_skip() {
+        use rwasm::BranchOffset;
+
+        // f(x,y): (x+y); Br(2) to skip the next insn; Return
+        let f = vec![
+            Opcode::I32Add,                            // (x + y)
+            Opcode::Br(BranchOffset::from(2i32)),      // skip over I32Const(999) to Return
+            Opcode::I32Const(999u32.into()),           // should be skipped
+            Opcode::Return,
+        ];
+
+        // main: x,y; call f; const expected; eq; return  => 6 ops
+        let main_len = 6u32;
+        let f_pos = main_len;
+
+        let x = 7u32; let y = 8u32; let expected = x + y;
+
+        let mut ops = Vec::new();
+        ops.push(Opcode::I32Const(x.into()));
+        ops.push(Opcode::I32Const(y.into()));
+        ops.push(Opcode::CallInternal(f_pos.into()));
+        ops.push(Opcode::I32Const(expected.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return); // prevent fall-through
+
+        ops.extend(f);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+    // --- many events sanity: multiple calls + mem ops + alu; check counts ---
+    #[test]
+    fn test_many_events_and_calls_sanity() {
+        // helpers
+        let add  = vec![Opcode::I32Add,                                Opcode::Return]; // len 2
+        let mul  = vec![Opcode::I32Mul,                                Opcode::Return]; // len 2
+        let shl1 = vec![Opcode::I32Const(1u32.into()), Opcode::I32Shl, Opcode::Return]; // len 3
+
+        // Use 0x40000 => needs >= 5 pages (5*64KiB = 327,680)
+        let addr: u32 = 0x40000;
+
+        // main:
+        // grow(5) |
+        // push addrL, addrS |
+        // (2,3, call add) |
+        // (4,5, call add) |
+        // call mul |
+        // store v3 @ addrS |
+        // load @ addrL |
+        // call shl1 |
+        // const 0 ; gtU |
+        // return
+        let main_len = 17u32;
+
+        let add_pos  = main_len;
+        let mul_pos  = add_pos + add.len() as u32;
+        let shl_pos  = mul_pos + mul.len() as u32;
+
+        let mut ops = Vec::new();
+        // grow
+        ops.push(Opcode::I32Const(5.into()));
+        ops.push(Opcode::MemoryGrow);
+
+        // two copies of addr: one for load (left behind), one for store consumption
+        ops.push(Opcode::I32Const(addr.into())); // addrL
+        ops.push(Opcode::I32Const(addr.into())); // addrS
+
+        // v1 = (2+3)
+        ops.push(Opcode::I32Const(2u32.into()));
+        ops.push(Opcode::I32Const(3u32.into()));
+        ops.push(Opcode::CallInternal(add_pos.into()));
+
+        // v2 = (4+5)
+        ops.push(Opcode::I32Const(4u32.into()));
+        ops.push(Opcode::I32Const(5u32.into()));
+        ops.push(Opcode::CallInternal(add_pos.into()));
+
+        // v3 = v1 * v2  (stack: [addrL, addrS, v3])
+        ops.push(Opcode::CallInternal(mul_pos.into()));
+
+        // store: needs [ ..., addr, value ] with value on top -> OK: top is v3, below is addrS
+        ops.push(Opcode::I32Store(0u32));  // pops v3, addrS; stack now [addrL]
+
+        // load back from addrL
+        ops.push(Opcode::I32Load(0u32));   // pops addrL, pushes v3
+
+        // << 1 via helper
+        ops.push(Opcode::CallInternal(shl_pos.into()));
+
+        // check > 0 (unsigned)
+        ops.push(Opcode::I32Const(0u32.into()));
+        ops.push(Opcode::I32GtU);
+
+        // end main
+        ops.push(Opcode::Return);
+
+        // append functions
+        ops.extend(add);
+        ops.extend(mul);
+        ops.extend(shl1);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+
+        // sanity on events
+        let calls: usize = rt.records.iter().map(|r| r.call_events.len()).sum();
+        let alus: usize = rt.records.iter().map(|r| {
+            r.add_events.len() + r.mul_events.len() + r.bitwise_events.len()
+                + r.shift_left_events.len() + r.shift_right_events.len()
+        }).sum();
+        let mems: usize = rt.records.iter().map(|r| r.memory_instr_events.len()).sum();
+        assert!(calls >= 3); // add, add, mul, shl1 -> 4 actually
+        assert!(alus  >= 3); // add/mul/shl/gtu
+        assert!(mems  >= 2); // store + load
+    }
 }
