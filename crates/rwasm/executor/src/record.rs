@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     events::{
-        AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, ConstEvent, CpuEvent, GlobalInteractionEvent, MemInstrEvent, MemoryInitializeFinalizeEvent, MemoryLocalEvent, MemoryRecordEnum, PrecompileEvent, PrecompileEvents, SysStateEvent, SyscallEvent
+        AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, CallEvent, ConstEvent, CpuEvent, GlobalInteractionEvent, MemInstrEvent, MemoryInitializeFinalizeEvent, MemoryLocalEvent, MemoryRecordEnum, PrecompileEvent, PrecompileEvents, SysStateEvent, SyscallEvent
     },
     program::Program,
     syscalls::SyscallCode,
@@ -52,7 +52,9 @@ pub struct ExecutionRecord {
     pub branch_events: Vec<BranchEvent>,
     /// A trace of the constant events.
     pub const_events: Vec<ConstEvent>,
-     /// A trace of the constant events.
+    /// A trace of the constant events.
+    pub call_events: Vec<CallEvent>,
+    /// A trace of the constant events.
     pub sys_state_events: Vec<SysStateEvent>,
 
     /// A trace of the byte lookups that are needed.
@@ -248,15 +250,14 @@ impl ExecutionRecord {
     pub fn get_local_mem_events(&self) -> impl Iterator<Item = &MemoryLocalEvent> {
         println!("local events");
         let precompile_local_mem_events = self.precompile_events.get_local_mem_events();
-        for item in self.cpu_local_memory_access.iter(){
-             println!(" event:{:?}",item);
+        for item in self.cpu_local_memory_access.iter() {
+            println!(" event:{:?}", item);
         }
         precompile_local_mem_events.chain(self.cpu_local_memory_access.iter())
     }
 }
 
-
-pub type  MemoryAccessRecord =rwasm::mem::MemoryAccessRecord;
+pub type MemoryAccessRecord = rwasm::mem::MemoryAccessRecord;
 
 impl MachineRecord for ExecutionRecord {
     type Config = SP1CoreOpts;
@@ -274,8 +275,8 @@ impl MachineRecord for ExecutionRecord {
         stats.insert("lt_events".to_string(), self.lt_events.len());
         stats.insert("memory_opcodes_events".to_string(), self.memory_instr_events.len());
         stats.insert("branch_events".to_string(), self.branch_events.len());
-        stats.insert("branch_events".to_string(), self.branch_events.len());
         stats.insert("const_events".to_string(), self.const_events.len());
+        stats.insert("call_events".to_string(), self.call_events.len());
 
         for (syscall_code, events) in self.precompile_events.iter() {
             stats.insert(format!("syscall {syscall_code:?}"), events.len());
@@ -310,7 +311,8 @@ impl MachineRecord for ExecutionRecord {
         self.lt_events.append(&mut other.lt_events);
         self.memory_instr_events.append(&mut other.memory_instr_events);
         self.branch_events.append(&mut other.branch_events);
-
+        self.const_events.append(&mut other.const_events);
+        self.call_events.append(&mut other.call_events);
         self.syscall_events.append(&mut other.syscall_events);
 
         self.precompile_events.append(&mut other.precompile_events);
@@ -324,7 +326,7 @@ impl MachineRecord for ExecutionRecord {
         self.global_memory_initialize_events.append(&mut other.global_memory_initialize_events);
         self.global_memory_finalize_events.append(&mut other.global_memory_finalize_events);
         self.cpu_local_memory_access.append(&mut other.cpu_local_memory_access);
-        println!("other global:{:?}",other.global_interaction_events);
+        println!("other global:{:?}", other.global_interaction_events);
         self.global_interaction_events.append(&mut other.global_interaction_events);
     }
 

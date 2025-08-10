@@ -47,6 +47,9 @@ pub enum InteractionKind {
 
     /// Interaction with the global table.
     Global = 9,
+
+    ///Interaction with Call table
+    Call = 10,
 }
 
 impl InteractionKind {
@@ -62,6 +65,7 @@ impl InteractionKind {
             InteractionKind::Range,
             InteractionKind::Field,
             InteractionKind::Syscall,
+            InteractionKind::Call,
         ]
     }
 }
@@ -104,6 +108,7 @@ impl Display for InteractionKind {
             InteractionKind::Field => write!(f, "Field"),
             InteractionKind::Syscall => write!(f, "Syscall"),
             InteractionKind::Global => write!(f, "Global"),
+            InteractionKind::Call => write!(f, "Call"),
         }
     }
 }

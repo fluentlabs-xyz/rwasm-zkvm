@@ -136,8 +136,12 @@ pub enum RwasmAirId {
     /// The global chip.
     #[subenum(CoreAirId)]
     Global = 43,
+
     /// The byte chip.
     Byte = 44,
+    /// The Call Chip
+    #[subenum(CoreAirId)]
+    Call = 45,
 }
 
 impl RwasmAirId {
@@ -157,7 +161,7 @@ impl RwasmAirId {
             RwasmAirId::MemoryLocal,
             RwasmAirId::MemoryInstrs,
             RwasmAirId::Branch,
-            RwasmAirId::Jump,
+            RwasmAirId::Call,
             RwasmAirId::SyscallCore,
             RwasmAirId::SyscallInstrs,
             RwasmAirId::Global,

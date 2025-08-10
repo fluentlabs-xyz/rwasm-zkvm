@@ -3,7 +3,7 @@ use crate::profiler::Profiler;
 use crate::{
     dependencies::{emit_branch_dependencies, emit_divrem_dependencies, emit_memory_dependencies},
     estimator::RecordEstimator,
-    events::{ConstEvent, SysStateEvent, SyscallEvent},
+    events::{CallEvent, ConstEvent, SysStateEvent, SyscallEvent},
     syscalls, SP_START,
 };
 use std::rc::Rc;
@@ -16,7 +16,11 @@ use enum_map::EnumMap;
 use hashbrown::HashMap;
 
 use rwasm::{
-    always_failing_syscall_handler, mem::MemoryLocalEvent, CallStack, ExecutionEngine, ExecutorConfig, ImportLinker, InstructionPtr, Opcode, RwasmExecutor, RwasmModule, RwasmStore, Store, Tracer, TrapCode, ValueStack, ValueStackPtr
+    always_failing_syscall_handler,
+    mem::{MemoryLocalEvent, MemoryRecordEnum},
+    CallStack, ExecutionEngine, ExecutorConfig, ImportLinker, InstructionPtr, Opcode,
+    RwasmExecutor, RwasmModule, RwasmStore, Store, TraceCallData, Tracer, TrapCode, ValueStack,
+    ValueStackPtr,
 };
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
@@ -33,7 +37,7 @@ use crate::{
     estimate_riscv_lde_size,
     events::{
         AluEvent, BranchEvent, CpuEvent, MemInstrEvent, MemoryInitializeFinalizeEvent,
-        MemoryReadRecord, MemoryRecord, MemoryRecordEnum, MemoryWriteRecord,
+        MemoryReadRecord, MemoryRecord, MemoryWriteRecord,
         NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC,
     },
     hook::{HookEnv, HookRegistry},
@@ -55,10 +59,10 @@ use crate::{
 pub const DEFAULT_PC_INC: u32 = 1;
 ///The default increment for the clk. we increase clk for two becaseu we have
 /// a reading phase and a writing phase.
-pub const DEFAULT_CLK_INC: u32 = 2*DEFAULT_PC_INC;
+pub const DEFAULT_CLK_INC: u32 = 2 * DEFAULT_PC_INC;
 /// This is used in the `InstrEvent` to indicate that the opcode is not from the CPU.
 /// A valid pc should be divisible by 4, so we use 1 to indicate that the pc is not used.
-pub const UNUSED_PC: u32 = 1<<24;
+pub const UNUSED_PC: u32 = 1 << 24;
 
 /// The maximum number of opcodes in a program.
 pub const MAX_PROGRAM_SIZE: usize = 1 << 22;
@@ -705,27 +709,40 @@ impl<'a> Executor<'a> {
     fn emit_events(
         &mut self,
         clk: u32,
-        pc:u32,
+        pc: u32,
         next_pc: u32,
         sp: u32,
-        next_sp:u32,
+        next_sp: u32,
+        call_sp: u32,
+        next_call_sp: u32,
         opcode: Opcode,
         syscall_code: SyscallCode,
         arg1: u32,
         arg2: u32,
         res: u32,
         record: MemoryAccessRecord,
+        call_data: Option<TraceCallData>,
     ) {
         println!("emit cpu");
-        if !opcode.is_memory_instruction(){
-              self.emit_cpu(clk,pc, next_pc, sp, next_sp,arg1, arg2, res, record, 0u32);
-        } else{
-            self.emit_cpu(clk,pc, next_pc, sp, next_sp,arg1, opcode.aux_value(), arg2, record, 0u32);
+        if opcode.is_memory_instruction() {
+            self.emit_cpu(
+                clk,
+                pc,
+                next_pc,
+                sp,
+                next_sp,
+                arg1,
+                opcode.aux_value(),
+                arg2,
+                record,
+                0u32,
+            );
+        } else {
+            self.emit_cpu(clk, pc, next_pc, sp, next_sp, arg1, arg2, res, record, 0u32);
         }
 
-
         if opcode.is_alu_instruction() {
-            self.emit_alu_event(pc,opcode, arg1, arg2, res);
+            self.emit_alu_event(pc, opcode, arg1, arg2, res);
         } else if opcode.is_memory_load_instruction() || opcode.is_memory_store_instruction() {
             self.emit_mem_instr_event(opcode, arg1, arg2, res, record);
         } else if opcode.is_branch_instruction() {
@@ -739,6 +756,44 @@ impl<'a> Executor<'a> {
             {
                 println!("sys_state_event not generated here");
             }
+        } else if opcode.is_call_instruction() {
+            let record: Option<MemoryRecordEnum> = match opcode {
+                Opcode::Call(_) | Opcode::CallIndirect(_) | Opcode::CallInternal(_) => {
+                    record.res_record
+                }
+                Opcode::Return => record.arg1_record,
+                _ => unreachable!(),
+            };
+            match call_data {
+                Some(call_data) => {
+                    self.emit_call_event(
+                        pc,
+                        next_pc,
+                        opcode,
+                        call_sp,
+                        next_call_sp,
+                        call_data.signature_id,
+                        call_data.func_ref,
+                        call_data.table_id,
+                        call_data.table_idx,
+                        record,
+                    );
+                }
+                None => {
+                    self.emit_call_event(
+                        pc,
+                        next_pc,
+                        opcode,
+                        call_sp,
+                        next_call_sp,
+                        0,
+                        opcode.aux_value(),
+                        0,
+                        0,
+                        record,
+                    );
+                }
+            }
         } else {
             println!("no event :ins:{:?},", opcode);
         }
@@ -750,10 +805,10 @@ impl<'a> Executor<'a> {
     fn emit_cpu(
         &mut self,
         clk: u32,
-        pc:u32,
+        pc: u32,
         next_pc: u32,
         sp: u32,
-        next_sp:u32,
+        next_sp: u32,
         arg1: u32,
         arg2: u32,
         res: u32,
@@ -778,9 +833,8 @@ impl<'a> Executor<'a> {
 
     /// Emit an ALU event.
     #[allow(clippy::too_many_lines)]
-    fn emit_alu_event(&mut self,pc:u32 , opcode: Opcode, arg1: u32, arg2: u32, res: u32) {
-        let event =
-            AluEvent { pc,opcode, a: res, b: arg1, c: arg2, code: opcode.code() };
+    fn emit_alu_event(&mut self, pc: u32, opcode: Opcode, arg1: u32, arg2: u32, res: u32) {
+        let event = AluEvent { pc, opcode, a: res, b: arg1, c: arg2, code: opcode.code() };
         match opcode {
             Opcode::I32Add => {
                 self.record.add_events.push(event);
@@ -830,7 +884,7 @@ impl<'a> Executor<'a> {
                     }
                 };
                 let lt_comp_event = AluEvent {
-                    pc:UNUSED_PC,
+                    pc: UNUSED_PC,
                     opcode: cmp_ins,
                     a: arg1_lt_arg2 as u32,
                     b: event.b,
@@ -845,9 +899,9 @@ impl<'a> Executor<'a> {
                     c: event.b,
                     code: cmp_ins.code(),
                 };
-                if opcode==Opcode::I32LtS{
-                     println!("gt event:{:?}",gt_comp_event);
-               println!("lt event:{:?}",lt_comp_event);
+                if opcode == Opcode::I32LtS {
+                    println!("gt event:{:?}", gt_comp_event);
+                    println!("lt event:{:?}", lt_comp_event);
                 }
 
                 self.record.lt_events.push(gt_comp_event);
@@ -890,7 +944,7 @@ impl<'a> Executor<'a> {
             mem_access: record.memory.expect("Must have memory access"),
             mem_access_hi: record.memory_hi,
         };
-        println!("mem event:{:?}",event);
+        println!("mem event:{:?}", event);
         self.record.memory_instr_events.push(event);
         emit_memory_dependencies(self, event);
     }
@@ -899,7 +953,7 @@ impl<'a> Executor<'a> {
     #[inline]
     fn emit_branch_event(&mut self, opcode: Opcode, arg1: u32, arg2: u32, res: u32, next_pc: u32) {
         let event = BranchEvent { pc: self.state.pc, next_pc, opcode, res, arg1, arg2 };
-         println!("br event:{:?}",event);
+        println!("br event:{:?}", event);
         self.record.branch_events.push(event);
 
         emit_branch_dependencies(self, event);
@@ -974,6 +1028,35 @@ impl<'a> Executor<'a> {
     fn emit_const_event(&mut self, opcode: Opcode) {
         let event = ConstEvent { pc: self.state.pc, opcode, value: opcode.aux_value() };
         self.record.const_events.push(event);
+    }
+
+    #[inline]
+    fn emit_call_event(
+        &mut self,
+        pc: u32,
+        next_pc: u32,
+        opcode: Opcode,
+        call_sp: u32,
+        next_call_sp: u32,
+        signature_id: u32,
+        func_ref: u32,
+        table_id: u32,
+        table_idx: u32,
+        call_stack_access: Option<MemoryRecordEnum>,
+    ) {
+        let event = CallEvent {
+            pc,
+            next_pc,
+            opcode,
+            call_sp,
+            next_call_sp,
+            signature_id,
+            func_ref,
+            table_id,
+            table_idx,
+            call_stack_access,
+        };
+        self.record.call_events.push(event);
     }
 
     // Emit a branch event.
@@ -1102,20 +1185,23 @@ impl<'a> Executor<'a> {
         let op_state = self.store.tracer.logs.last().unwrap();
         let syscall = SyscallCode::default();
 
-        self.state.clk=op_state.clk;
-        self.state.pc=op_state.pc;
+        self.state.clk = op_state.clk;
+        self.state.pc = op_state.pc;
         self.emit_events(
             op_state.clk,
             op_state.pc,
             op_state.next_pc,
             op_state.sp,
             op_state.next_sp,
+            op_state.call_sp,
+            op_state.next_call_sp,
             op_state.opcode,
             syscall,
             op_state.arg1,
             op_state.arg2,
             op_state.res,
             op_state.memory_access,
+            op_state.call_state.clone(),
         );
         // if op_state.opcode.is_state_instrucition() {
         //TODO: generate sys_state_event here
@@ -1457,7 +1543,7 @@ impl<'a> Executor<'a> {
             )
             .step();
             let res = self.execute_cycle(res)?;
-            println!("self.record.cpuevent:{:?}",self.record.cpu_events);
+            println!("self.record.cpuevent:{:?}", self.record.cpu_events);
             if res {
                 done = true;
                 break;
@@ -1486,7 +1572,6 @@ impl<'a> Executor<'a> {
         let public_values = self.record.public_values;
         self.state.update_state(&self.store);
         if done {
-
             self.postprocess();
 
             // Push the remaining execution record with memory initialize & finalize events.
@@ -1613,33 +1698,28 @@ impl<'a> Executor<'a> {
             // memory_initialize_events.push(addr_0_init);
             // memory_finalize_events.push(addr_0_final);
 
-
             // Count the number of touched memory addresses manually, since `PagedMemory` doesn't
             // already know its length.
             self.report.touched_memory_addresses = 0;
 
             for addr in self.state.memory.page_table.keys() {
-                println!("addr:{}",addr);
+                println!("addr:{}", addr);
                 self.report.touched_memory_addresses += 1;
 
                 // Program memory is initialized in the MemoryProgram chip and doesn't require any
                 // events, so we only send init events for other memory addresses.
 
                 let initial_value = self.state.uninitialized_memory.get(addr).unwrap_or(&0);
-                let init_event = MemoryInitializeFinalizeEvent::initialize(
-                    addr,
-                    *initial_value,
-                    true,
-                );
-                 println!("init_event:{:?}",init_event);
+                let init_event =
+                    MemoryInitializeFinalizeEvent::initialize(addr, *initial_value, true);
+                println!("init_event:{:?}", init_event);
                 memory_initialize_events.push(init_event);
 
-
                 let record = *self.state.memory.get(addr).unwrap();
-                let final_event =MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record);
-                println!("final_event:{:?}",final_event);
-                memory_finalize_events
-                    .push(final_event);
+                let final_event =
+                    MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record);
+                println!("final_event:{:?}", final_event);
+                memory_finalize_events.push(final_event);
             }
         }
     }
@@ -1796,7 +1876,10 @@ mod tests {
     use crate::{align, Executor, Program};
     use hashbrown::HashMap;
 
-    use rwasm::{mem_index::{AddressType, SP_START, UNIT}, BranchOffset, Op, Opcode};
+    use rwasm::{
+        mem_index::{AddressType, SP_START, UNIT},
+        BranchOffset, Op, Opcode,
+    };
     use sp1_stark::SP1CoreOpts;
 
     #[test]
@@ -1816,7 +1899,7 @@ mod tests {
         runtime.run().unwrap();
         assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value + y_value);
         println!("initial sp_value {} and last state.sp {}", sp_value, runtime.state.sp);
-        assert_eq!(sp_value, runtime.state.sp +4 );
+        assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
     fn test_add_eq() {
@@ -1828,9 +1911,9 @@ mod tests {
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32Add, // 32 + 4 = 36
-            Opcode::I32Const((x_value+y_value).into()),
+            Opcode::I32Const((x_value + y_value).into()),
             Opcode::I32Eq, //stack has now 1
-            //Opcode::Drop,
+                           //Opcode::Drop,
         ];
 
         let program = Program::from_instrs(opcodes);
@@ -1838,7 +1921,7 @@ mod tests {
         runtime.run().unwrap();
         println!("initial sp_value {} and last state.sp {}", sp_value, runtime.state.sp);
         assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
-        assert_eq!(sp_value, runtime.state.sp+4);
+        assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
     fn test_add_eq_drop() {
@@ -1850,9 +1933,9 @@ mod tests {
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32Add, // 32 + 4 = 36
-            Opcode::I32Const((x_value+y_value).into()),
+            Opcode::I32Const((x_value + y_value).into()),
             Opcode::I32Eq, //stack has now 1
-            Opcode::Drop, // no stack elements
+            Opcode::Drop,  // no stack elements
         ];
 
         let program = Program::from_instrs(opcodes);
@@ -1871,7 +1954,7 @@ mod tests {
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32Sub, // 32 - 4 = 28
-            Opcode::I32Const((x_value-y_value).into()),
+            Opcode::I32Const((x_value - y_value).into()),
             Opcode::I32Eq, //stack has now 1
         ];
 
@@ -1891,7 +1974,7 @@ mod tests {
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32Xor, // 5 xor 37 = 32
-            Opcode::I32Const((x_value^y_value).into()),
+            Opcode::I32Const((x_value ^ y_value).into()),
             Opcode::I32Eq, //stack has now 1
         ];
 
@@ -1931,7 +2014,7 @@ mod tests {
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32And, // 5 and 37 = 32
-            Opcode::I32Const((x_value&y_value).into()),
+            Opcode::I32Const((x_value & y_value).into()),
             Opcode::I32Eq, //stack has now 1
         ];
 
@@ -1961,10 +2044,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
-            1
-        );
+        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
 
@@ -1981,17 +2061,14 @@ mod tests {
             Opcode::I32Const(z_value.into()),
             Opcode::I32Or, // 5 or 37 = 37
             Opcode::I32Or, // 37 or 42  = 47
-            Opcode::I32Const(( x_value | y_value | z_value).into()),
+            Opcode::I32Const((x_value | y_value | z_value).into()),
             Opcode::I32Eq, //stack has now 1
         ];
 
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
-            1
-        );
+        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2007,17 +2084,14 @@ mod tests {
             Opcode::I32Const(z_value.into()),
             Opcode::I32And, // 5 and 37 = 32
             Opcode::I32And, // 5 and 4  = 4
-            Opcode::I32Const(( x_value & y_value & z_value).into()),
+            Opcode::I32Const((x_value & y_value & z_value).into()),
             Opcode::I32Eq, //stack has now 1
         ];
 
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
-            1
-        );
+        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2030,7 +2104,7 @@ mod tests {
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32Mul, // 5 * 32 = 160
-            Opcode::I32Const(( x_value * y_value).into()),
+            Opcode::I32Const((x_value * y_value).into()),
             Opcode::I32Eq, //stack has now 1
         ];
 
@@ -2777,8 +2851,6 @@ mod tests {
         runtime.run().unwrap();
         assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value);
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
-
-
     }
 
     #[test]
@@ -2796,7 +2868,6 @@ mod tests {
             Opcode::I32Store(3u32),
             Opcode::I32Const(addr.into()),
             Opcode::I32Load(3u32),
-
         ];
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -2808,7 +2879,7 @@ mod tests {
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
     }
 
-     #[test]
+    #[test]
     fn test_load_unaligned() {
         let sp_value: u32 = SP_START;
         let x_value: u32 = 0x1103_0507;
@@ -2823,7 +2894,6 @@ mod tests {
             Opcode::I32Store(0u32),
             Opcode::I32Const(addr.into()),
             Opcode::I32Load(3u32),
-
         ];
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -3132,34 +3202,34 @@ mod tests {
         assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value);
     }
 
-    // #[test]
-    // fn test_call_internal_and_return() {
-    //     let sp_value: u32 = SP_START;
-    //     let x_value: u32 = 0x3;
-    //     let y_value: u32 = 0x5;
-    //     let z_value: u32 = 0x7;
-    //     let mut functions = vec![0, 24];
+    #[test]
+    fn test_call_internal_and_return() {
+        let sp_value: u32 = SP_START;
+        let x_value: u32 = 0x7;
+        let y_value: u32 = 0x2;
+        let z_value: u32 = 0x1;
+        let mut functions = vec![0, 24];
 
-    //     let opcodes = vec![
-    //         Opcode::I32Const(x_value.into()),
-    //         Opcode::I32Const(y_value.into()),
-    //         Opcode::I32Const(z_value.into()),
-    //         Opcode::CallInternal(1u32.into()),
-    //         // Opcode::Return(DropKeep::none()),
-    //         Opcode::I32Add,
-    //         Opcode::I32Add,
-    //         Opcode::Return,
-    //     ];
+        let opcodes = vec![
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(y_value.into()),
+            Opcode::I32Const(z_value.into()),
+            Opcode::CallInternal(6u32.into()),
+            Opcode::I32Sub,
+            Opcode::Return,
+            Opcode::I32Add,
+            Opcode::Return,
+        ];
 
-    //     let program = Program::new_with_memory_and_func(opcodes, HashMap::new(), functions, 0, 0);
-    //     //  memory_image: BTreeMap::new() };
-    //     let mut runtime = Executor::new(program, SP1CoreOpts::default());
-    //     runtime.run().unwrap();
-    //     assert_eq!(
-    //         runtime.state.memory.get(runtime.state.sp).unwrap().value,
-    //         x_value + y_value + z_value
-    //     );
-    // }
+        let program = Program::from_instrs(opcodes);
+        //  memory_image: BTreeMap::new() };
+        let mut runtime = Executor::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
+        assert_eq!(
+            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            x_value - (y_value + z_value)
+        );
+    }
     #[test]
     fn test_i32constwithAdd() {
         let sp_value: u32 = SP_START;

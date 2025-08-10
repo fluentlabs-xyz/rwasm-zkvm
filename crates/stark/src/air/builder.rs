@@ -310,6 +310,67 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
             scope,
         );
     }
+
+     /// Sends an syscall operation to be processed (with "ECALL" opcode).
+    #[allow(clippy::too_many_arguments)]
+    fn send_call(
+        &mut self,
+        shard: impl Into<Self::Expr> + Clone,
+        clk: impl Into<Self::Expr> + Clone,
+        opcode: impl Into<Self::Expr> + Clone,
+        func_ref: impl Into<Self::Expr> + Clone,
+        table_id:  impl Into<Self::Expr> + Clone,
+        table_idx:  impl Into<Self::Expr> + Clone,
+        multiplicity: impl Into<Self::Expr>,
+        scope: InteractionScope,
+    ) {
+        self.send(
+            AirInteraction::new(
+                vec![
+                    shard.clone().into(),
+                    clk.clone().into(),
+                    opcode.clone().into(),
+                    func_ref.clone().into(),
+                    table_id.clone().into(),
+                    table_idx.clone().into(),
+                ],
+                multiplicity.into(),
+                InteractionKind::Call,
+            ),
+            scope,
+        );
+    }
+
+    /// Receives a syscall operation to be processed.
+    #[allow(clippy::too_many_arguments)]
+    fn receive_call(
+        &mut self,
+     
+        shard: impl Into<Self::Expr> + Clone,
+        clk: impl Into<Self::Expr> + Clone,
+        opcode: impl Into<Self::Expr> + Clone,
+        func_ref: impl Into<Self::Expr> + Clone,
+          table_id:  impl Into<Self::Expr> + Clone,
+        table_idx:  impl Into<Self::Expr> + Clone,
+        multiplicity: impl Into<Self::Expr>,
+        scope: InteractionScope,
+    ) {
+        self.receive(
+            AirInteraction::new(
+                vec![
+                     shard.clone().into(),
+                    clk.clone().into(),
+                    opcode.clone().into(),
+                    func_ref.clone().into(),
+                    table_id.clone().into(),
+                    table_idx.clone().into(),
+                ],
+                multiplicity.into(),
+                InteractionKind::Call,
+            ),
+            scope,
+        );
+    }
 }
 
 /// A builder that can operation on extension elements.

@@ -15,6 +15,7 @@ use strum_macros::{EnumDiscriminants, EnumIter};
 use crate::{bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS, shape::Shapeable};
 use crate::{
     control_flow::BranchChip,
+    control_flow::CallChip,
     global::GlobalChip,
     memory::{MemoryChipType, MemoryInstructionsChip, MemoryLocalChip},
     syscall::{
@@ -91,6 +92,8 @@ pub enum RwasmAir<F: PrimeField32> {
     Memory(MemoryInstructionsChip),
     /// An AIR for RISC-V branch instructions.
     Branch(BranchChip),
+    /// An AIR for RISC-V branch instructions.
+    Call(CallChip),
     /// An AIR for RISC-V ecall instructions.
     SyscallInstrs(SyscallInstrsChip),
     /// A lookup table for byte operations.
@@ -516,6 +519,7 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Memory => RwasmAirId::MemoryInstrs,
 
             RwasmAirDiscriminants::Branch => RwasmAirId::Branch,
+            RwasmAirDiscriminants::Call=> RwasmAirId::Call,
 
             RwasmAirDiscriminants::SyscallInstrs => RwasmAirId::SyscallInstrs,
             RwasmAirDiscriminants::ByteLookup => RwasmAirId::Byte,

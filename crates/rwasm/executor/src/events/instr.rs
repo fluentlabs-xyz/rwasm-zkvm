@@ -56,9 +56,8 @@ pub struct MemInstrEvent {
     /// The memory access record for memory operations.
     pub mem_access: MemoryRecordEnum,
 
-     /// The memory access record for memory operations.
+    /// The memory access record for memory operations.
     pub mem_access_hi: Option<MemoryRecordEnum>,
-
 }
 
 impl MemInstrEvent {
@@ -75,9 +74,9 @@ impl MemInstrEvent {
         res: u32,
 
         mem_access: MemoryRecordEnum,
-        mem_access_hi:Option<MemoryRecordEnum>,
+        mem_access_hi: Option<MemoryRecordEnum>,
     ) -> Self {
-        Self { shard, clk, pc, opcode, raw_addr, offset, res, mem_access,mem_access_hi }
+        Self { shard, clk, pc, opcode, raw_addr, offset, res, mem_access, mem_access_hi }
     }
 }
 
@@ -134,7 +133,6 @@ impl ConstEvent {
     }
 }
 
-
 ///TODO: this event is for changing the state of rwasm engine. not finished yet.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
@@ -142,23 +140,81 @@ pub struct SysStateEvent {
     /// The fuel before op
     pub fuel: u32,
     /// The fuel after op
-    pub next_fuel:u32,
+    pub next_fuel: u32,
     /// The Opcode
     pub opcode: Opcode,
     /// maximium memory before op
-    pub max_memory:u32,
+    pub max_memory: u32,
     /// maximium memory after op
-    pub next_max_memory:u32,
+    pub next_max_memory: u32,
 }
 
 impl SysStateEvent {
     ///create a new system state event
-    #[must_use] 
-    pub fn new(opcode:Opcode,fuel:u32,next_fuel:u32,max_memory:u32,next_max_memory:u32)->Self{
-        SysStateEvent { fuel, next_fuel,
-             opcode,
-              max_memory, 
-              next_max_memory,
-             }
+    #[must_use]
+    pub fn new(
+        opcode: Opcode,
+        fuel: u32,
+        next_fuel: u32,
+        max_memory: u32,
+        next_max_memory: u32,
+    ) -> Self {
+        SysStateEvent { fuel, next_fuel, opcode, max_memory, next_max_memory }
+    }
+}
+/// Call opcode Event.
+///
+/// This object encapsulated the information needed to prove a RISC-V branch operation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[repr(C)]
+pub struct CallEvent {
+    /// The program counter.
+    pub pc: u32,
+    /// The next program counter.
+    pub next_pc: u32,
+    /// The Opcode
+    pub opcode: Opcode,
+
+    /// The first operand value.
+    pub call_sp: u32,
+    /// The second operand value.
+    pub next_call_sp: u32,
+    /// The third operand value.
+    pub signature_id: u32,
+    pub func_ref: u32,
+
+    pub table_id: u32,
+    pub table_idx: u32,
+    pub call_stack_access: Option<MemoryRecordEnum>,
+}
+
+impl CallEvent {
+    /// Create a new [`CallEvent`].
+    #[must_use]
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        pc: u32,
+        next_pc: u32,
+        opcode: Opcode,
+        call_sp: u32,
+        next_call_sp: u32,
+        signature_id: u32,
+        func_ref: u32,
+        table_id: u32,
+        table_idx: u32,
+        call_stack_access: Option<MemoryRecordEnum>,
+    ) -> Self {
+        Self {
+            pc,
+            next_pc,
+            opcode,
+            call_sp,
+            next_call_sp,
+            signature_id,
+            func_ref,
+            table_id,
+            table_idx,
+            call_stack_access,
+        }
     }
 }
