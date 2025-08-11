@@ -3938,4 +3938,88 @@ mod tests {
         assert!(alus  >= 3); // add/mul/shl/gtu
         assert!(mems  >= 2); // store + load
     }
+    // --- Fibonacci n=9 via iterative step function and CallInternal ---
+    #[test]
+    fn test_fibonacci_n9_callinternal() {
+        let base: u32 = 0x10000;
+        let addr_tmp = base + 0;
+        let addr_a   = base + 4;   // will hold F(n)
+        let addr_b   = base + 8;   // will hold F(n+1)
+        let addr_n   = base + 12;
+
+        // step(): (a,b,n) -> (b, a+b, n-1); returns new n
+        let step_fn = vec![
+            // tmp = a + b
+            Opcode::I32Const(addr_tmp.into()),
+            Opcode::I32Const(addr_a.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(addr_b.into()), Opcode::I32Load(0u32),
+            Opcode::I32Add,
+            Opcode::I32Store(0u32),
+
+            // a = b
+            Opcode::I32Const(addr_a.into()),
+            Opcode::I32Const(addr_b.into()), Opcode::I32Load(0u32),
+            Opcode::I32Store(0u32),
+
+            // b = tmp
+            Opcode::I32Const(addr_b.into()),
+            Opcode::I32Const(addr_tmp.into()), Opcode::I32Load(0u32),
+            Opcode::I32Store(0u32),
+
+            // n = n - 1
+            Opcode::I32Const(addr_n.into()),
+            Opcode::I32Const(addr_n.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(1u32.into()), Opcode::I32Sub,
+            Opcode::I32Store(0u32),
+
+            // return n
+            Opcode::I32Const(addr_n.into()), Opcode::I32Load(0u32),
+            Opcode::Return,
+        ];
+
+        let mut ops = Vec::new();
+        // memory
+        ops.push(Opcode::I32Const(2.into()));
+        ops.push(Opcode::MemoryGrow);
+
+        // a=0
+        ops.push(Opcode::I32Const(addr_a.into()));
+        ops.push(Opcode::I32Const(0u32.into()));
+        ops.push(Opcode::I32Store(0u32));
+        // b=1
+        ops.push(Opcode::I32Const(addr_b.into()));
+        ops.push(Opcode::I32Const(1u32.into()));
+        ops.push(Opcode::I32Store(0u32));
+        // n=9
+        ops.push(Opcode::I32Const(addr_n.into()));
+        ops.push(Opcode::I32Const(9u32.into()));
+        ops.push(Opcode::I32Store(0u32));
+
+        // 9 iterations: call step, drop returned n
+        let mut call_sites = Vec::<usize>::new();
+        for _ in 0..9 {
+            call_sites.push(ops.len());
+            ops.push(Opcode::CallInternal(0u32.into())); // patched later
+            ops.push(Opcode::Drop);
+        }
+
+        // compare a with 34 (F9)
+        ops.push(Opcode::I32Const(addr_a.into()));
+        ops.push(Opcode::I32Load(0u32));
+        ops.push(Opcode::I32Const(34u32.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return);
+
+        // patch function position
+        let step_pos = ops.len() as u32;
+        for idx in call_sites {
+            ops[idx] = Opcode::CallInternal(step_pos.into());
+        }
+        ops.extend(step_fn);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
 }
