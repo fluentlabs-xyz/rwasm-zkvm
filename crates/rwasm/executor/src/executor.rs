@@ -4022,4 +4022,64 @@ mod tests {
         rt.run().unwrap();
         assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
     }
+    // --- Nested calls: f1 -> f2 -> f3 (3 levels) ---
+    #[test]
+    fn test_nested_three_level_calls() {
+        // f3(x): return 2*x
+        let f3 = vec![
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Shl,
+            Opcode::Return,
+        ]; // len 3
+
+        // f2(x,y): return f3(x) + y
+        let f2 = vec![
+            Opcode::CallInternal(0u32.into()), // patched to f3_pos
+            Opcode::I32Add,
+            Opcode::Return,
+        ]; // len 3
+
+        // f1(x,y,z): return f2(x,y) + z
+        let f1 = vec![
+            Opcode::CallInternal(0u32.into()), // patched to f2_pos
+            Opcode::I32Add,
+            Opcode::Return,
+        ]; // len 3
+
+        // main: push z, y, x (so top=x,y below,z bottom) ; call f1 ; cmp ; return
+        let x = 3u32; let y = 5u32; let z = 7u32;
+        let expected = (2 * x) + y + z; // 18
+
+        let mut ops = Vec::new();
+        ops.push(Opcode::I32Const(z.into()));
+        ops.push(Opcode::I32Const(y.into()));
+        ops.push(Opcode::I32Const(x.into()));
+        ops.push(Opcode::CallInternal(0u32.into())); // patch to f1_pos
+        ops.push(Opcode::I32Const(expected.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return);
+
+        // compute positions
+        let f1_pos = ops.len() as u32;              // after main
+        let mut f1_patched = f1.clone();
+        let f2_pos = f1_pos + f1.len() as u32;      // after f1
+        let mut f2_patched = f2.clone();
+        let f3_pos = f2_pos + f2.len() as u32;      // after f2
+
+        // patch call targets
+        f1_patched[0] = Opcode::CallInternal(f2_pos.into());
+        f2_patched[0] = Opcode::CallInternal(f3_pos.into());
+        ops[3] = Opcode::CallInternal(f1_pos.into());
+
+        // append functions
+        ops.extend(f1_patched);
+        ops.extend(f2_patched);
+        ops.extend(f3);
+
+        // run
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
 }
