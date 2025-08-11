@@ -4082,4 +4082,39 @@ mod tests {
         rt.run().unwrap();
         assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
     }
+    // --- Direct call using Opcode::CallInternal (f_add) ---
+    #[test]
+    fn test_call_direct_add() {
+        // f_add(x,y) = x + y
+        let f_add = vec![
+            Opcode::I32Add,
+            Opcode::Return,
+        ]; // len = 2
+
+        // main: push x, y; Call(f_add); const expected; eq; return  => 6 ops
+        let main_len = 6u32;
+        let f_add_pos = main_len;
+
+        let x = 12u32;
+        let y = 30u32;
+        let expected = x + y;
+
+        let mut ops = Vec::new();
+        ops.push(Opcode::I32Const(x.into()));
+        ops.push(Opcode::I32Const(y.into()));
+        // If your runtime expects a function index instead of a byte position,
+        ops.push(Opcode::CallInternal(f_add_pos.into()));
+        ops.push(Opcode::I32Const(expected.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return); // prevent fall-through
+
+        // append the callee
+        ops.extend(f_add);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+
 }
