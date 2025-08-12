@@ -4199,5 +4199,264 @@ mod tests {
         rt.run().unwrap();
         assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
     }
+    //Cross-page unaligned store/load with calls
+    #[test]
+    fn test_cross_page_unaligned_store_load_with_calls() {
+        // helpers
+        let add  = vec![Opcode::I32Add,                                    Opcode::Return]; // len 2
+        let shl2 = vec![Opcode::I32Const(2u32.into()), Opcode::I32Shl,     Opcode::Return]; // len 3
+
+        let a = 15u32;
+        let b = 27u32;
+        let expected = (a + b) << 2;
+
+        // choose aligned base, use unaligned offset = 3
+        let base: u32 = 0x4FFFC;
+
+        let mut ops = Vec::new();
+
+        // make sure address is valid
+        ops.push(Opcode::I32Const(6u32.into()));
+        ops.push(Opcode::MemoryGrow);
+
+        // keep addr under the value for store: push addr first
+        ops.push(Opcode::I32Const(base.into()));
+
+        // compute v = (a+b) via add
+        ops.push(Opcode::I32Const(a.into()));
+        ops.push(Opcode::I32Const(b.into()));
+        let call_add_idx = ops.len();
+        ops.push(Opcode::CallInternal(0u32.into())); // patch later
+
+        // then <<2 via shl2
+        let call_shl_idx = ops.len();
+        ops.push(Opcode::CallInternal(0u32.into())); // patch later
+
+        // store unaligned at base+3 (store pops value, then addr)
+        ops.push(Opcode::I32Store(3u32));
+
+        // load back and compare
+        ops.push(Opcode::I32Const(base.into()));
+        ops.push(Opcode::I32Load(3u32));
+        ops.push(Opcode::I32Const(expected.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return);
+
+        // append helpers and patch the calls
+        let add_pos  = ops.len() as u32;
+        ops.extend(add);
+        let shl2_pos = ops.len() as u32;
+        ops.extend(shl2);
+
+        ops[call_add_idx] = Opcode::CallInternal(add_pos.into());
+        ops[call_shl_idx] = Opcode::CallInternal(shl2_pos.into());
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+    // Dot product length=8 via stateful step function (loads, stores, ptr++), FIXED store order.
+    #[test]
+    fn test_dot_product_len8_via_step_function() {
+        // memory layout
+        let base: u32 = 0x20000;
+        let pa   = base + 0;   // ptr A
+        let pb   = base + 4;   // ptr B
+        let acc  = base + 8;   // accumulator
+        let rem  = base + 12;  // remaining
+        let arrA = base + 64;               // A[8]
+        let arrB = base + 64 + 8*4;         // B[8]
+
+        // step():
+        //   acc = acc + (*pa * *pb)
+        //   pa += 4; pb += 4; rem -= 1
+        //   return rem
+        let step = vec![
+            // ---- acc = acc + (*pa * *pb) ----
+            // Push acc address first so it's under the computed value at store time.
+            Opcode::I32Const(acc.into()),
+            // *pa
+            Opcode::I32Const(pa.into()), Opcode::I32Load(0u32), // load pa (pointer)
+            Opcode::I32Load(0u32),                              // load *pa
+            // *pb
+            Opcode::I32Const(pb.into()), Opcode::I32Load(0u32), // load pb (pointer)
+            Opcode::I32Load(0u32),                              // load *pb
+            // *pa * *pb
+            Opcode::I32Mul,
+            // + acc
+            Opcode::I32Const(acc.into()), Opcode::I32Load(0u32),
+            Opcode::I32Add,
+            // store to acc (stack: ... addr(acc), value)
+            Opcode::I32Store(0u32),
+
+            // ---- pa += 4 ----
+            Opcode::I32Const(pa.into()),
+            Opcode::I32Const(pa.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(4u32.into()), Opcode::I32Add,
+            Opcode::I32Store(0u32),
+
+            // ---- pb += 4 ----
+            Opcode::I32Const(pb.into()),
+            Opcode::I32Const(pb.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(4u32.into()), Opcode::I32Add,
+            Opcode::I32Store(0u32),
+
+            // ---- rem -= 1 ----
+            Opcode::I32Const(rem.into()),
+            Opcode::I32Const(rem.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(1u32.into()), Opcode::I32Sub,
+            Opcode::I32Store(0u32),
+
+            // return rem
+            Opcode::I32Const(rem.into()), Opcode::I32Load(0u32),
+            Opcode::Return,
+        ];
+
+        // expected: A=[1..8], B=[8..1] => dot = 120
+        let a_vals = [1u32,2,3,4,5,6,7,8];
+        let b_vals = [8u32,7,6,5,4,3,2,1];
+
+        let mut ops = Vec::new();
+        // grow memory
+        ops.push(Opcode::I32Const(3u32.into()));
+        ops.push(Opcode::MemoryGrow);
+
+        // init pointers
+        ops.push(Opcode::I32Const(pa.into())); ops.push(Opcode::I32Const(arrA.into())); ops.push(Opcode::I32Store(0u32));
+        ops.push(Opcode::I32Const(pb.into())); ops.push(Opcode::I32Const(arrB.into())); ops.push(Opcode::I32Store(0u32));
+        // acc=0, rem=8
+        ops.push(Opcode::I32Const(acc.into())); ops.push(Opcode::I32Const(0u32.into())); ops.push(Opcode::I32Store(0u32));
+        ops.push(Opcode::I32Const(rem.into())); ops.push(Opcode::I32Const(8u32.into())); ops.push(Opcode::I32Store(0u32));
+
+        // write arrays
+        for (i, v) in a_vals.iter().enumerate() {
+            let addr = arrA + (i as u32)*4;
+            ops.push(Opcode::I32Const(addr.into()));
+            ops.push(Opcode::I32Const((*v).into()));
+            ops.push(Opcode::I32Store(0u32));
+        }
+        for (i, v) in b_vals.iter().enumerate() {
+            let addr = arrB + (i as u32)*4;
+            ops.push(Opcode::I32Const(addr.into()));
+            ops.push(Opcode::I32Const((*v).into()));
+            ops.push(Opcode::I32Store(0u32));
+        }
+
+        // 8 calls (drop returned rem)
+        let mut call_sites = Vec::<usize>::new();
+        for _ in 0..8 {
+            call_sites.push(ops.len());
+            ops.push(Opcode::CallInternal(0u32.into()));
+            ops.push(Opcode::Drop);
+        }
+
+        // check acc == 120
+        ops.push(Opcode::I32Const(acc.into()));
+        ops.push(Opcode::I32Load(0u32));
+        ops.push(Opcode::I32Const(120u32.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return);
+
+        // patch function position
+        let step_pos = ops.len() as u32;
+        for idx in call_sites { ops[idx] = Opcode::CallInternal(step_pos.into()); }
+        ops.extend(step);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+    // 3) Branch-free piecewise select using compares and arithmetic masks — FIXED
+    #[test]
+    fn test_piecewise_select_without_branches() {
+        let scratch: u32 = 0x18000; // holds 'lt' (0 or 1)
+
+        let x = 13u32;
+        let y = 25u32;
+        let left  = (y - x) << 3; // 96
+        let expected = left;
+
+        let mut ops = Vec::new();
+
+        // grow so 0x18000 is valid (2 pages = 128 KiB)
+        ops.push(Opcode::I32Const(2u32.into()));
+        ops.push(Opcode::MemoryGrow);
+
+        // store lt at scratch: push addr first, then compute lt => stack [addr, lt]
+        ops.push(Opcode::I32Const(scratch.into())); // addr under value
+        ops.push(Opcode::I32Const(x.into()));
+        ops.push(Opcode::I32Const(y.into()));
+        ops.push(Opcode::I32LtU);                   // lt
+        ops.push(Opcode::I32Store(0u32));           // pops value, then addr
+
+        // compute left = (y-x)<<3 and multiply by lt
+        ops.push(Opcode::I32Const(y.into()));
+        ops.push(Opcode::I32Const(x.into()));
+        ops.push(Opcode::I32Sub);
+        ops.push(Opcode::I32Const(3u32.into()));
+        ops.push(Opcode::I32Shl);                   // left
+        ops.push(Opcode::I32Const(scratch.into()));
+        ops.push(Opcode::I32Load(0u32));            // lt
+        ops.push(Opcode::I32Mul);                   // left * lt
+
+        // compute right = (x-y)>>1 and multiply by (1-lt)
+        ops.push(Opcode::I32Const(x.into()));
+        ops.push(Opcode::I32Const(y.into()));
+        ops.push(Opcode::I32Sub);
+        ops.push(Opcode::I32Const(1u32.into()));
+        ops.push(Opcode::I32ShrU);                  // right
+        ops.push(Opcode::I32Const(1u32.into()));
+        ops.push(Opcode::I32Const(scratch.into()));
+        ops.push(Opcode::I32Load(0u32));            // lt
+        ops.push(Opcode::I32Sub);                   // 1 - lt
+        ops.push(Opcode::I32Mul);                   // (1-lt)*right
+
+        // add both branches and compare
+        ops.push(Opcode::I32Add);
+        ops.push(Opcode::I32Const(expected.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+    // Sign vs zero extension mix: Load8S + Load8U on the same byte and combine (unchanged)
+    #[test]
+    fn test_sign_and_zero_extension_mix() {
+        let addr: u32 = 0x12000;
+        // byte 0xF0 = 240; signed as i8 -> -16; -16 + 240 = 224
+        let expected = 224u32;
+
+        let mut ops = Vec::new();
+        ops.push(Opcode::I32Const(2u32.into()));
+        ops.push(Opcode::MemoryGrow);
+
+        // store 0x000000F0 at addr
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Const(0x0000_00F0u32.into()));
+        ops.push(Opcode::I32Store(0u32));
+
+        // Load8S + Load8U, add
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Load8S(0u32));                  // (i8)240 == -16 (as u32 two's complement)
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Load8U(0u32));                  // 240
+        ops.push(Opcode::I32Add);                           // 224
+
+        ops.push(Opcode::I32Const(expected.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+    
 
 }
