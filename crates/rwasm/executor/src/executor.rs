@@ -37,8 +37,7 @@ use crate::{
     estimate_riscv_lde_size,
     events::{
         AluEvent, BranchEvent, CpuEvent, MemInstrEvent, MemoryInitializeFinalizeEvent,
-        MemoryReadRecord, MemoryRecord, MemoryWriteRecord,
-        NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC,
+        MemoryReadRecord, MemoryRecord, MemoryWriteRecord, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC,
     },
     hook::{HookEnv, HookRegistry},
     memory::{Entry, Memory},
@@ -731,14 +730,31 @@ impl<'a> Executor<'a> {
                 next_pc,
                 sp,
                 next_sp,
+                call_sp,
+                next_call_sp,
                 arg1,
                 opcode.aux_value(),
                 arg2,
                 record,
                 0u32,
+                call_data,
             );
         } else {
-            self.emit_cpu(clk, pc, next_pc, sp, next_sp, arg1, arg2, res, record, 0u32);
+            self.emit_cpu(
+                clk,
+                pc,
+                next_pc,
+                sp,
+                next_sp,
+                call_sp,
+                next_call_sp,
+                arg1,
+                arg2,
+                res,
+                record,
+                0u32,
+                call_data,
+            );
         }
 
         if opcode.is_alu_instruction() {
@@ -767,6 +783,7 @@ impl<'a> Executor<'a> {
             match call_data {
                 Some(call_data) => {
                     self.emit_call_event(
+                        clk,
                         pc,
                         next_pc,
                         opcode,
@@ -781,6 +798,7 @@ impl<'a> Executor<'a> {
                 }
                 None => {
                     self.emit_call_event(
+                        clk,
                         pc,
                         next_pc,
                         opcode,
@@ -809,11 +827,14 @@ impl<'a> Executor<'a> {
         next_pc: u32,
         sp: u32,
         next_sp: u32,
+        call_sp: u32,
+        next_call_sp: u32,
         arg1: u32,
         arg2: u32,
         res: u32,
         record: MemoryAccessRecord,
         exit_code: u32,
+        call_data: Option<TraceCallData>,
     ) {
         self.record.cpu_events.push(CpuEvent {
             clk,
@@ -821,6 +842,8 @@ impl<'a> Executor<'a> {
             next_pc,
             sp,
             next_sp,
+            call_sp,
+            next_call_sp,
             res,
             res_record: record.res_record,
             arg1,
@@ -828,6 +851,7 @@ impl<'a> Executor<'a> {
             arg2,
             arg2_record: record.arg2_record,
             exit_code,
+            call_data,
         });
     }
 
@@ -1029,10 +1053,12 @@ impl<'a> Executor<'a> {
         let event = ConstEvent { pc: self.state.pc, opcode, value: opcode.aux_value() };
         self.record.const_events.push(event);
     }
-
+    #[allow(clippy::too_many_arguments)]
     #[inline]
     fn emit_call_event(
         &mut self,
+
+        clk: u32,
         pc: u32,
         next_pc: u32,
         opcode: Opcode,
@@ -1045,6 +1071,8 @@ impl<'a> Executor<'a> {
         call_stack_access: Option<MemoryRecordEnum>,
     ) {
         let event = CallEvent {
+            shard: self.shard(),
+            clk,
             pc,
             next_pc,
             opcode,

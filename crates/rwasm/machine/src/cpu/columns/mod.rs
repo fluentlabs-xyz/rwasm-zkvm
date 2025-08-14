@@ -3,6 +3,8 @@ mod instruction;
 pub use instruction::*;
 mod alu;
 pub use alu::*;
+mod calldata;
+pub use calldata::*;
 use p3_util::indices_arr;
 use sp1_derive::AlignedBorrow;
 use sp1_stark::Word;
@@ -42,15 +44,20 @@ pub struct CpuCols<T: Copy> {
     pub sp: T,
     pub next_sp: T,
 
+
+
     /// Columns related to the instruction.
     pub instruction: InstructionCols<T>,
+
+    /// Columns related to the call data
+    pub call_data: CallDataCols<T>,
 
     ///Alu cols:
     pub alu_cols: AluCols<T>,
 
     /// Whether this is a memory instruction.
     pub is_memory: T,
-
+    
     /// Whether this is a syscall instruction.
     pub is_syscall: T,
 

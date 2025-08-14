@@ -1,3 +1,4 @@
+use rwasm::TraceCallData;
 use serde::{Deserialize, Serialize};
 
 use super::memory::MemoryRecordEnum;
@@ -33,4 +34,7 @@ pub struct CpuEvent {
     pub arg2_record: Option<MemoryRecordEnum>,
     /// The exit code.
     pub exit_code: u32,
+    pub call_sp:u32,
+    pub next_call_sp:u32,
+    pub call_data: Option<TraceCallData>,
 }

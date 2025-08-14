@@ -486,79 +486,27 @@ mod tests {
         program
     }
 
-    // fn build_elf_call() -> Program {
-    //     let sp_value: u32 = SP_START;
-    //     let x_value: u32 = 0x3;
-    //     let y_value: u32 = 0x5;
+    fn build_rwasm_call_internal()->Program{
+         let sp_value: u32 = SP_START;
+        let x_value: u32 = 0x7;
+        let y_value: u32 = 0x2;
+        let z_value: u32 = 0x1;
+        let mut functions = vec![0, 24];
 
-    //     let mut mem = HashMap::new();
-    //     mem.insert(sp_value, x_value);
-    //     mem.insert(sp_value - 4, y_value);
-    //     let mut functions = vec![12 + 1];
+        let opcodes = vec![
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(y_value.into()),
+            Opcode::I32Const(z_value.into()),
+            Opcode::CallInternal(6u32.into()),
+            Opcode::I32Sub,
+            Opcode::Return,
+            Opcode::I32Add,
+            Opcode::Return,
+        ];
 
-    //     let instructions = vec![
-    //         Opcode::CallInternal(1u32.into()),
-    //         Opcode::Return(DropKeep::none()),
-    //         Opcode::I32Add,
-    //         Opcode::Return(DropKeep::none()),
-    //     ];
-
-    //     let program = Program::new_with_memory_and_func(instructions, mem, functions, 1, 1);
-    //     program
-    // }
-    // fn build_elf_call2() -> Program {
-    //     let sp_value: u32 = SP_START;
-    //     let x_value: u32 = 0x3;
-    //     let y_value: u32 = 0x5;
-    //     let z_value: u32 = 0x7;
-    //     let mut mem = HashMap::new();
-
-    //     let mut functions = vec![21];
-
-    //     let instructions = vec![
-    //         Opcode::I32Const(x_value.into()),
-    //         Opcode::I32Const(y_value.into()),
-    //         Opcode::I32Const(z_value.into()),
-    //         Opcode::CallInternal(0u32.into()),
-    //         Opcode::Return(DropKeep::none()),
-    //         Opcode::I32Add,
-    //         Opcode::I32Add,
-    //         Opcode::Return(DropKeep::none()),
-    //     ];
-
-    //     let program = Program::new_with_memory_and_func(instructions, mem, functions.clone(), 1, 1);
-    //     for (ins_idx, item) in program.instructions.iter().enumerate() {
-    //         println!("ins_idx:{},item:{:?},", ins_idx * 4 + 1, item);
-    //     }
-    //     println!("functions: {:?}", functions);
-    //     program
-    // }
-
-    // fn build_elf_call3() -> Program {
-    //     let sp_value: u32 = SP_START;
-    //     let x_value: u32 = 0x3;
-    //     let y_value: u32 = 0x5;
-    //     let z_value: u32 = 0x7;
-    //     let mut mem = HashMap::new();
-
-    //     let mut functions = vec![13, 17, 25];
-
-    //     let instructions = vec![
-    //         Opcode::I32Const(x_value.into()),
-    //         Opcode::CallInternal(1u32.into()),
-    //         Opcode::Return(DropKeep::none()),
-    //         Opcode::Return(DropKeep::none()),
-    //         Opcode::CallInternal(0u32.into()),
-    //         Opcode::Return(DropKeep::none()),
-    //     ];
-
-    //     let program = Program::new_with_memory_and_func(instructions, mem, functions.clone(), 1, 1);
-    //     for (ins_idx, item) in program.instructions.iter().enumerate() {
-    //         println!("ins_idx:{},item:{:?},", ins_idx * 4 + 1, item);
-    //     }
-    //     println!("functions: {:?}", functions);
-    //     program
-    // }
+        let program = Program::from_instrs(opcodes);
+        program
+    }
 
     fn build_elf_skipped_ins() -> Program {
         let sp_value: u32 = SP_START;
@@ -677,6 +625,12 @@ mod tests {
     #[test]
     fn test_rwasm_unaligned_load() {
         let program = build_load_unaligned();
+        run_rwasm_prover(program);
+    }
+
+     #[test]
+    fn test_rwasm_call_internal() {
+        let program = build_rwasm_call_internal();
         run_rwasm_prover(program);
     }
     // #[test]

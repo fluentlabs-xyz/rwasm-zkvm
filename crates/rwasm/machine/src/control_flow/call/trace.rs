@@ -13,7 +13,7 @@ use rwasm_executor::{
 };
 use sp1_stark::air::MachineAir;
 
-use crate::utils::{next_power_of_two, zeroed_f_vec};
+use crate::{shape::Shapeable, utils::{next_power_of_two, zeroed_f_vec}};
 
 use super::{CallChip, CallColumns, NUM_CALL_COLS};
 
@@ -50,7 +50,7 @@ impl<F: PrimeField32> MachineAir<F> for CallChip {
 
                     if idx < input.call_events.len() {
                         let event = &input.call_events[idx];
-                        self.event_to_row(event, cols, &mut blu);
+                        self.event_to_row(event,cols, input.shard(), &mut blu);
                     }
                 });
                 blu
@@ -82,6 +82,7 @@ impl CallChip {
         &self,
         event: &CallEvent,
         cols: &mut CallColumns<F>,
+        shard:u32,
         blu: &mut HashMap<ByteLookupEvent, usize>,
     ) {
         cols.pc = event.pc.into();
@@ -91,9 +92,10 @@ impl CallChip {
         cols.call_sp = F::from_canonical_u32(event.call_sp);
         cols.next_call_sp=F::from_canonical_u32(event.next_call_sp);
         cols.signature_id=F::from_canonical_u32(event.signature_id);
-        cols.func_ref=event.func_ref.into();
+        cols.func_ref=F::from_canonical_u32(event.func_ref);
         cols.table_id = F::from_canonical_u32(event.table_id);
         cols.table_idx=F::from_canonical_u32(event.table_idx);
+        println!("opcode  for call: {}",event.opcode.code());
         cols.opcode = F::from_canonical_u32(event.opcode.code());
 
         match event.opcode {
@@ -103,7 +105,12 @@ impl CallChip {
             Opcode::Return=>{cols.is_call_internal=F::from_bool(true);},
             _=>unreachable!(),
         }
-        
+        if !(event.opcode==Opcode::Return&&event.call_sp==0){
+               assert_eq!(event.call_stack_access.is_some(),true);
+                 cols.call_stack_access.populate(event.call_stack_access.unwrap(), blu);
+        }
+     
+      
 
     }
 }

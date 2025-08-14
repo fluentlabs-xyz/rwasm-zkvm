@@ -131,6 +131,8 @@ impl CpuChip {
         cols.next_pc = F::from_canonical_u32(event.next_pc);
         cols.sp = F::from_canonical_u32(event.sp);
         cols.next_sp = F::from_canonical_u32(event.next_sp);
+        cols.call_data.call_sp = F::from_canonical_u32(event.call_sp);
+        cols.call_data.next_call_sp = F::from_canonical_u32(event.next_call_sp);
         cols.instruction.populate(instruction);
 
         cols.is_memory = F::from_bool(
@@ -144,6 +146,7 @@ impl CpuChip {
         cols.shard_to_send = if instruction.is_memory_load_instruction()
             || instruction.is_memory_store_instruction()
             || instruction.is_ecall_instruction()
+             ||instruction.is_call_instruction()
         {
             cols.shard
         } else {
@@ -152,6 +155,7 @@ impl CpuChip {
         cols.clk_to_send = if instruction.is_memory_load_instruction()
             || instruction.is_memory_store_instruction()
             || instruction.is_ecall_instruction()
+            ||instruction.is_call_instruction()
         {
             F::from_canonical_u32(event.clk)
         } else {
@@ -176,12 +180,27 @@ impl CpuChip {
             cols.op_arg2_access.populate(record, blu_events);
         }
 
+
+
+
         if instruction.is_ecall_instruction() {
             let syscall_id = cols.op_res_access.prev_value[0];
             let num_extra_cycles = cols.op_res_access.prev_value[2];
             cols.is_halt =
                 F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
             cols.num_extra_cycles = num_extra_cycles;
+        }
+       
+        match event.call_data {
+            
+            Some(call_data) => {
+                println!("event.opcode:{},call_data:{:?}",instruction,event.call_data);
+                cols.call_data.signature_id=F::from_canonical_u32(call_data.signature_id);
+                cols.call_data.func_ref=F::from_canonical_u32(call_data.func_ref);
+                cols.call_data.table_id=F::from_canonical_u32(call_data.table_id);
+                 cols.call_data.table_idx=F::from_canonical_u32(call_data.table_idx);
+            },
+            None =>(),
         }
 
         // Populate range checks for a.

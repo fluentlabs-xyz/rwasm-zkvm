@@ -20,7 +20,7 @@ pub struct InstructionCols<T> {
     pub is_binary: T,
     pub is_memory: T,
     pub is_branching: T,
-    pub is_call: T,
+    pub is_call_ins: T,
     pub is_local: T,
     /// Table selectors for opcodes.
     pub is_alu: T,
@@ -62,6 +62,8 @@ pub struct InstructionCols<T> {
     pub is_i32const: T,
 
     pub is_callinternal: T,
+    pub is_callindirect: T,
+    pub is_call:T,
     pub is_return: T,
 }
 
@@ -74,7 +76,7 @@ impl<F: PrimeField> InstructionCols<F> {
         self.is_binary = F::from_bool(opcode.is_binary_instruction());
         self.is_memory = F::from_bool(opcode.is_memory_instruction());
         self.is_branching = F::from_bool(opcode.is_branch_instruction());
-        self.is_call = F::from_bool(opcode.is_call_instruction());
+        self.is_call_ins = F::from_bool(opcode.is_call_instruction());
         match opcode {
             Opcode::LocalGet(_) | Opcode::LocalSet(_) | Opcode::LocalTee(_) => {
                 
@@ -148,10 +150,13 @@ impl<F: PrimeField> InstructionCols<F> {
             Opcode::LocalTee(_) => self.is_localtee = F::one(),
             Opcode::I32Const(_) => self.is_i32const = F::one(),
             Opcode::CallInternal(_) => self.is_callinternal = F::one(),
+            Opcode::CallIndirect(_)=>self.is_callindirect=F::one(),
+            Opcode::Call(_)=>self.is_call=F::one(),
             Opcode::Return => (self.is_return = F::one()),
             Opcode::ConsumeFuel(_) => self.is_skipped = F::one(),
             Opcode::SignatureCheck(_) => self.is_skipped = F::one(),
             Opcode::Drop => self.is_skipped = F::one(),
+
             _ => {}
         }
     }

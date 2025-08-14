@@ -28,6 +28,7 @@ impl<K: Debug + Clone + Eq + Hash + FromStr> ShapeCluster<K> {
                 for maybe_log2_height in self.inner.get(air).into_iter().flatten() {
                     let allowed_height =
                         maybe_log2_height.map(|log_height| 1 << log_height).unwrap_or_default();
+                    // println!("K:{:?}, height:{},  allowed_height:{}", air,height,allowed_height);
                     if *height <= allowed_height {
                         return Some((air.clone(), *maybe_log2_height));
                     }

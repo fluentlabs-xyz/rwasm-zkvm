@@ -19,6 +19,7 @@ use sp1_stark::{
 use thiserror::Error;
 
 use super::rwasm::rwasm_chips::{ByteChip, ProgramChip, SyscallChip};
+use crate::control_flow::CallChip;
 use crate::{
     global::GlobalChip,
     memory::{MemoryLocalChip, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW},
@@ -234,7 +235,9 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
         indexed_shape_clusters
             .into_iter()
             .filter_map(|(i, cluster)| {
+                // println!("heighit:{:?},",heights);
                 let shape = cluster.find_shape(heights)?;
+                // println!("shape:{:?}",shape);
                 let area = self.estimate_lde_size(&shape);
                 Some((i, shape, area))
             })
@@ -426,6 +429,7 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
     }
 
     pub fn estimate_lde_size(&self, shape: &Shape<RwasmAirId>) -> usize {
+        // println!("shape:{:?},",shape);
         shape.iter().map(|(air, height)| self.costs[air] * (1 << height)).sum()
     }
 
@@ -442,6 +446,7 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                         .chain(vec![
                             (MachineAir::<BabyBear>::name(&ProgramChip), 19),
                             (MachineAir::<BabyBear>::name(&ByteChip::default()), 16),
+                            (MachineAir::<BabyBear>::name(&CallChip::default()), 16),
                         ])
                         .collect::<Vec<_>>(),
                 )
@@ -453,10 +458,22 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
 impl<F: PrimeField32> Default for CoreShapeConfig<F> {
     fn default() -> Self {
         // Load the maximal shapes.
-        let maximal_shapes: BTreeMap<usize, Vec<Shape<RwasmAirId>>> =
+        let mut maximal_shapes: BTreeMap<usize, Vec<Shape<RwasmAirId>>> =
             serde_json::from_slice(MAXIMAL_SHAPES).unwrap();
         let small_shapes: Vec<Shape<RwasmAirId>> = serde_json::from_slice(SMALL_SHAPES).unwrap();
+        let mut new_shapes = BTreeMap::new();
+        for (i,vec) in maximal_shapes.iter(){
+            let mut new_vec = vec![];
+            for item in vec.iter(){
+                let mut item = (*item).clone();
+               item.inner.insert(RwasmAirId::Call,20);
+               new_vec.push(item);
+            }
+            new_shapes.insert(*i,new_vec);
 
+            
+        }
+        maximal_shapes = new_shapes;
         // Set the allowed preprocessed log2 heights.
         let allowed_preprocessed_log2_heights = HashMap::from([
             (RwasmAirId::Program, vec![Some(19), Some(20), Some(21), Some(22)]),

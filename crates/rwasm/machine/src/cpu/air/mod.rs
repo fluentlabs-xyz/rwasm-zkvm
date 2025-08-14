@@ -59,7 +59,7 @@ where
 
         self.eval_alu(builder, local);
         self.eval_branching(builder, local);
-
+        self.eval_call(builder, local);
         self.eval_memory(builder, local);
         self.eval_local(builder, local, clk.clone());
 
@@ -305,8 +305,6 @@ impl CpuChip {
                     + local.instruction.is_brifnez,
             )
             .assert_word_eq(local.instruction.aux_val, local.op_res_val());
-
-        
     }
 
     /// Constraints related to the shard and clk.
@@ -446,7 +444,7 @@ impl CpuChip {
             .assert_eq(local.sp - AB::Expr::from_canonical_u32(UNIT), local.next_sp);
     }
 
-     pub(crate) fn eval_op_memory_decrease_sp<AB: SP1AirBuilder>(
+    pub(crate) fn eval_op_memory_decrease_sp<AB: SP1AirBuilder>(
         &self,
         builder: &mut AB,
         local: &CpuCols<AB::Var>,
@@ -457,11 +455,17 @@ impl CpuChip {
             clk,
             local.sp,
             &local.op_arg1_access,
-            local.instruction.is_brifeqz+local.instruction.is_brifnez+local.instruction.is_brtable,
+            local.instruction.is_brifeqz
+                + local.instruction.is_brifnez
+                + local.instruction.is_brtable,
         );
 
         builder
-            .when(local.instruction.is_brifeqz+local.instruction.is_brifnez+local.instruction.is_brtable,)
+            .when(
+                local.instruction.is_brifeqz
+                    + local.instruction.is_brifnez
+                    + local.instruction.is_brtable,
+            )
             .assert_eq(local.sp + AB::Expr::from_canonical_u32(UNIT), local.next_sp);
     }
 
@@ -556,6 +560,50 @@ impl CpuChip {
                 local.sp + AB::Expr::from_canonical_u32(UNIT) + AB::Expr::from_canonical_u32(UNIT),
                 local.next_sp,
             );
+    }
+    pub(crate) fn eval_call<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CpuCols<AB::Var>) {
+        builder.send_call(
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.instruction.opcode,
+            local.call_data.call_sp,
+            local.call_data.next_call_sp,
+            local.call_data.func_ref,
+            local.call_data.table_id,
+            local.call_data.table_idx,
+            local.instruction.is_call
+                + local.instruction.is_callinternal
+                + local.instruction.is_callinternal
+                + local.instruction.is_return,
+        );
+
+        builder.send_instruction(
+            local.shard_to_send,
+            local.clk_to_send,
+            local.pc,
+            local.next_pc,
+            local.num_extra_cycles,
+            local.instruction.opcode,
+            Word::zero::<AB>(),
+            Word::zero::<AB>(),
+            Word::zero::<AB>(),
+            local.is_memory,
+            local.is_syscall,
+            local.is_halt,
+            local.instruction.is_call
+                + local.instruction.is_callinternal
+                + local.instruction.is_callinternal
+                + local.instruction.is_return,
+        );
+        builder
+            .when(
+                AB::Expr::one()
+                    - local.instruction.is_call
+                    - local.instruction.is_callinternal
+                    - local.instruction.is_callinternal
+                    - local.instruction.is_return,
+            )
+            .assert_eq(local.call_data.call_sp, local.call_data.next_call_sp);
     }
 }
 

@@ -375,6 +375,10 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(branch.name(), branch.cost());
         chips.push(branch);
 
+        let call = Chip::new(RwasmAir::Call(CallChip::default()));
+        costs.insert(call.name(), call.cost());
+        chips.push(call);
+
         let syscall_instrs = Chip::new(RwasmAir::SyscallInstrs(SyscallInstrsChip::default()));
         costs.insert(syscall_instrs.name(), syscall_instrs.cost());
         chips.push(syscall_instrs);
@@ -432,6 +436,7 @@ impl<F: PrimeField32> RwasmAir<F> {
             RwasmAir::ShiftRight(ShiftRightChip::default()),
             RwasmAir::Memory(MemoryInstructionsChip::default()),
             RwasmAir::Branch(BranchChip::default()),
+            RwasmAir::Call(CallChip::default()),
             RwasmAir::SyscallInstrs(SyscallInstrsChip::default()),
             RwasmAir::MemoryLocal(MemoryLocalChip::new()),
             RwasmAir::Global(GlobalChip),

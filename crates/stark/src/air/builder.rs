@@ -311,18 +311,19 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         );
     }
 
-     /// Sends an syscall operation to be processed (with "ECALL" opcode).
+    /// Sends an syscall operation to be processed (with "ECALL" opcode).
     #[allow(clippy::too_many_arguments)]
     fn send_call(
         &mut self,
         shard: impl Into<Self::Expr> + Clone,
         clk: impl Into<Self::Expr> + Clone,
         opcode: impl Into<Self::Expr> + Clone,
+        call_sp: impl Into<Self::Expr> + Clone,
+        next_call_sp: impl Into<Self::Expr> + Clone,
         func_ref: impl Into<Self::Expr> + Clone,
-        table_id:  impl Into<Self::Expr> + Clone,
-        table_idx:  impl Into<Self::Expr> + Clone,
+        table_id: impl Into<Self::Expr> + Clone,
+        table_idx: impl Into<Self::Expr> + Clone,
         multiplicity: impl Into<Self::Expr>,
-        scope: InteractionScope,
     ) {
         self.send(
             AirInteraction::new(
@@ -330,6 +331,8 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
                     shard.clone().into(),
                     clk.clone().into(),
                     opcode.clone().into(),
+                    call_sp.clone().into(),
+                    next_call_sp.clone().into(),
                     func_ref.clone().into(),
                     table_id.clone().into(),
                     table_idx.clone().into(),
@@ -337,7 +340,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
                 multiplicity.into(),
                 InteractionKind::Call,
             ),
-            scope,
+            InteractionScope::Local,
         );
     }
 
@@ -345,22 +348,25 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
     #[allow(clippy::too_many_arguments)]
     fn receive_call(
         &mut self,
-     
+
         shard: impl Into<Self::Expr> + Clone,
         clk: impl Into<Self::Expr> + Clone,
         opcode: impl Into<Self::Expr> + Clone,
+        call_sp: impl Into<Self::Expr> + Clone,
+        next_call_sp: impl Into<Self::Expr> + Clone,
         func_ref: impl Into<Self::Expr> + Clone,
-          table_id:  impl Into<Self::Expr> + Clone,
-        table_idx:  impl Into<Self::Expr> + Clone,
+        table_id: impl Into<Self::Expr> + Clone,
+        table_idx: impl Into<Self::Expr> + Clone,
         multiplicity: impl Into<Self::Expr>,
-        scope: InteractionScope,
     ) {
         self.receive(
             AirInteraction::new(
                 vec![
-                     shard.clone().into(),
+                    shard.clone().into(),
                     clk.clone().into(),
                     opcode.clone().into(),
+                    call_sp.clone().into(),
+                    next_call_sp.clone().into(),
                     func_ref.clone().into(),
                     table_id.clone().into(),
                     table_idx.clone().into(),
@@ -368,7 +374,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
                 multiplicity.into(),
                 InteractionKind::Call,
             ),
-            scope,
+            InteractionScope::Local,
         );
     }
 }
