@@ -35,5 +35,6 @@ pub struct CallColumns<T> {
     pub is_call_internal: T,
     pub is_call_indirect: T,
     pub is_return: T,
+    pub not_real_return:T,
 
 }

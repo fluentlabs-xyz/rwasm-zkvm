@@ -773,13 +773,7 @@ impl<'a> Executor<'a> {
                 println!("sys_state_event not generated here");
             }
         } else if opcode.is_call_instruction() {
-            let record: Option<MemoryRecordEnum> = match opcode {
-                Opcode::Call(_) | Opcode::CallIndirect(_) | Opcode::CallInternal(_) => {
-                    record.res_record
-                }
-                Opcode::Return => record.arg1_record,
-                _ => unreachable!(),
-            };
+            let call_sp_record = record.call_sp_access;
             match call_data {
                 Some(call_data) => {
                     self.emit_call_event(
@@ -793,7 +787,7 @@ impl<'a> Executor<'a> {
                         call_data.func_ref,
                         call_data.table_id,
                         call_data.table_idx,
-                        record,
+                        call_sp_record,
                     );
                 }
                 None => {
@@ -808,7 +802,7 @@ impl<'a> Executor<'a> {
                         opcode.aux_value(),
                         0,
                         0,
-                        record,
+                        call_sp_record,
                     );
                 }
             }

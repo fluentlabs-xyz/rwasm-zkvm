@@ -85,10 +85,14 @@ impl CallChip {
         shard:u32,
         blu: &mut HashMap<ByteLookupEvent, usize>,
     ) {
+        cols.shard=F::from_canonical_u32(event.shard);
+        cols.clk = F::from_canonical_u32(event.clk);
         cols.pc = event.pc.into();
         cols.next_pc =event.next_pc.into();
         cols.pc_range_checker.populate(cols.pc, blu);
         cols.next_pc_range_checker.populate(cols.next_pc, blu);
+
+        cols.opcode = F::from_canonical_u32(event.opcode.code());
         cols.call_sp = F::from_canonical_u32(event.call_sp);
         cols.next_call_sp=F::from_canonical_u32(event.next_call_sp);
         cols.signature_id=F::from_canonical_u32(event.signature_id);
@@ -96,18 +100,21 @@ impl CallChip {
         cols.table_id = F::from_canonical_u32(event.table_id);
         cols.table_idx=F::from_canonical_u32(event.table_idx);
         println!("opcode  for call: {}",event.opcode.code());
-        cols.opcode = F::from_canonical_u32(event.opcode.code());
-
+       
+        println!("col.opcode:{:?}",cols.opcode);
         match event.opcode {
             Opcode::Call(_)=>{cols.is_call=F::from_bool(true);},
             Opcode::CallIndirect(_)=>{cols.is_call_indirect=F::from_bool(true);},
             Opcode::CallInternal(_)=>{cols.is_call_internal=F::from_bool(true);},
-            Opcode::Return=>{cols.is_call_internal=F::from_bool(true);},
+            Opcode::Return=>{cols.is_return=F::from_bool(true);},
             _=>unreachable!(),
         }
         if !(event.opcode==Opcode::Return&&event.call_sp==0){
                assert_eq!(event.call_stack_access.is_some(),true);
                  cols.call_stack_access.populate(event.call_stack_access.unwrap(), blu);
+                 
+        } else{
+            cols.not_real_return=F::from_bool(true);
         }
      
       

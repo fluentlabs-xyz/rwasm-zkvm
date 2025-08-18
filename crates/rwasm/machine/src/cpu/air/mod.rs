@@ -573,8 +573,9 @@ impl CpuChip {
             local.call_data.table_idx,
             local.instruction.is_call
                 + local.instruction.is_callinternal
-                + local.instruction.is_callinternal
-                + local.instruction.is_return,
+                + local.instruction.is_callindirect
+                + local.instruction.is_return
+
         );
 
         builder.send_instruction(
@@ -592,7 +593,7 @@ impl CpuChip {
             local.is_halt,
             local.instruction.is_call
                 + local.instruction.is_callinternal
-                + local.instruction.is_callinternal
+                + local.instruction.is_callindirect
                 + local.instruction.is_return,
         );
         builder

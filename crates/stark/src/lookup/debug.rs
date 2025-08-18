@@ -126,7 +126,7 @@ pub fn debug_interactions<SC: StarkGenericConfig, A: MachineAir<Val<SC>>>(
             }
         }
     }
-    println!("key_to_vec:{:?}",key_to_vec_data);
+   
     (key_to_vec_data, key_to_count)
 }
 

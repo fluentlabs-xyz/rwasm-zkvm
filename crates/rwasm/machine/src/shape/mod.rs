@@ -466,7 +466,7 @@ impl<F: PrimeField32> Default for CoreShapeConfig<F> {
             let mut new_vec = vec![];
             for item in vec.iter(){
                 let mut item = (*item).clone();
-               item.inner.insert(RwasmAirId::Call,20);
+               item.inner.insert(RwasmAirId::Call,14);
                new_vec.push(item);
             }
             new_shapes.insert(*i,new_vec);
