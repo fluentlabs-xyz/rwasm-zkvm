@@ -601,7 +601,7 @@ impl CpuChip {
                 AB::Expr::one()
                     - local.instruction.is_call
                     - local.instruction.is_callinternal
-                    - local.instruction.is_callinternal
+                    - local.instruction.is_callindirect
                     - local.instruction.is_return,
             )
             .assert_eq(local.call_data.call_sp, local.call_data.next_call_sp);

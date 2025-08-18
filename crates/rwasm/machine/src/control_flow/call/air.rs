@@ -11,7 +11,7 @@ use sp1_stark::{
     Word,
 };
 
-use crate::air::MemoryAirBuilder;
+use crate::{air::MemoryAirBuilder, memory::MemoryCols};
 use crate::air::SP1CoreAirBuilder;
 use crate::{air::WordAirBuilder, operations::BabyBearWordRangeChecker};
 const CALL_SP_STACK_SHIFT: u32 = FUNC_FRAME_START;
@@ -41,8 +41,10 @@ where
             + local.is_call_indirect.clone()
             + local.is_call_internal
             + local.is_return.clone();
-        let is_call_ins =
-            local.is_call.clone() + local.is_call_indirect.clone() + local.is_call_internal.clone()+local.is_return;
+        let is_call_ins = local.is_call.clone()
+            + local.is_call_indirect.clone()
+            + local.is_call_internal.clone()
+            + local.is_return;
         builder.receive_instruction(
             local.shard,
             local.clk,
@@ -85,7 +87,8 @@ where
         builder.eval_memory_access(
             local.shard,
             local.clk.clone() + AB::Expr::from_canonical_u8(1),
-            local.next_call_sp*AB::Expr::from_canonical_u32(UNIT) + AB::Expr::from_canonical_u32(CALL_SP_STACK_SHIFT),
+            local.next_call_sp * AB::Expr::from_canonical_u32(UNIT)
+                + AB::Expr::from_canonical_u32(CALL_SP_STACK_SHIFT),
             &local.call_stack_access,
             local.is_call + local.is_call_indirect + local.is_call_internal,
         );
@@ -93,13 +96,29 @@ where
         builder.eval_memory_access(
             local.shard,
             local.clk.clone(),
-            local.call_sp *AB::Expr::from_canonical_u32(UNIT)+ AB::Expr::from_canonical_u32(CALL_SP_STACK_SHIFT),
+            local.call_sp * AB::Expr::from_canonical_u32(UNIT)
+                + AB::Expr::from_canonical_u32(CALL_SP_STACK_SHIFT),
             &local.call_stack_access,
-            local.is_return-local.not_real_return
+            local.is_return - local.not_real_return,
         );
-
 
         builder.when(local.not_real_return).assert_zero(local.call_sp);
         builder.when(local.not_real_return).assert_one(local.is_return);
     }
+}
+
+impl CallChip {
+    fn eval_call_sp<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CallColumns<AB::Var>) {
+        builder
+            .when(local.is_call_internal)
+            .assert_eq(local.call_sp + AB::Expr::one(), local.next_call_sp);
+        builder
+            .when(local.is_return)
+            .assert_eq(local.call_sp - AB::Expr::one(), local.next_call_sp);
+
+        builder.when(local.is_call_internal).assert_word_eq(local.pc, *local.call_stack_access.value());
+        builder.when(local.is_return).assert_word_eq(local.next_pc, *local.call_stack_access.value());
+    }
+
+    
 }
