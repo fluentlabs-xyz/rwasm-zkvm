@@ -14,12 +14,13 @@ pub const CALL_MAP: CallDataCols<usize> = make_col_map();
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct CallDataCols<T> {
-    pub call_sp:T,
-    pub next_call_sp:T,
-    pub signature_id:T,
-    pub func_ref:T,
-    pub table_id:T,
-    pub table_idx:T,
+    pub call_sp: T,
+    pub next_call_sp: T,
+    pub signature_id: T,
+    pub func_ref: T,
+    pub table_id: T,
+    pub table_idx: T,
+    pub call_sp_is_zero: T,
 }
 
 /// Creates the column map for the CPU.

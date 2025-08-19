@@ -59,7 +59,7 @@ where
 
         self.eval_alu(builder, local);
         self.eval_branching(builder, local);
-        self.eval_call(builder, local);
+        self.eval_call(builder, local,next);
         self.eval_memory(builder, local);
         self.eval_local(builder, local, clk.clone());
 
@@ -561,7 +561,7 @@ impl CpuChip {
                 local.next_sp,
             );
     }
-    pub(crate) fn eval_call<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CpuCols<AB::Var>) {
+    pub(crate) fn eval_call<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CpuCols<AB::Var>,next: &CpuCols<AB::Var>) {
         builder.send_call(
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -585,7 +585,7 @@ impl CpuChip {
             local.next_pc,
             local.num_extra_cycles,
             local.instruction.opcode,
-            Word::zero::<AB>(),
+            local.instruction.aux_val,
             Word::zero::<AB>(),
             Word::zero::<AB>(),
             local.is_memory,
@@ -605,6 +605,9 @@ impl CpuChip {
                     - local.instruction.is_return,
             )
             .assert_eq(local.call_data.call_sp, local.call_data.next_call_sp);
+        builder.when(local.is_real).when(next.is_real).assert_eq(local.call_data.next_call_sp, next.call_data.call_sp);
+        builder.when(local.instruction.is_return).when(local.call_data.call_sp_is_zero).assert_zero(next.is_real);
+        builder.when(local.instruction.is_return).when(local.call_data.call_sp_is_zero).assert_zero(local.call_data.call_sp);
     }
 }
 

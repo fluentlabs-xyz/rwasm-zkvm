@@ -1,6 +1,6 @@
 use itertools::izip;
 
-pub const INPUT_SIZE: usize = 92;//TODO: find why this is 90
+pub const INPUT_SIZE: usize = 92; //TODO: find why this is 90
 
 pub fn predict(input: &[usize; INPUT_SIZE / 2]) -> f64 {
     let input = [input.map(|x| x as f64), input.map(|x| 2f64.powi(x.try_into().unwrap()))].concat();
@@ -20,7 +20,6 @@ pub(crate) struct Params<const N: usize> {
     pub std: [f64; N],
     pub coefs: [f64; N],
     pub intercept: f64,
-    
 }
 
 pub(crate) const APPROX_CYCLES_PER_RAW_GAS: f64 = 1492.48790519;

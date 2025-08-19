@@ -100,8 +100,8 @@ impl CallChip {
         cols.table_id = F::from_canonical_u32(event.table_id);
         cols.table_idx=F::from_canonical_u32(event.table_idx);
         println!("opcode  for call: {}",event.opcode.code());
-       
-        println!("col.opcode:{:?}",cols.opcode);
+        cols.opcode_aux_val=event.opcode.aux_value().into();
+        println!("col.opcode:{:?}",cols.opcode);    
         match event.opcode {
             Opcode::Call(_)=>{cols.is_call=F::from_bool(true);},
             Opcode::CallIndirect(_)=>{cols.is_call_indirect=F::from_bool(true);},

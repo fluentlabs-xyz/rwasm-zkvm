@@ -52,7 +52,7 @@ where
             local.next_pc.reduce::<AB>(),
             AB::Expr::zero(),
             opcode,
-            Word::zero::<AB>(),
+            local.opcode_aux_val,
             Word::zero::<AB>(),
             Word::zero::<AB>(),
             AB::Expr::zero(),
@@ -104,6 +104,10 @@ where
 
         builder.when(local.not_real_return).assert_zero(local.call_sp);
         builder.when(local.not_real_return).assert_one(local.is_return);
+
+        builder.when(local.is_call_internal).assert_eq(local.func_ref, local.opcode_aux_val.reduce::<AB>());
+        self.eval_call_sp(builder, local);
+        
     }
 }
 
@@ -113,11 +117,11 @@ impl CallChip {
             .when(local.is_call_internal)
             .assert_eq(local.call_sp + AB::Expr::one(), local.next_call_sp);
         builder
-            .when(local.is_return)
+            .when(local.is_return-local.not_real_return)
             .assert_eq(local.call_sp - AB::Expr::one(), local.next_call_sp);
 
-        builder.when(local.is_call_internal).assert_word_eq(local.pc, *local.call_stack_access.value());
-        builder.when(local.is_return).assert_word_eq(local.next_pc, *local.call_stack_access.value());
+        builder.when(local.is_call_internal).assert_eq(AB::Expr::one()+local.pc.reduce::<AB>(), (*local.call_stack_access.value()).reduce::<AB>());
+        builder.when(local.is_return-local.not_real_return).assert_word_eq(local.next_pc, *local.call_stack_access.value());
     }
 
     

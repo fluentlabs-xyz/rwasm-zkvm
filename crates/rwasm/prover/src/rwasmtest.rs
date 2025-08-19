@@ -486,8 +486,8 @@ mod tests {
         program
     }
 
-    fn build_rwasm_call_internal()->Program{
-         let sp_value: u32 = SP_START;
+    fn build_rwasm_call_internal() -> Program {
+        let sp_value: u32 = SP_START;
         let x_value: u32 = 0x7;
         let y_value: u32 = 0x2;
         let z_value: u32 = 0x1;
@@ -628,7 +628,7 @@ mod tests {
         run_rwasm_prover(program);
     }
 
-     #[test]
+    #[test]
     fn test_rwasm_call_internal() {
         let program = build_rwasm_call_internal();
         run_rwasm_prover(program);

@@ -37,4 +37,6 @@ pub struct CallColumns<T> {
     pub is_return: T,
     pub not_real_return:T,
 
+    pub opcode_aux_val:Word<T>,
+
 }
