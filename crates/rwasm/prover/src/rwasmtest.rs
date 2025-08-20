@@ -66,6 +66,7 @@ mod tests {
     use serial_test::serial;
     use std::fs::File;
     use std::io::{Read, Write};
+    use sp1_stark::SP1CoreOpts;
 
     fn build_elf() -> Program {
         let x_value: u32 = 0x11;
@@ -633,7 +634,41 @@ mod tests {
         let program = build_rwasm_call_internal();
         run_rwasm_prover(program);
     }
+    #[test]
+    fn test_call_direct_add() {
+        let program = build_test_call_direct_add();
+        run_rwasm_prover(program);
+    }
+    fn build_test_call_direct_add() -> Program{
+        // f_add(x,y) = x + y
+        let f_add = vec![
+            rwasm::Opcode::I32Add,
+            rwasm::Opcode::Return,
+        ]; // len = 2
 
+        // main: push x, y; Call(f_add); const expected; eq; return  => 6 ops
+        let main_len = 6u32;
+        let f_add_pos = main_len;
+
+        let x = 12u32;
+        let y = 30u32;
+        let expected = x + y;
+
+        let mut ops = Vec::new();
+        ops.push(rwasm::Opcode::I32Const(x.into()));
+        ops.push(rwasm::Opcode::I32Const(y.into()));
+        // If your runtime expects a function index instead of a byte position,
+        ops.push(rwasm::Opcode::CallInternal(f_add_pos.into()));
+        ops.push(rwasm::Opcode::I32Const(expected.into()));
+        ops.push(rwasm::Opcode::I32Eq);
+        ops.push(rwasm::Opcode::Return); // prevent fall-through
+
+        // append the callee
+        ops.extend(f_add);
+
+        let program = Program::from_instrs(ops);
+        program
+    }
     fn build_test_fibonacci_n25_callinternal() -> Program {
         let base: u32 = 0x10000;
         let addr_tmp = base + 0;
