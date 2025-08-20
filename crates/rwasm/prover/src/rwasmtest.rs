@@ -753,6 +753,63 @@ mod tests {
         let program = build_test_fibonacci_n25_callinternal();
         run_rwasm_prover(program);
     }
+    #[test]
+    fn test_nested_three_level_calls() {
+        // f3(x): return 2*x
+        let f3 = vec![
+            rwasm::Opcode::I32Const(1u32.into()),
+            rwasm::Opcode::I32Shl,
+            rwasm::Opcode::Return,
+        ]; // len 3
+
+        // f2(x,y): return f3(x) + y
+        let f2 = vec![
+            rwasm::Opcode::CallInternal(0u32.into()), // patched to f3_pos
+            rwasm::Opcode::I32Add,
+            rwasm::Opcode::Return,
+        ]; // len 3
+
+        // f1(x,y,z): return f2(x,y) + z
+        let f1 = vec![
+            rwasm::Opcode::CallInternal(0u32.into()), // patched to f2_pos
+            rwasm::Opcode::I32Add,
+            rwasm::Opcode::Return,
+        ]; // len 3
+
+        // main: push z, y, x (so top=x,y below,z bottom) ; call f1 ; cmp ; return
+        let x = 3u32; let y = 5u32; let z = 7u32;
+        let expected = (2 * x) + y + z; // 18
+
+        let mut ops = Vec::new();
+        ops.push(rwasm::Opcode::I32Const(z.into()));
+        ops.push(rwasm::Opcode::I32Const(y.into()));
+        ops.push(rwasm::Opcode::I32Const(x.into()));
+        ops.push(rwasm::Opcode::CallInternal(0u32.into())); // patch to f1_pos
+        ops.push(rwasm::Opcode::I32Const(expected.into()));
+        ops.push(rwasm::Opcode::I32Eq);
+        ops.push(rwasm::Opcode::Return);
+
+        // compute positions
+        let f1_pos = ops.len() as u32;              // after main
+        let mut f1_patched = f1.clone();
+        let f2_pos = f1_pos + f1.len() as u32;      // after f1
+        let mut f2_patched = f2.clone();
+        let f3_pos = f2_pos + f2.len() as u32;      // after f2
+
+        // patch call targets
+        f1_patched[0] = rwasm::Opcode::CallInternal(f2_pos.into());
+        f2_patched[0] = rwasm::Opcode::CallInternal(f3_pos.into());
+        ops[3] = rwasm::Opcode::CallInternal(f1_pos.into());
+
+        // append functions
+        ops.extend(f1_patched);
+        ops.extend(f2_patched);
+        ops.extend(f3);
+
+        // run
+        let program = Program::from_instrs(ops);
+        run_rwasm_prover(program);
+    }
     // #[test]
     // fn test_rwasm_call_internal_and_return() {
     //     let program = build_elf_call();
