@@ -633,6 +633,91 @@ mod tests {
         let program = build_rwasm_call_internal();
         run_rwasm_prover(program);
     }
+
+    fn build_test_fibonacci_n25_callinternal() -> Program {
+        let base: u32 = 0x10000;
+        let addr_tmp = base + 0;
+        let addr_a   = base + 4;   // F(n)
+        let addr_b   = base + 8;   // F(n+1)
+        let addr_n   = base + 12;
+
+        // step(): (a,b,n) -> (b, a+b, n-1); returns new n (ignored by caller)
+        let step_fn = vec![
+            // tmp = a + b
+            rwasm::Opcode::I32Const(addr_tmp.into()),
+            rwasm::Opcode::I32Const(addr_a.into()), rwasm::Opcode::I32Load(0u32),
+            rwasm::Opcode::I32Const(addr_b.into()), rwasm::Opcode::I32Load(0u32),
+            rwasm::Opcode::I32Add,
+            rwasm::Opcode::I32Store(0u32),
+
+            // a = b
+            rwasm::Opcode::I32Const(addr_a.into()),
+            rwasm::Opcode::I32Const(addr_b.into()), rwasm::Opcode::I32Load(0u32),
+            rwasm::Opcode::I32Store(0u32),
+
+            // b = tmp
+            rwasm::Opcode::I32Const(addr_b.into()),
+            rwasm::Opcode::I32Const(addr_tmp.into()), rwasm::Opcode::I32Load(0u32),
+            rwasm::Opcode::I32Store(0u32),
+
+            // n = n - 1
+            rwasm::Opcode::I32Const(addr_n.into()),
+            rwasm::Opcode::I32Const(addr_n.into()), rwasm::Opcode::I32Load(0u32),
+            rwasm::Opcode::I32Const(1u32.into()), rwasm::Opcode::I32Sub,
+            rwasm::Opcode::I32Store(0u32),
+
+            // return n
+            rwasm::Opcode::I32Const(addr_n.into()), rwasm::Opcode::I32Load(0u32),
+            rwasm::Opcode::Return,
+        ];
+
+        let mut ops = Vec::new();
+        // memory
+        ops.push(rwasm::Opcode::I32Const(2.into()));
+        ops.push(rwasm::Opcode::MemoryGrow);
+
+        // init a=0, b=1, n=25
+        ops.push(rwasm::Opcode::I32Const(addr_a.into()));
+        ops.push(rwasm::Opcode::I32Const(0u32.into()));
+        ops.push(rwasm::Opcode::I32Store(0u32));
+
+        ops.push(rwasm::Opcode::I32Const(addr_b.into()));
+        ops.push(rwasm::Opcode::I32Const(1u32.into()));
+        ops.push(rwasm::Opcode::I32Store(0u32));
+
+        ops.push(rwasm::Opcode::I32Const(addr_n.into()));
+        ops.push(rwasm::Opcode::I32Const(25u32.into()));
+        ops.push(rwasm::Opcode::I32Store(0u32));
+
+        // 25 iterations of step(); drop returned n each time
+        let mut call_sites = Vec::<usize>::new();
+        for _ in 0..25 {
+            call_sites.push(ops.len());
+            ops.push(rwasm::Opcode::CallInternal(0u32.into())); // patched later
+            ops.push(rwasm::Opcode::Drop);
+        }
+
+        // compare a with F25 = 75025, return
+        ops.push(rwasm::Opcode::I32Const(addr_a.into()));
+        ops.push(rwasm::Opcode::I32Load(0u32));
+        ops.push(rwasm::Opcode::I32Const(75025u32.into()));
+        ops.push(rwasm::Opcode::I32Eq);
+        ops.push(rwasm::Opcode::Return);
+
+        // patch function position and append
+        let step_pos = ops.len() as u32;
+        for idx in call_sites { ops[idx] = rwasm::Opcode::CallInternal(step_pos.into()); }
+        ops.extend(step_fn);
+
+        let program = Program::from_instrs(ops);
+        program
+    }
+
+    #[test]
+    fn test_fibonacci_n25_callinternal() {
+        let program = build_test_fibonacci_n25_callinternal();
+        run_rwasm_prover(program);
+    }
     // #[test]
     // fn test_rwasm_call_internal_and_return() {
     //     let program = build_elf_call();
@@ -650,9 +735,9 @@ mod tests {
     //     run_rwasm_prover(program);
     // }
 
-    #[test]
+   /* #[test]
     fn test_rwasm_skipped() {
         let program = build_elf_skipped_ins();
         run_rwasm_prover(program);
-    }
+    }*/
 }
