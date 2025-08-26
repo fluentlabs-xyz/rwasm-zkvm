@@ -12,6 +12,7 @@ use p3_field::{AbstractExtensionField, PrimeField32};
 use p3_maybe_rayon::prelude::IntoParallelIterator;
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 
+use rwasm::mem_index::AddressType;
 use rwasm::{InstructionSet, Opcode, RwasmModule};
 use serde::{Deserialize, Serialize};
 use sp1_stark::septic_curve::{SepticCurve, SepticCurveComplete};
@@ -59,6 +60,12 @@ impl Program {
         }
     }
 
+    #[must_use]
+    pub fn with_elements(mut self, elements: Vec<u32>) -> Self {
+        self.module.elem_section = elements;
+        self
+    }
+
     /// Disassemble a RV32IM ELF to a program that be executed by the VM.
     ///
     /// # Errors
@@ -101,9 +108,30 @@ impl Program {
             .collect()
     }
     /// get Opcode by programm counter
-    pub fn fetch(&self,pc:u32)->Opcode{
+    pub fn fetch(&self, pc: u32) -> Opcode {
         self.module.code_section[pc as usize]
-    }   
+    }
+
+    pub fn build_memory_image_vec(&self) -> Vec<(u32, u32)> {
+        let mut v_data: Vec<_> = self
+            .module
+            .data_section
+            .windows(4)
+            .enumerate()
+            .map(|(addr, data)| {
+                let addr = addr as u32;
+                let word = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+                let v_addr = AddressType::Data(addr).to_virtual_addr();
+                (v_addr, word)
+            })
+            .collect();
+
+        v_data.extend(self.module.elem_section.iter().enumerate().map(|(addr, data)| {
+            let v_addr = AddressType::Element(addr as u32).to_virtual_addr();
+            (v_addr, *data)
+        }));
+        v_data
+    }
 }
 
 impl<F: PrimeField32> MachineProgram<F> for Program {
@@ -113,14 +141,12 @@ impl<F: PrimeField32> MachineProgram<F> for Program {
 
     fn initial_global_cumulative_sum(&self) -> SepticDigest<F> {
         let mut digests: Vec<SepticCurveComplete<F>> = self
-            .module
-            .data_section
-            .windows(4)
-            .enumerate()
+            .build_memory_image_vec()
+            .iter()
             .par_bridge()
-            .map(|(addr, data)| {
-                let addr = addr as u32;
-                let word = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+            .map(|(addr, word)| {
+                let addr = *addr;
+                let word = *word;
                 let values = [
                     (InteractionKind::Memory as u32) << 16,
                     0,

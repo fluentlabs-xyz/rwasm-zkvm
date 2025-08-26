@@ -70,7 +70,6 @@ pub struct ExecutionState {
 
     /// Keeps track of how many times a certain syscall has been called.
     pub syscall_counts: HashMap<SyscallCode, u64>,
-    
 }
 
 impl ExecutionState {

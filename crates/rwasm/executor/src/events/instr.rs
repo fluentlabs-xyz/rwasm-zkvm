@@ -168,8 +168,8 @@ impl SysStateEvent {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct CallEvent {
-    pub shard:u32,
-    pub clk:u32,
+    pub shard: u32,
+    pub clk: u32,
     /// The program counter.
     pub pc: u32,
     /// The next program counter.
@@ -195,8 +195,8 @@ impl CallEvent {
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        shard:u32,
-        clk:u32,
+        shard: u32,
+        clk: u32,
         pc: u32,
         next_pc: u32,
         opcode: Opcode,

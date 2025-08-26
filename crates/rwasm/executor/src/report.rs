@@ -24,7 +24,7 @@ pub struct ExecutionReport {
     /// The gas, if it was calculated.
     pub gas: Option<u64>,
     ///cycles
-    pub cycles:u64,
+    pub cycles: u64,
 }
 
 impl ExecutionReport {
@@ -40,12 +40,10 @@ impl ExecutionReport {
         self.syscall_counts.values().sum()
     }
     ///total instruction count
-     #[must_use]
+    #[must_use]
     pub fn total_instruction_count(&self) -> u64 {
         self.cycles
     }
-
-
 }
 
 /// Combines two `HashMap`s together. If a key is in both maps, the values are added together.

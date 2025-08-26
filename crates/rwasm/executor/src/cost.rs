@@ -59,7 +59,7 @@ pub fn estimate_riscv_lde_size(
     cells += (num_events_per_air[RwasmAirId::Branch]).next_power_of_two()
         * costs_per_air[&RwasmAirId::Branch];
 
-        // Compute the branch chip contribution.
+    // Compute the branch chip contribution.
     cells += (num_events_per_air[RwasmAirId::Call]).next_power_of_two()
         * costs_per_air[&RwasmAirId::Call];
 
@@ -108,7 +108,7 @@ pub fn pad_rv32im_event_counts(
         RwasmAirId::Lt => *v += 2 * num_cycles,
         RwasmAirId::MemoryLocal => *v += 64 * num_cycles,
         RwasmAirId::Branch => *v += 8 * num_cycles,
-        RwasmAirId::Call => *v += 8 * num_cycles,//TODO: find exact number of worest case events
+        RwasmAirId::Call => *v += 8 * num_cycles, //TODO: find exact number of worest case events
         RwasmAirId::Auipc => *v += 3 * num_cycles,
         RwasmAirId::MemoryInstrs => *v += 8 * num_cycles,
         RwasmAirId::SyscallInstrs => *v += num_cycles,
