@@ -1926,11 +1926,11 @@ mod tests {
 
         // Write a word and check byte-level reads
         let val: u32 = 0x11_22_33_44;
-        rt.mw(8, val, /*shard=*/0, /*timestamp=*/1, None);
+        rt.mw(8, val, /*shard=*/ 0, /*timestamp=*/ 1, None);
 
         assert_eq!(rt.word(8), val);
-        assert_eq!(rt.byte(8),  0x44); // least-significant byte at lowest address
-        assert_eq!(rt.byte(9),  0x33);
+        assert_eq!(rt.byte(8), 0x44); // least-significant byte at lowest address
+        assert_eq!(rt.byte(9), 0x33);
         assert_eq!(rt.byte(10), 0x22);
         assert_eq!(rt.byte(11), 0x11);
     }
@@ -1981,17 +1981,17 @@ mod tests {
         // thus both trailing adds execute and final becomes 15.
         let x = 1u32;
         let opcodes = vec![
-            Opcode::I32Const(x.into()),            // 1
-            Opcode::I32Const((x + 1).into()),      // 2
-            Opcode::I32Const((x + 2).into()),      // 3
-            Opcode::I32Add,                        // 2 + 3 = 5
-            Opcode::I32Add,                        // 1 + 5 = 6
-            Opcode::I32Const(0u32.into()),         // 0 -> branch NOT taken
+            Opcode::I32Const(x.into()),       // 1
+            Opcode::I32Const((x + 1).into()), // 2
+            Opcode::I32Const((x + 2).into()), // 3
+            Opcode::I32Add,                   // 2 + 3 = 5
+            Opcode::I32Add,                   // 1 + 5 = 6
+            Opcode::I32Const(0u32.into()),    // 0 -> branch NOT taken
             Opcode::BrIfNez(BranchOffset::from(16i32)),
-            Opcode::I32Const((x + 3).into()),      // 4
-            Opcode::I32Const((x + 4).into()),      // 5
-            Opcode::I32Add,                        // 4 + 5 = 9
-            Opcode::I32Add,                        // 6 + 9 = 15
+            Opcode::I32Const((x + 3).into()), // 4
+            Opcode::I32Const((x + 4).into()), // 5
+            Opcode::I32Add,                   // 4 + 5 = 9
+            Opcode::I32Add,                   // 6 + 9 = 15
         ];
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
@@ -2040,11 +2040,17 @@ mod tests {
         // Check: (x <_s y) == 1 AND (x <_u y) == 0
         let opcodes = vec![
             // signed LT should be true
-            Opcode::I32Const(x.into()), Opcode::I32Const(y.into()), Opcode::I32LtS,
-            Opcode::I32Const(1u32.into()), Opcode::I32Eq,
+            Opcode::I32Const(x.into()),
+            Opcode::I32Const(y.into()),
+            Opcode::I32LtS,
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Eq,
             // unsigned LT should be false
-            Opcode::I32Const(x.into()), Opcode::I32Const(y.into()), Opcode::I32LtU,
-            Opcode::I32Const(0u32.into()), Opcode::I32Eq,
+            Opcode::I32Const(x.into()),
+            Opcode::I32Const(y.into()),
+            Opcode::I32LtU,
+            Opcode::I32Const(0u32.into()),
+            Opcode::I32Eq,
             // both must be true -> AND == 1
             Opcode::I32And,
         ];
@@ -2062,11 +2068,17 @@ mod tests {
         // Check: (x >_s y) == 0 AND (x >_u y) == 1
         let opcodes = vec![
             // signed GT should be false
-            Opcode::I32Const(x.into()), Opcode::I32Const(y.into()), Opcode::I32GtS,
-            Opcode::I32Const(0u32.into()), Opcode::I32Eq,
+            Opcode::I32Const(x.into()),
+            Opcode::I32Const(y.into()),
+            Opcode::I32GtS,
+            Opcode::I32Const(0u32.into()),
+            Opcode::I32Eq,
             // unsigned GT should be true
-            Opcode::I32Const(x.into()), Opcode::I32Const(y.into()), Opcode::I32GtU,
-            Opcode::I32Const(1u32.into()), Opcode::I32Eq,
+            Opcode::I32Const(x.into()),
+            Opcode::I32Const(y.into()),
+            Opcode::I32GtU,
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Eq,
             // both checks true -> AND == 1
             Opcode::I32And,
         ];
@@ -2106,24 +2118,21 @@ mod tests {
     // --- div/rem identity: a = b*q + r (signed, non-overflow case) ---
     #[test]
     fn test_divrem_identity_signed() {
-        let a: u32 = 123;           // +123
-        let b: u32 = neg(7);        // -7
+        let a: u32 = 123; // +123
+        let b: u32 = neg(7); // -7
         let opcodes = vec![
             // q = a / b (signed)
             Opcode::I32Const(a.into()),
             Opcode::I32Const(b.into()),
-            Opcode::I32DivS,                // q
+            Opcode::I32DivS, // q
             Opcode::I32Const(b.into()),
-            Opcode::I32Mul,                 // b*q
-
+            Opcode::I32Mul, // b*q
             // r = a % b (signed)
             Opcode::I32Const(a.into()),
             Opcode::I32Const(b.into()),
-            Opcode::I32RemS,                // r
-
+            Opcode::I32RemS, // r
             // b*q + r
             Opcode::I32Add,
-
             // compare to a
             Opcode::I32Const(a.into()),
             Opcode::I32Eq,
@@ -2145,11 +2154,8 @@ mod tests {
     // --- event emission sanity: add should produce CPU & ALU events ---
     #[test]
     fn test_event_emission_add() {
-        let opcodes = vec![
-            Opcode::I32Const(10u32.into()),
-            Opcode::I32Const(20u32.into()),
-            Opcode::I32Add,
-        ];
+        let opcodes =
+            vec![Opcode::I32Const(10u32.into()), Opcode::I32Const(20u32.into()), Opcode::I32Add];
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
@@ -3550,7 +3556,7 @@ mod tests {
         let inc_fn = vec![
             Opcode::I32Const(1u32.into()),
             Opcode::I32Add,
-            Opcode::Return,        // function returns here
+            Opcode::Return, // function returns here
         ];
 
         // Main: x -> inc -> inc -> (== expected) -> Return
@@ -3564,11 +3570,11 @@ mod tests {
 
         let mut ops = Vec::new();
         ops.push(Opcode::I32Const(x.into()));
-        ops.push(Opcode::CallInternal(inc_pos.into()));  // x+1
-        ops.push(Opcode::CallInternal(inc_pos.into()));  // (x+1)+1
+        ops.push(Opcode::CallInternal(inc_pos.into())); // x+1
+        ops.push(Opcode::CallInternal(inc_pos.into())); // (x+1)+1
         ops.push(Opcode::I32Const(expected.into()));
-        ops.push(Opcode::I32Eq);                         // 1 if equal
-        ops.push(Opcode::Return);                        // <-- prevent fall-through into inc_fn
+        ops.push(Opcode::I32Eq); // 1 if equal
+        ops.push(Opcode::Return); // <-- prevent fall-through into inc_fn
 
         // append function
         ops.extend(inc_fn);
@@ -3580,16 +3586,12 @@ mod tests {
     }
     #[test]
     fn test_store_then_load_via_function() {
-        let addr: u32 = 0x10000;         // inside 2 pages (0..=0x1FFFF), 32-bit store is safe
-        let val:  u32 = 0xDEAD_BEEF;
+        let addr: u32 = 0x10000; // inside 2 pages (0..=0x1FFFF), 32-bit store is safe
+        let val: u32 = 0xDEAD_BEEF;
 
         // function expects: [ ..., addr, addr, value ]
         // does: store(addr, value); load(addr); return
-        let fun = vec![
-            Opcode::I32Store(0u32),
-            Opcode::I32Load(0u32),
-            Opcode::Return,
-        ];
+        let fun = vec![Opcode::I32Store(0u32), Opcode::I32Load(0u32), Opcode::Return];
 
         // main ops:
         //   MemoryGrow(2)
@@ -3653,8 +3655,8 @@ mod tests {
         //   Return                           -> 1
         // total = 10
         let main_len = 10u32;
-        let xor_pos = main_len;                           // function 1 starts right after main
-        let and_pos = xor_pos + xor_fn.len() as u32;      // function 2 follows
+        let xor_pos = main_len; // function 1 starts right after main
+        let and_pos = xor_pos + xor_fn.len() as u32; // function 2 follows
 
         let mut ops = Vec::new();
         // (a ^ b) via xor_fn
@@ -3689,11 +3691,7 @@ mod tests {
     #[test]
     fn test_stack_after_nested_calls() {
         // inc(z) = z + 1
-        let inc_fn = vec![
-            Opcode::I32Const(1u32.into()),
-            Opcode::I32Add,
-            Opcode::Return,
-        ]; // len = 3
+        let inc_fn = vec![Opcode::I32Const(1u32.into()), Opcode::I32Add, Opcode::Return]; // len = 3
 
         // f(x,y) = (x + y) + 1  ==  I32Add ; CallInternal(inc_pos) ; Return
         // We'll compute inc_pos after setting main_len.
@@ -3704,15 +3702,11 @@ mod tests {
         let main_len = 6u32;
 
         // final layout: [ main | f | inc ]
-        let f_pos  = main_len;
+        let f_pos = main_len;
         let inc_pos = f_pos + f_body_len as u32;
 
         // build f with the correct inc_pos
-        let f = vec![
-            Opcode::I32Add,
-            Opcode::CallInternal(inc_pos.into()),
-            Opcode::Return,
-        ];
+        let f = vec![Opcode::I32Add, Opcode::CallInternal(inc_pos.into()), Opcode::Return];
 
         let x = 10u32;
         let y = 31u32;
@@ -3749,17 +3743,20 @@ mod tests {
             Opcode::I32Store8(1u32),
             Opcode::I32Store8(2u32),
             Opcode::I32Store8(3u32),
-            Opcode::I32Load(0u32),   // pops addr, pushes word
+            Opcode::I32Load(0u32), // pops addr, pushes word
             Opcode::Return,
         ];
 
         // main = grow(4), push 9 items (addr sequencing below), call, cmp, return
         // total main_len = 2 (grow) + 9 (pushes) + 1 (call) + 2 (cmp) + 1 (ret) = 15
         let main_len = 15u32;
-        let fun_pos  = main_len;
+        let fun_pos = main_len;
 
         let addr: u32 = 0x30000; // needs 4 pages (4 * 64KiB = 262,144 bytes)
-        let b0 = 0x11u32; let b1 = 0x22u32; let b2 = 0x33u32; let b3 = 0x44u32;
+        let b0 = 0x11u32;
+        let b1 = 0x22u32;
+        let b2 = 0x33u32;
+        let b3 = 0x44u32;
         let expected = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
 
         let mut ops = Vec::new();
@@ -3771,10 +3768,14 @@ mod tests {
         // [ addr(load), addr(b3), b3, addr(b2), b2, addr(b1), b1, addr(b0), b0 ]
         // so each store8 pops value then addr in order b0, b1, b2, b3; and one addr remains for load.
         ops.push(Opcode::I32Const(addr.into())); // for final load (bottom-most)
-        ops.push(Opcode::I32Const(addr.into())); ops.push(Opcode::I32Const(b3.into()));
-        ops.push(Opcode::I32Const(addr.into())); ops.push(Opcode::I32Const(b2.into()));
-        ops.push(Opcode::I32Const(addr.into())); ops.push(Opcode::I32Const(b1.into()));
-        ops.push(Opcode::I32Const(addr.into())); ops.push(Opcode::I32Const(b0.into()));
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Const(b3.into()));
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Const(b2.into()));
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Const(b1.into()));
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Const(b0.into()));
 
         // Call the function
         ops.push(Opcode::CallInternal(fun_pos.into()));
@@ -3795,38 +3796,30 @@ mod tests {
     // --- chain calls: (((x+1)+1)*2) then >> 1 => x+2 (sanity of order) ---
     #[test]
     fn test_chain_calls_and_shifts() {
-        let inc = vec![
-            Opcode::I32Const(1u32.into()),
-            Opcode::I32Add,
-            Opcode::Return,
-        ]; // len 3
+        let inc = vec![Opcode::I32Const(1u32.into()), Opcode::I32Add, Opcode::Return]; // len 3
 
-        let times2 = vec![
-            Opcode::I32Const(1u32.into()),
-            Opcode::I32Shl,
-            Opcode::Return,
-        ]; // len 3
+        let times2 = vec![Opcode::I32Const(1u32.into()), Opcode::I32Shl, Opcode::Return]; // len 3
 
         // main: const x, call inc, call inc, call times2, const 1, shrU, const expected, eq, return => 9
         let main_len = 9u32;
 
-        let inc1_pos   = main_len;
-        let inc2_pos   = inc1_pos + inc.len() as u32;
+        let inc1_pos = main_len;
+        let inc2_pos = inc1_pos + inc.len() as u32;
         let times2_pos = inc2_pos + inc.len() as u32;
 
         let x = 100u32;
         let expected = x + 2;
 
         let mut ops = Vec::new();
-        ops.push(Opcode::I32Const(x.into()));                 // x
-        ops.push(Opcode::CallInternal(inc1_pos.into()));      // x+1
-        ops.push(Opcode::CallInternal(inc2_pos.into()));      // x+2
-        ops.push(Opcode::CallInternal(times2_pos.into()));    // (x+2)*2
-        ops.push(Opcode::I32Const(1u32.into()));              // shift by 1
-        ops.push(Opcode::I32ShrU);                            // ((x+2)*2) >> 1 == x+2
+        ops.push(Opcode::I32Const(x.into())); // x
+        ops.push(Opcode::CallInternal(inc1_pos.into())); // x+1
+        ops.push(Opcode::CallInternal(inc2_pos.into())); // x+2
+        ops.push(Opcode::CallInternal(times2_pos.into())); // (x+2)*2
+        ops.push(Opcode::I32Const(1u32.into())); // shift by 1
+        ops.push(Opcode::I32ShrU); // ((x+2)*2) >> 1 == x+2
         ops.push(Opcode::I32Const(expected.into()));
         ops.push(Opcode::I32Eq);
-        ops.push(Opcode::Return);                             // prevent fall-through
+        ops.push(Opcode::Return); // prevent fall-through
 
         // append functions
         ops.extend(inc.clone());
@@ -3845,9 +3838,9 @@ mod tests {
 
         // f(x,y): (x+y); Br(2) to skip the next insn; Return
         let f = vec![
-            Opcode::I32Add,                            // (x + y)
-            Opcode::Br(BranchOffset::from(2i32)),      // skip over I32Const(999) to Return
-            Opcode::I32Const(999u32.into()),           // should be skipped
+            Opcode::I32Add,                       // (x + y)
+            Opcode::Br(BranchOffset::from(2i32)), // skip over I32Const(999) to Return
+            Opcode::I32Const(999u32.into()),      // should be skipped
             Opcode::Return,
         ];
 
@@ -3855,7 +3848,9 @@ mod tests {
         let main_len = 6u32;
         let f_pos = main_len;
 
-        let x = 7u32; let y = 8u32; let expected = x + y;
+        let x = 7u32;
+        let y = 8u32;
+        let expected = x + y;
 
         let mut ops = Vec::new();
         ops.push(Opcode::I32Const(x.into()));
@@ -3876,8 +3871,8 @@ mod tests {
     #[test]
     fn test_many_events_and_calls_sanity() {
         // helpers
-        let add  = vec![Opcode::I32Add,                                Opcode::Return]; // len 2
-        let mul  = vec![Opcode::I32Mul,                                Opcode::Return]; // len 2
+        let add = vec![Opcode::I32Add, Opcode::Return]; // len 2
+        let mul = vec![Opcode::I32Mul, Opcode::Return]; // len 2
         let shl1 = vec![Opcode::I32Const(1u32.into()), Opcode::I32Shl, Opcode::Return]; // len 3
 
         // Use 0x40000 => needs >= 5 pages (5*64KiB = 327,680)
@@ -3896,9 +3891,9 @@ mod tests {
         // return
         let main_len = 17u32;
 
-        let add_pos  = main_len;
-        let mul_pos  = add_pos + add.len() as u32;
-        let shl_pos  = mul_pos + mul.len() as u32;
+        let add_pos = main_len;
+        let mul_pos = add_pos + add.len() as u32;
+        let shl_pos = mul_pos + mul.len() as u32;
 
         let mut ops = Vec::new();
         // grow
@@ -3923,10 +3918,10 @@ mod tests {
         ops.push(Opcode::CallInternal(mul_pos.into()));
 
         // store: needs [ ..., addr, value ] with value on top -> OK: top is v3, below is addrS
-        ops.push(Opcode::I32Store(0u32));  // pops v3, addrS; stack now [addrL]
+        ops.push(Opcode::I32Store(0u32)); // pops v3, addrS; stack now [addrL]
 
         // load back from addrL
-        ops.push(Opcode::I32Load(0u32));   // pops addrL, pushes v3
+        ops.push(Opcode::I32Load(0u32)); // pops addrL, pushes v3
 
         // << 1 via helper
         ops.push(Opcode::CallInternal(shl_pos.into()));
@@ -3951,51 +3946,61 @@ mod tests {
 
         // sanity on events
         let calls: usize = rt.records.iter().map(|r| r.call_events.len()).sum();
-        let alus: usize = rt.records.iter().map(|r| {
-            r.add_events.len() + r.mul_events.len() + r.bitwise_events.len()
-                + r.shift_left_events.len() + r.shift_right_events.len()
-        }).sum();
+        let alus: usize = rt
+            .records
+            .iter()
+            .map(|r| {
+                r.add_events.len()
+                    + r.mul_events.len()
+                    + r.bitwise_events.len()
+                    + r.shift_left_events.len()
+                    + r.shift_right_events.len()
+            })
+            .sum();
         let mems: usize = rt.records.iter().map(|r| r.memory_instr_events.len()).sum();
         assert!(calls >= 3); // add, add, mul, shl1 -> 4 actually
-        assert!(alus  >= 3); // add/mul/shl/gtu
-        assert!(mems  >= 2); // store + load
+        assert!(alus >= 3); // add/mul/shl/gtu
+        assert!(mems >= 2); // store + load
     }
     // --- Fibonacci n=9 via iterative step function and CallInternal ---
     #[test]
     fn test_fibonacci_n9_callinternal() {
         let base: u32 = 0x10000;
         let addr_tmp = base + 0;
-        let addr_a   = base + 4;   // will hold F(n)
-        let addr_b   = base + 8;   // will hold F(n+1)
-        let addr_n   = base + 12;
+        let addr_a = base + 4; // will hold F(n)
+        let addr_b = base + 8; // will hold F(n+1)
+        let addr_n = base + 12;
 
         // step(): (a,b,n) -> (b, a+b, n-1); returns new n
         let step_fn = vec![
             // tmp = a + b
             Opcode::I32Const(addr_tmp.into()),
-            Opcode::I32Const(addr_a.into()), Opcode::I32Load(0u32),
-            Opcode::I32Const(addr_b.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(addr_a.into()),
+            Opcode::I32Load(0u32),
+            Opcode::I32Const(addr_b.into()),
+            Opcode::I32Load(0u32),
             Opcode::I32Add,
             Opcode::I32Store(0u32),
-
             // a = b
             Opcode::I32Const(addr_a.into()),
-            Opcode::I32Const(addr_b.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(addr_b.into()),
+            Opcode::I32Load(0u32),
             Opcode::I32Store(0u32),
-
             // b = tmp
             Opcode::I32Const(addr_b.into()),
-            Opcode::I32Const(addr_tmp.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(addr_tmp.into()),
+            Opcode::I32Load(0u32),
             Opcode::I32Store(0u32),
-
             // n = n - 1
             Opcode::I32Const(addr_n.into()),
-            Opcode::I32Const(addr_n.into()), Opcode::I32Load(0u32),
-            Opcode::I32Const(1u32.into()), Opcode::I32Sub,
+            Opcode::I32Const(addr_n.into()),
+            Opcode::I32Load(0u32),
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Sub,
             Opcode::I32Store(0u32),
-
             // return n
-            Opcode::I32Const(addr_n.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(addr_n.into()),
+            Opcode::I32Load(0u32),
             Opcode::Return,
         ];
 
@@ -4048,11 +4053,7 @@ mod tests {
     #[test]
     fn test_nested_three_level_calls() {
         // f3(x): return 2*x
-        let f3 = vec![
-            Opcode::I32Const(1u32.into()),
-            Opcode::I32Shl,
-            Opcode::Return,
-        ]; // len 3
+        let f3 = vec![Opcode::I32Const(1u32.into()), Opcode::I32Shl, Opcode::Return]; // len 3
 
         // f2(x,y): return f3(x) + y
         let f2 = vec![
@@ -4069,7 +4070,9 @@ mod tests {
         ]; // len 3
 
         // main: push z, y, x (so top=x,y below,z bottom) ; call f1 ; cmp ; return
-        let x = 3u32; let y = 5u32; let z = 7u32;
+        let x = 3u32;
+        let y = 5u32;
+        let z = 7u32;
         let expected = (2 * x) + y + z; // 18
 
         let mut ops = Vec::new();
@@ -4082,11 +4085,11 @@ mod tests {
         ops.push(Opcode::Return);
 
         // compute positions
-        let f1_pos = ops.len() as u32;              // after main
+        let f1_pos = ops.len() as u32; // after main
         let mut f1_patched = f1.clone();
-        let f2_pos = f1_pos + f1.len() as u32;      // after f1
+        let f2_pos = f1_pos + f1.len() as u32; // after f1
         let mut f2_patched = f2.clone();
-        let f3_pos = f2_pos + f2.len() as u32;      // after f2
+        let f3_pos = f2_pos + f2.len() as u32; // after f2
 
         // patch call targets
         f1_patched[0] = Opcode::CallInternal(f2_pos.into());
@@ -4108,10 +4111,7 @@ mod tests {
     #[test]
     fn test_call_direct_add() {
         // f_add(x,y) = x + y
-        let f_add = vec![
-            Opcode::I32Add,
-            Opcode::Return,
-        ]; // len = 2
+        let f_add = vec![Opcode::I32Add, Opcode::Return]; // len = 2
 
         // main: push x, y; Call(f_add); const expected; eq; return  => 6 ops
         let main_len = 6u32;
@@ -4144,37 +4144,40 @@ mod tests {
     fn test_fibonacci_n25_callinternal() {
         let base: u32 = 0x10000;
         let addr_tmp = base + 0;
-        let addr_a   = base + 4;   // F(n)
-        let addr_b   = base + 8;   // F(n+1)
-        let addr_n   = base + 12;
+        let addr_a = base + 4; // F(n)
+        let addr_b = base + 8; // F(n+1)
+        let addr_n = base + 12;
 
         // step(): (a,b,n) -> (b, a+b, n-1); returns new n (ignored by caller)
         let step_fn = vec![
             // tmp = a + b
             Opcode::I32Const(addr_tmp.into()),
-            Opcode::I32Const(addr_a.into()), Opcode::I32Load(0u32),
-            Opcode::I32Const(addr_b.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(addr_a.into()),
+            Opcode::I32Load(0u32),
+            Opcode::I32Const(addr_b.into()),
+            Opcode::I32Load(0u32),
             Opcode::I32Add,
             Opcode::I32Store(0u32),
-
             // a = b
             Opcode::I32Const(addr_a.into()),
-            Opcode::I32Const(addr_b.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(addr_b.into()),
+            Opcode::I32Load(0u32),
             Opcode::I32Store(0u32),
-
             // b = tmp
             Opcode::I32Const(addr_b.into()),
-            Opcode::I32Const(addr_tmp.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(addr_tmp.into()),
+            Opcode::I32Load(0u32),
             Opcode::I32Store(0u32),
-
             // n = n - 1
             Opcode::I32Const(addr_n.into()),
-            Opcode::I32Const(addr_n.into()), Opcode::I32Load(0u32),
-            Opcode::I32Const(1u32.into()), Opcode::I32Sub,
+            Opcode::I32Const(addr_n.into()),
+            Opcode::I32Load(0u32),
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Sub,
             Opcode::I32Store(0u32),
-
             // return n
-            Opcode::I32Const(addr_n.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(addr_n.into()),
+            Opcode::I32Load(0u32),
             Opcode::Return,
         ];
 
@@ -4213,7 +4216,9 @@ mod tests {
 
         // patch function position and append
         let step_pos = ops.len() as u32;
-        for idx in call_sites { ops[idx] = Opcode::CallInternal(step_pos.into()); }
+        for idx in call_sites {
+            ops[idx] = Opcode::CallInternal(step_pos.into());
+        }
         ops.extend(step_fn);
 
         let program = Program::from_instrs(ops);
@@ -4225,8 +4230,8 @@ mod tests {
     #[test]
     fn test_cross_page_unaligned_store_load_with_calls() {
         // helpers
-        let add  = vec![Opcode::I32Add,                                    Opcode::Return]; // len 2
-        let shl2 = vec![Opcode::I32Const(2u32.into()), Opcode::I32Shl,     Opcode::Return]; // len 3
+        let add = vec![Opcode::I32Add, Opcode::Return]; // len 2
+        let shl2 = vec![Opcode::I32Const(2u32.into()), Opcode::I32Shl, Opcode::Return]; // len 3
 
         let a = 15u32;
         let b = 27u32;
@@ -4265,7 +4270,7 @@ mod tests {
         ops.push(Opcode::Return);
 
         // append helpers and patch the calls
-        let add_pos  = ops.len() as u32;
+        let add_pos = ops.len() as u32;
         ops.extend(add);
         let shl2_pos = ops.len() as u32;
         ops.extend(shl2);
@@ -4284,12 +4289,12 @@ mod tests {
     fn test_dot_product_len8_via_step_function() {
         // memory layout
         let base: u32 = 0x20000;
-        let pa   = base + 0;   // ptr A
-        let pb   = base + 4;   // ptr B
-        let acc  = base + 8;   // accumulator
-        let rem  = base + 12;  // remaining
-        let arrA = base + 64;               // A[8]
-        let arrB = base + 64 + 8*4;         // B[8]
+        let pa = base + 0; // ptr A
+        let pb = base + 4; // ptr B
+        let acc = base + 8; // accumulator
+        let rem = base + 12; // remaining
+        let arrA = base + 64; // A[8]
+        let arrB = base + 64 + 8 * 4; // B[8]
 
         // step():
         //   acc = acc + (*pa * *pb)
@@ -4300,45 +4305,51 @@ mod tests {
             // Push acc address first so it's under the computed value at store time.
             Opcode::I32Const(acc.into()),
             // *pa
-            Opcode::I32Const(pa.into()), Opcode::I32Load(0u32), // load pa (pointer)
-            Opcode::I32Load(0u32),                              // load *pa
+            Opcode::I32Const(pa.into()),
+            Opcode::I32Load(0u32), // load pa (pointer)
+            Opcode::I32Load(0u32), // load *pa
             // *pb
-            Opcode::I32Const(pb.into()), Opcode::I32Load(0u32), // load pb (pointer)
-            Opcode::I32Load(0u32),                              // load *pb
+            Opcode::I32Const(pb.into()),
+            Opcode::I32Load(0u32), // load pb (pointer)
+            Opcode::I32Load(0u32), // load *pb
             // *pa * *pb
             Opcode::I32Mul,
             // + acc
-            Opcode::I32Const(acc.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(acc.into()),
+            Opcode::I32Load(0u32),
             Opcode::I32Add,
             // store to acc (stack: ... addr(acc), value)
             Opcode::I32Store(0u32),
-
             // ---- pa += 4 ----
             Opcode::I32Const(pa.into()),
-            Opcode::I32Const(pa.into()), Opcode::I32Load(0u32),
-            Opcode::I32Const(4u32.into()), Opcode::I32Add,
+            Opcode::I32Const(pa.into()),
+            Opcode::I32Load(0u32),
+            Opcode::I32Const(4u32.into()),
+            Opcode::I32Add,
             Opcode::I32Store(0u32),
-
             // ---- pb += 4 ----
             Opcode::I32Const(pb.into()),
-            Opcode::I32Const(pb.into()), Opcode::I32Load(0u32),
-            Opcode::I32Const(4u32.into()), Opcode::I32Add,
+            Opcode::I32Const(pb.into()),
+            Opcode::I32Load(0u32),
+            Opcode::I32Const(4u32.into()),
+            Opcode::I32Add,
             Opcode::I32Store(0u32),
-
             // ---- rem -= 1 ----
             Opcode::I32Const(rem.into()),
-            Opcode::I32Const(rem.into()), Opcode::I32Load(0u32),
-            Opcode::I32Const(1u32.into()), Opcode::I32Sub,
+            Opcode::I32Const(rem.into()),
+            Opcode::I32Load(0u32),
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Sub,
             Opcode::I32Store(0u32),
-
             // return rem
-            Opcode::I32Const(rem.into()), Opcode::I32Load(0u32),
+            Opcode::I32Const(rem.into()),
+            Opcode::I32Load(0u32),
             Opcode::Return,
         ];
 
         // expected: A=[1..8], B=[8..1] => dot = 120
-        let a_vals = [1u32,2,3,4,5,6,7,8];
-        let b_vals = [8u32,7,6,5,4,3,2,1];
+        let a_vals = [1u32, 2, 3, 4, 5, 6, 7, 8];
+        let b_vals = [8u32, 7, 6, 5, 4, 3, 2, 1];
 
         let mut ops = Vec::new();
         // grow memory
@@ -4346,21 +4357,29 @@ mod tests {
         ops.push(Opcode::MemoryGrow);
 
         // init pointers
-        ops.push(Opcode::I32Const(pa.into())); ops.push(Opcode::I32Const(arrA.into())); ops.push(Opcode::I32Store(0u32));
-        ops.push(Opcode::I32Const(pb.into())); ops.push(Opcode::I32Const(arrB.into())); ops.push(Opcode::I32Store(0u32));
+        ops.push(Opcode::I32Const(pa.into()));
+        ops.push(Opcode::I32Const(arrA.into()));
+        ops.push(Opcode::I32Store(0u32));
+        ops.push(Opcode::I32Const(pb.into()));
+        ops.push(Opcode::I32Const(arrB.into()));
+        ops.push(Opcode::I32Store(0u32));
         // acc=0, rem=8
-        ops.push(Opcode::I32Const(acc.into())); ops.push(Opcode::I32Const(0u32.into())); ops.push(Opcode::I32Store(0u32));
-        ops.push(Opcode::I32Const(rem.into())); ops.push(Opcode::I32Const(8u32.into())); ops.push(Opcode::I32Store(0u32));
+        ops.push(Opcode::I32Const(acc.into()));
+        ops.push(Opcode::I32Const(0u32.into()));
+        ops.push(Opcode::I32Store(0u32));
+        ops.push(Opcode::I32Const(rem.into()));
+        ops.push(Opcode::I32Const(8u32.into()));
+        ops.push(Opcode::I32Store(0u32));
 
         // write arrays
         for (i, v) in a_vals.iter().enumerate() {
-            let addr = arrA + (i as u32)*4;
+            let addr = arrA + (i as u32) * 4;
             ops.push(Opcode::I32Const(addr.into()));
             ops.push(Opcode::I32Const((*v).into()));
             ops.push(Opcode::I32Store(0u32));
         }
         for (i, v) in b_vals.iter().enumerate() {
-            let addr = arrB + (i as u32)*4;
+            let addr = arrB + (i as u32) * 4;
             ops.push(Opcode::I32Const(addr.into()));
             ops.push(Opcode::I32Const((*v).into()));
             ops.push(Opcode::I32Store(0u32));
@@ -4383,7 +4402,9 @@ mod tests {
 
         // patch function position
         let step_pos = ops.len() as u32;
-        for idx in call_sites { ops[idx] = Opcode::CallInternal(step_pos.into()); }
+        for idx in call_sites {
+            ops[idx] = Opcode::CallInternal(step_pos.into());
+        }
         ops.extend(step);
 
         let program = Program::from_instrs(ops);
@@ -4398,7 +4419,7 @@ mod tests {
 
         let x = 13u32;
         let y = 25u32;
-        let left  = (y - x) << 3; // 96
+        let left = (y - x) << 3; // 96
         let expected = left;
 
         let mut ops = Vec::new();
@@ -4411,30 +4432,30 @@ mod tests {
         ops.push(Opcode::I32Const(scratch.into())); // addr under value
         ops.push(Opcode::I32Const(x.into()));
         ops.push(Opcode::I32Const(y.into()));
-        ops.push(Opcode::I32LtU);                   // lt
-        ops.push(Opcode::I32Store(0u32));           // pops value, then addr
+        ops.push(Opcode::I32LtU); // lt
+        ops.push(Opcode::I32Store(0u32)); // pops value, then addr
 
         // compute left = (y-x)<<3 and multiply by lt
         ops.push(Opcode::I32Const(y.into()));
         ops.push(Opcode::I32Const(x.into()));
         ops.push(Opcode::I32Sub);
         ops.push(Opcode::I32Const(3u32.into()));
-        ops.push(Opcode::I32Shl);                   // left
+        ops.push(Opcode::I32Shl); // left
         ops.push(Opcode::I32Const(scratch.into()));
-        ops.push(Opcode::I32Load(0u32));            // lt
-        ops.push(Opcode::I32Mul);                   // left * lt
+        ops.push(Opcode::I32Load(0u32)); // lt
+        ops.push(Opcode::I32Mul); // left * lt
 
         // compute right = (x-y)>>1 and multiply by (1-lt)
         ops.push(Opcode::I32Const(x.into()));
         ops.push(Opcode::I32Const(y.into()));
         ops.push(Opcode::I32Sub);
         ops.push(Opcode::I32Const(1u32.into()));
-        ops.push(Opcode::I32ShrU);                  // right
+        ops.push(Opcode::I32ShrU); // right
         ops.push(Opcode::I32Const(1u32.into()));
         ops.push(Opcode::I32Const(scratch.into()));
-        ops.push(Opcode::I32Load(0u32));            // lt
-        ops.push(Opcode::I32Sub);                   // 1 - lt
-        ops.push(Opcode::I32Mul);                   // (1-lt)*right
+        ops.push(Opcode::I32Load(0u32)); // lt
+        ops.push(Opcode::I32Sub); // 1 - lt
+        ops.push(Opcode::I32Mul); // (1-lt)*right
 
         // add both branches and compare
         ops.push(Opcode::I32Add);
@@ -4465,10 +4486,10 @@ mod tests {
 
         // Load8S + Load8U, add
         ops.push(Opcode::I32Const(addr.into()));
-        ops.push(Opcode::I32Load8S(0u32));                  // (i8)240 == -16 (as u32 two's complement)
+        ops.push(Opcode::I32Load8S(0u32)); // (i8)240 == -16 (as u32 two's complement)
         ops.push(Opcode::I32Const(addr.into()));
-        ops.push(Opcode::I32Load8U(0u32));                  // 240
-        ops.push(Opcode::I32Add);                           // 224
+        ops.push(Opcode::I32Load8U(0u32)); // 240
+        ops.push(Opcode::I32Add); // 224
 
         ops.push(Opcode::I32Const(expected.into()));
         ops.push(Opcode::I32Eq);
@@ -4479,6 +4500,23 @@ mod tests {
         rt.run().unwrap();
         assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
     }
-    
 
+    #[test]
+    fn test_table_init() {
+        let ops = vec![
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(1.into()),
+            Opcode::TableGrow(0),
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(0.into()),
+            Opcode::TableInit(0),
+            Opcode::TableGet(0),
+        ];
+        let elements = vec![5u32];
+        let program = Program::from_instrs(ops).with_elements(elements);
+
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+    }
 }

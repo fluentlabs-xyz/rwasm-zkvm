@@ -13,7 +13,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     events::{
-        AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, CallEvent, ConstEvent, CpuEvent, GlobalInteractionEvent, MemInstrEvent, MemoryInitializeFinalizeEvent, MemoryLocalEvent, MemoryRecordEnum, PrecompileEvent, PrecompileEvents, SysStateEvent, SyscallEvent
+        AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, CallEvent, ConstEvent, CpuEvent,
+        GlobalInteractionEvent, MemInstrEvent, MemoryInitializeFinalizeEvent, MemoryLocalEvent,
+        MemoryRecordEnum, PrecompileEvent, PrecompileEvents, SysStateEvent, SyscallEvent,
     },
     program::Program,
     syscalls::SyscallCode,

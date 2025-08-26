@@ -157,24 +157,26 @@ pub fn emit_memory_dependencies(executor: &mut Executor, event: MemInstrEvent) {
         let addr_offset = (memory_addr % 4_u32) as u8;
         let mut mem_value = event.mem_access.value();
         if is_multi_align(event.opcode, memory_addr) {
-             let mem_value_hi = event.mem_access_hi.unwrap().value();
-              let unalignment = memory_addr % 4;
+            let mem_value_hi = event.mem_access_hi.unwrap().value();
+            let unalignment = memory_addr % 4;
             match event.opcode {
                 Opcode::I32Load16S(_) | Opcode::I32Load16U(_) | Opcode::I32Store16(_) => {
-                    let low_bits:[u8;4]=mem_value.to_le_bytes();
-                    let hi_bits :[u8;4]= mem_value_hi.to_le_bytes();
-                    mem_value=u32::from_le_bytes([low_bits[1],low_bits[2],low_bits[3],hi_bits[0]]);
-                    
+                    let low_bits: [u8; 4] = mem_value.to_le_bytes();
+                    let hi_bits: [u8; 4] = mem_value_hi.to_le_bytes();
+                    mem_value =
+                        u32::from_le_bytes([low_bits[1], low_bits[2], low_bits[3], hi_bits[0]]);
                 }
 
                 Opcode::I32Load(_) | Opcode::I32Store(_) => {
-                   let low_bits:[u8;4]=mem_value.to_le_bytes();
-                    let hi_bits :[u8;4]= mem_value_hi.to_le_bytes();
-                   mem_value= match unalignment{
-                        1=>u32::from_le_bytes([low_bits[1],low_bits[2],low_bits[3],hi_bits[0]]),
-                        2=>u32::from_le_bytes([low_bits[2],low_bits[3],hi_bits[0],hi_bits[1]]),
-                        3=>u32::from_le_bytes([low_bits[3],hi_bits[0],hi_bits[1],hi_bits[2]]),
-                        _=>unreachable!(),
+                    let low_bits: [u8; 4] = mem_value.to_le_bytes();
+                    let hi_bits: [u8; 4] = mem_value_hi.to_le_bytes();
+                    mem_value = match unalignment {
+                        1 => {
+                            u32::from_le_bytes([low_bits[1], low_bits[2], low_bits[3], hi_bits[0]])
+                        }
+                        2 => u32::from_le_bytes([low_bits[2], low_bits[3], hi_bits[0], hi_bits[1]]),
+                        3 => u32::from_le_bytes([low_bits[3], hi_bits[0], hi_bits[1], hi_bits[2]]),
+                        _ => unreachable!(),
                     }
                 }
                 _ => unreachable!(),

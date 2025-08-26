@@ -68,10 +68,8 @@ impl<T: Copy> Memory<T> {
     /// This method often incurs unnecessary branching.
     #[inline]
     pub fn get(&self, addr: u32) -> Option<&T> {
-           self.page_table.get(addr)
+        self.page_table.get(addr)
     }
-    
-
 
     /// Remove a value from the memory.
     ///
