@@ -2167,6 +2167,44 @@ mod tests {
         assert!(total_cpu > 0, "expected CPU events");
         assert!(total_add > 0, "expected at least one add ALU event");
     }
+
+    /// After writing individual bytes, a word read should reconstruct the same value (LE).
+    #[test]
+    fn test_word_read_after_byte_writes() {
+        let program = Program::from_instrs(vec![]);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+
+        let base: u32 = 8; // 4-byte aligned in the VM's virtual addressing
+        let bytes = [0x12u32, 0x34, 0x56, 0x78]; // LE layout
+        let mut w = 0u32;
+
+        // Simulate four byte-writes by composing the word and committing via aligned mw()
+        for (i, b) in bytes.into_iter().enumerate() {
+            let shift = (i as u32) * 8;
+            w = (w & !(0xFFu32 << shift)) | ((b & 0xFF) << shift);
+            rt.mw(base, w, /*shard=*/0, /*timestamp=*/ (i as u32) + 1, None);
+        }
+
+        assert_eq!(rt.word(base), 0x7856_3412, "word should equal assembled bytes (LE)");
+    }
+
+
+    #[test]
+    fn test_byte_overwrite_then_word_read() {
+        let program = Program::from_instrs(vec![]);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+
+        let base: u32 = 8; // aligned
+        let initial: u32 = 0x1122_3344; // bytes in LE: [44, 33, 22, 11]
+        rt.mw(base, initial, 0, 1, None);
+
+        // Overwrite the third byte (offset 2) with 0x99 -> [44, 33, 0x99, 11]
+        let expected: u32 = 0x1199_3344;
+        let new_w = (initial & !(0xFFu32 << 16)) | (0x99u32 << 16);
+        rt.mw(base, new_w, 0, 2, None);
+
+        assert_eq!(rt.word(base), expected);
+    }
     #[test]
     fn test_add() {
         let sp_value: u32 = SP_START;
