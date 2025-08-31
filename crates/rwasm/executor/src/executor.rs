@@ -1998,6 +1998,94 @@ mod tests {
         rt.run().unwrap();
         assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 15);
     }
+
+    /// Branch is TAKEN when condition is non-zero; block is skipped and earlier result remains.
+    #[test]
+    fn test_branch_ifnez_taken() {
+        // Start with the same arithmetic prelude as the not-taken test
+        let x = 1u32;
+        let opcodes = vec![
+            Opcode::I32Const(x.into()),       // 1
+            Opcode::I32Const((x + 1).into()), // 2
+            Opcode::I32Const((x + 2).into()), // 3
+            Opcode::I32Add,                   // 2 + 3 = 5
+            Opcode::I32Add,                   // 1 + 5 = 6
+            Opcode::I32Const(1u32.into()),    // non-zero -> branch TAKEN
+            Opcode::BrIfNez(BranchOffset::from(16i32)), // skip 4-op block below
+            // --- skipped block if branch taken ---
+            Opcode::I32Const((x + 3).into()), // 4
+            Opcode::I32Const((x + 4).into()), // 5
+            Opcode::I32Add,                   // 4 + 5 = 9
+            Opcode::I32Add,                   // 6 + 9 = 15
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        // since the branch was taken, the 4-op block is skipped; final stays 6
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 6);
+    }
+
+    /// Non-zero can be any value (including 0xFFFF_FFFF); ensure branch is taken.
+    #[test]
+    fn test_branch_ifnez_taken_with_max_nonzero() {
+        let x = 2u32;
+        let opcodes = vec![
+            Opcode::I32Const(x.into()),        // 2
+            Opcode::I32Const((x + 1).into()),  // 3
+            Opcode::I32Const((x + 2).into()),  // 4
+            Opcode::I32Add,                    // 3 + 4 = 7
+            Opcode::I32Add,                    // 2 + 7 = 9
+            Opcode::I32Const(0xFFFF_FFFFu32.into()), // still non-zero
+            Opcode::BrIfNez(BranchOffset::from(16i32)),
+            // --- would add 5 and 6 if not skipped ---
+            Opcode::I32Const((x + 3).into()),  // 5
+            Opcode::I32Const((x + 4).into()),  // 6
+            Opcode::I32Add,                    // 5 + 6 = 11
+            Opcode::I32Add,                    // 9 + 11 = 20
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        // branch taken -> block skipped -> result remains 9
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 9);
+    }
+
+    /// Two conditional blocks: first NOT taken (executes), second TAKEN (skips).
+    #[test]
+    fn test_branch_ifnez_two_blocks() {
+        let x = 1u32;
+        let opcodes = vec![
+            // Prelude -> 6
+            Opcode::I32Const(x.into()),       // 1
+            Opcode::I32Const((x + 1).into()), // 2
+            Opcode::I32Const((x + 2).into()), // 3
+            Opcode::I32Add,                   // 2 + 3 = 5
+            Opcode::I32Add,                   // 1 + 5 = 6
+
+            // First branch: NOT taken (cond = 0) -> execute next 4 ops (block A)
+            Opcode::I32Const(0u32.into()),
+            Opcode::BrIfNez(BranchOffset::from(16i32)),
+            // ---- block A (executes) ----
+            Opcode::I32Const((x + 3).into()), // 4
+            Opcode::I32Const((x + 4).into()), // 5
+            Opcode::I32Add,                   // 4 + 5 = 9
+            Opcode::I32Add,                   // 6 + 9 = 15
+
+            // Second branch: TAKEN (cond = 1) -> skip next 4 ops (block B)
+            Opcode::I32Const(1u32.into()),
+            Opcode::BrIfNez(BranchOffset::from(16i32)),
+            // ---- block B (skipped) ----
+            Opcode::I32Const(10u32.into()),
+            Opcode::I32Const(20u32.into()),
+            Opcode::I32Add,                   // 10 + 20 = 30
+            Opcode::I32Add,                   // would be 15 + 30 = 45 if not skipped
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        // block A executed (+9), block B skipped; final remains 15
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 15);
+    }
     // ---  store8 + store8 -> load16U (endianness sanity) ---
     #[test]
     fn test_store8_then_load16u() {
