@@ -142,6 +142,8 @@ pub enum RwasmAirId {
     /// The Call Chip
     #[subenum(CoreAirId)]
     Call = 45,
+
+    TableInit=46,
 }
 
 impl RwasmAirId {

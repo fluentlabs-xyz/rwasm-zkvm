@@ -4635,7 +4635,7 @@ mod tests {
             Opcode::TableGrow(0),
             Opcode::I32Const(0.into()),
             Opcode::I32Const(0.into()),
-            Opcode::I32Const(0.into()),
+            Opcode::I32Const(1.into()),
             Opcode::TableInit(0),
             Opcode::TableGet(0),
         ];
@@ -4643,6 +4643,8 @@ mod tests {
         let program = Program::from_instrs(ops).with_elements(elements);
 
         let mut rt = Executor::new(program, SP1CoreOpts::default());
+      
         rt.run().unwrap();
+          println!("table:{:?}",rt.store.tables);
     }
 }
