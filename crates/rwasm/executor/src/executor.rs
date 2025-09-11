@@ -1,10 +1,7 @@
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
 use crate::{
-    dependencies::{emit_branch_dependencies, emit_divrem_dependencies, emit_memory_dependencies},
-    estimator::RecordEstimator,
-    events::{CallEvent, ConstEvent, SysStateEvent, SyscallEvent},
-    syscalls, SP_START,
+    SP_START, dependencies::{emit_branch_dependencies, emit_divrem_dependencies, emit_memory_dependencies}, estimator::RecordEstimator, events::{CallEvent, ConstEvent, PrecompileEvent, SysStateEvent, SyscallEvent}, syscalls
 };
 use std::rc::Rc;
 #[cfg(feature = "profiling")]
@@ -16,11 +13,7 @@ use enum_map::EnumMap;
 use hashbrown::HashMap;
 
 use rwasm::{
-    always_failing_syscall_handler,
-    mem::{MemoryLocalEvent, MemoryRecordEnum},
-    CallStack, ExecutionEngine, ExecutorConfig, ImportLinker, InstructionPtr, Opcode,
-    RwasmExecutor, RwasmModule, RwasmStore, Store, TraceCallData, Tracer, TrapCode, ValueStack,
-    ValueStackPtr,
+    CallStack, ExecutionEngine, ExecutorConfig, ImportLinker, InstructionPtr, Opcode, RwasmExecutor, RwasmModule, RwasmStore, Store, TraceCallData, Tracer, TrapCode, ValueStack, ValueStackPtr, always_failing_syscall_handler, event::FatOpEvent, mem::{MemoryLocalEvent, MemoryRecordEnum}
 };
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
@@ -721,6 +714,7 @@ impl<'a> Executor<'a> {
         res: u32,
         record: MemoryAccessRecord,
         call_data: Option<TraceCallData>,
+        fat_op:Option<FatOpEvent>
     ) {
         println!("emit cpu");
         if opcode.is_memory_instruction() {
@@ -764,7 +758,14 @@ impl<'a> Executor<'a> {
         } else if opcode.is_branch_instruction() {
             self.emit_branch_event(opcode, arg1, arg2, res, next_pc);
         } else if opcode.is_ecall_instruction() {
-            self.emit_syscall_event(clk, record.arg1_record, syscall_code, arg2, res, next_pc);
+            let syscall_code = match opcode {
+                Opcode::TableInit(_)=>{
+                    SyscallCode::TABLE_INIT
+                }
+                _=>syscall_code,
+            };
+            self.emit_syscall_event(clk, record.arg1_record, syscall_code, arg2, res, next_pc,fat_op);
+            
         } else if opcode.is_const_instruction() {
             self.emit_const_event(opcode);
         } else if opcode.is_state_instrucition() {
@@ -1034,11 +1035,62 @@ impl<'a> Executor<'a> {
         arg1: u32,
         arg2: u32,
         next_pc: u32,
+        fat_op:Option<FatOpEvent>
     ) {
+        
         let syscall_event =
             self.syscall_event(clk, a_record, Some(true), syscall_code, arg1, arg2, next_pc);
 
         self.record.syscall_events.push(syscall_event);
+        match syscall_code {
+            SyscallCode::HALT => todo!(),
+            SyscallCode::WRITE => todo!(),
+            SyscallCode::ENTER_UNCONSTRAINED => todo!(),
+            SyscallCode::EXIT_UNCONSTRAINED => todo!(),
+            SyscallCode::SHA_EXTEND => todo!(),
+            SyscallCode::SHA_COMPRESS => todo!(),
+            SyscallCode::ED_ADD => todo!(),
+            SyscallCode::ED_DECOMPRESS => todo!(),
+            SyscallCode::KECCAK_PERMUTE => todo!(),
+            SyscallCode::SECP256K1_ADD => todo!(),
+            SyscallCode::SECP256K1_DOUBLE => todo!(),
+            SyscallCode::SECP256K1_DECOMPRESS => todo!(),
+            SyscallCode::BN254_ADD => todo!(),
+            SyscallCode::BN254_DOUBLE => todo!(),
+            SyscallCode::COMMIT => todo!(),
+            SyscallCode::COMMIT_DEFERRED_PROOFS => todo!(),
+            SyscallCode::VERIFY_SP1_PROOF => todo!(),
+            SyscallCode::BLS12381_DECOMPRESS => todo!(),
+            SyscallCode::HINT_LEN => todo!(),
+            SyscallCode::HINT_READ => todo!(),
+            SyscallCode::UINT256_MUL => todo!(),
+            SyscallCode::U256XU2048_MUL => todo!(),
+            SyscallCode::BLS12381_ADD => todo!(),
+            SyscallCode::BLS12381_DOUBLE => todo!(),
+            SyscallCode::BLS12381_FP_ADD => todo!(),
+            SyscallCode::BLS12381_FP_SUB => todo!(),
+            SyscallCode::BLS12381_FP_MUL => todo!(),
+            SyscallCode::BLS12381_FP2_ADD => todo!(),
+            SyscallCode::BLS12381_FP2_SUB => todo!(),
+            SyscallCode::BLS12381_FP2_MUL => todo!(),
+            SyscallCode::BN254_FP_ADD => todo!(),
+            SyscallCode::BN254_FP_SUB => todo!(),
+            SyscallCode::BN254_FP_MUL => todo!(),
+            SyscallCode::BN254_FP2_ADD => todo!(),
+            SyscallCode::BN254_FP2_SUB => todo!(),
+            SyscallCode::BN254_FP2_MUL => todo!(),
+            SyscallCode::SECP256R1_ADD => todo!(),
+            SyscallCode::SECP256R1_DOUBLE => todo!(),
+            SyscallCode::SECP256R1_DECOMPRESS => todo!(),
+            SyscallCode::TABLE_INIT =>{
+                match fat_op.unwrap() {
+                    FatOpEvent::TableInit(table_init_event) =>{
+                         self.record.precompile_events.add_event(SyscallCode::TABLE_INIT, syscall_event, PrecompileEvent::TableInit(table_init_event))
+                    },
+                }
+                
+            },
+        }
     }
 
     // Emit a branch event.
@@ -1224,6 +1276,7 @@ impl<'a> Executor<'a> {
             op_state.res,
             op_state.memory_access,
             op_state.call_state.clone(),
+            op_state.fat_op.clone(),
         );
         // if op_state.opcode.is_state_instrucition() {
         //TODO: generate sys_state_event here
@@ -4631,7 +4684,7 @@ mod tests {
     fn test_table_init() {
         let ops = vec![
             Opcode::I32Const(0.into()),
-            Opcode::I32Const(1.into()),
+            Opcode::I32Const(2.into()),
             Opcode::TableGrow(0),
             Opcode::I32Const(0.into()),
             Opcode::I32Const(0.into()),
@@ -4639,7 +4692,7 @@ mod tests {
             Opcode::TableInit(0),
             Opcode::TableGet(0),
         ];
-        let elements = vec![5u32];
+        let elements = vec![5u32,7u32];
         let program = Program::from_instrs(ops).with_elements(elements);
 
         let mut rt = Executor::new(program, SP1CoreOpts::default());

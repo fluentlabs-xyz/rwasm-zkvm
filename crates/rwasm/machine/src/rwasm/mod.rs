@@ -12,13 +12,16 @@ use sp1_stark::{
 };
 use strum_macros::{EnumDiscriminants, EnumIter};
 
-use crate::{bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS, shape::Shapeable};
+use crate::{
+    bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS, shape::Shapeable, syscall::fat_op::table,
+};
 use crate::{
     control_flow::BranchChip,
     control_flow::CallChip,
     global::GlobalChip,
     memory::{MemoryChipType, MemoryInstructionsChip, MemoryLocalChip},
     syscall::{
+        fat_op::TableChip,
         instructions::SyscallInstrsChip,
         precompiles::fptower::{Fp2AddSubAssignChip, Fp2MulAssignChip, FpOpChip},
     },
@@ -158,6 +161,8 @@ pub enum RwasmAir<F: PrimeField32> {
     Bn254Fp2Mul(Fp2MulAssignChip<Bn254BaseField>),
     /// A precompile for BN-254 fp2 addition/subtraction.
     Bn254Fp2AddSub(Fp2AddSubAssignChip<Bn254BaseField>),
+
+    Table(TableChip),
 }
 
 impl<F: PrimeField32> RwasmAir<F> {
@@ -406,6 +411,10 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(byte.name(), byte.cost());
         chips.push(byte);
 
+        let table = Chip::new(RwasmAir::Table(TableChip::default()));
+        costs.insert(table.name(), table.cost());
+        chips.push(table);
+
         assert_eq!(chips.len(), costs.len(), "chips and costs must have the same length",);
 
         (chips, costs)
@@ -522,10 +531,8 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::ShiftLeft => RwasmAirId::ShiftLeft,
             RwasmAirDiscriminants::ShiftRight => RwasmAirId::ShiftRight,
             RwasmAirDiscriminants::Memory => RwasmAirId::MemoryInstrs,
-
             RwasmAirDiscriminants::Branch => RwasmAirId::Branch,
-            RwasmAirDiscriminants::Call=> RwasmAirId::Call,
-
+            RwasmAirDiscriminants::Call => RwasmAirId::Call,
             RwasmAirDiscriminants::SyscallInstrs => RwasmAirId::SyscallInstrs,
             RwasmAirDiscriminants::ByteLookup => RwasmAirId::Byte,
             RwasmAirDiscriminants::MemoryGlobalInit => RwasmAirId::MemoryGlobalInit,
@@ -558,6 +565,7 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Bn254Fp => RwasmAirId::Bn254FpOpAssign,
             RwasmAirDiscriminants::Bn254Fp2Mul => RwasmAirId::Bn254Fp2MulAssign,
             RwasmAirDiscriminants::Bn254Fp2AddSub => RwasmAirId::Bn254Fp2AddSubAssign,
+            RwasmAirDiscriminants::Table => RwasmAirId::Table,
         }
     }
 }

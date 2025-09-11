@@ -33,7 +33,7 @@ impl<F: PrimeField32> MachineAir<F> for TableChip {
         input: &ExecutionRecord,
         _: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
-       
+        println!("generate trace Table:");
         let rows = Vec::new();
 
         let mut wrapped_rows = Some(rows);
@@ -54,13 +54,15 @@ impl<F: PrimeField32> MachineAir<F> for TableChip {
             || [F::zero(); NUM_TABLE_INIT_SIZE],
             input.fixed_log2_rows::<F, _>(self),
         );
-
+        println!("rows:{:?}",rows);
       
         // Convert the trace to a row major matrix.
         RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_TABLE_INIT_SIZE)
+        
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
+         println!("generate deps Table:");
         let events = input.get_precompile_events(SyscallCode::TABLE_INIT);
         let chunk_size = 1usize;
 
@@ -84,11 +86,9 @@ impl<F: PrimeField32> MachineAir<F> for TableChip {
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
-        if let Some(shape) = shard.shape.as_ref() {
-            shape.included::<F, _>(self)
-        } else {
+       
             !shard.get_precompile_events(SyscallCode::TABLE_INIT).is_empty()
-        }
+        
     }
 }
 
@@ -99,7 +99,7 @@ impl TableChip {
         rows: &mut Option<Vec<[F; NUM_TABLE_INIT_SIZE]>>,
         blu: &mut impl ByteRecord,
     ) {
-         
+         println!("table_init_+event:{:?}",event);
          for idx in 0..event.n as usize{
             let mut row = [F::zero(); NUM_TABLE_INIT_SIZE];
             let cols: &mut TableCols<F> = row.as_mut_slice().borrow_mut();
@@ -111,6 +111,13 @@ impl TableChip {
                 cols.length_access.populate(event.stack_access[2], blu);
 
             }
+            cols.clk=F::from_canonical_u32(event.clk);
+            cols.shard=F::from_canonical_u32(event.shard);
+            cols.src_idx=F::from_canonical_u32(event.s);
+            cols.dst_idx=F::from_canonical_u32(event.d);
+            cols.table_idx=F::from_canonical_u32(event.table_idx);
+            cols.sp=F::from_canonical_u32(event.sp);
+            cols.next_sp=F::from_canonical_u32(event.next_sp);
             cols.src_read_access.populate(event.memory_read_access[idx],blu);
             cols.dst_write_access.populate(event.memory_write_acess[idx],blu);
 

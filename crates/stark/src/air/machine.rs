@@ -1,3 +1,5 @@
+
+use hashbrown::HashMap;
 use p3_air::BaseAir;
 use p3_field::Field;
 use p3_matrix::dense::RowMajorMatrix;
@@ -72,6 +74,10 @@ pub trait MachineAir<F: Field>: BaseAir<F> + 'static + Send + Sync {
     /// Specifies whether the air only uses the local row, and not the next row.
     fn local_only(&self) -> bool {
         false
+    }
+    ///show stats
+    fn stats(&self,input: &Self::Record)->HashMap<std::string::String, usize>{
+        input.stats()
     }
 }
 

@@ -239,6 +239,9 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>>> StarkMachine<SC, A> {
                             println!("chip:{}",chip.name());
                             println!("local:{}",local_sum);
                         }
+                        if chip.name()=="Table"{
+                            println!("trace:{:?}",main_trace);
+                        }
                         (trace, (global_sum, local_sum))
                     })
                     .unzip_into_vecs(&mut permutation_traces, &mut chip_cumulative_sums);

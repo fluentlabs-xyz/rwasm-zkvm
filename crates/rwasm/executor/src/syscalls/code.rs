@@ -279,7 +279,7 @@ impl SyscallCode {
             SyscallCode::SECP256R1_ADD => RwasmAirId::Secp256r1AddAssign,
             SyscallCode::SECP256R1_DOUBLE => RwasmAirId::Secp256r1DoubleAssign,
             SyscallCode::SECP256R1_DECOMPRESS => RwasmAirId::Secp256r1Decompress,
-            SyscallCode::TABLE_INIT=> RwasmAirId::TableInit,
+            SyscallCode::TABLE_INIT=> RwasmAirId::Table,
             SyscallCode::HALT
             | SyscallCode::WRITE
             | SyscallCode::ENTER_UNCONSTRAINED

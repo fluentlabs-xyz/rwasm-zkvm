@@ -143,7 +143,7 @@ pub enum RwasmAirId {
     #[subenum(CoreAirId)]
     Call = 45,
 
-    TableInit=46,
+    Table = 46,
 }
 
 impl RwasmAirId {

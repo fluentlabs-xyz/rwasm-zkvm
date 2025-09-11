@@ -153,8 +153,17 @@ where
     let mut total = SC::Val::zero();
 
     let chips = machine.chips();
+    
     for chip in chips.iter() {
+        println!("chip name:{}",chip.name());
+        if chip.name() =="Table"{
+            println!("chip name:{}",chip.name());
+            let stats = chip.stats(&shards[0]);
+            println!("stats: {:?}",stats);
+        }
         let mut total_events = 0;
+       
+        
         for shard in shards {
             if !chip.included(shard) {
                 continue;

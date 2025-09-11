@@ -316,7 +316,7 @@ impl MachineRecord for ExecutionRecord {
         self.const_events.append(&mut other.const_events);
         self.call_events.append(&mut other.call_events);
         self.syscall_events.append(&mut other.syscall_events);
-
+        println!("other precompiles:{:?}", other.precompile_events.get_events(SyscallCode::TABLE_INIT));
         self.precompile_events.append(&mut other.precompile_events);
 
         if self.byte_lookups.is_empty() {
@@ -328,7 +328,7 @@ impl MachineRecord for ExecutionRecord {
         self.global_memory_initialize_events.append(&mut other.global_memory_initialize_events);
         self.global_memory_finalize_events.append(&mut other.global_memory_finalize_events);
         self.cpu_local_memory_access.append(&mut other.cpu_local_memory_access);
-        println!("other global:{:?}", other.global_interaction_events);
+        
         self.global_interaction_events.append(&mut other.global_interaction_events);
     }
 

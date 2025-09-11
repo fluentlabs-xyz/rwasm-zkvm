@@ -20,6 +20,7 @@ use thiserror::Error;
 
 use super::rwasm::rwasm_chips::{ByteChip, ProgramChip, SyscallChip};
 use crate::control_flow::CallChip;
+use crate::syscall::fat_op::table::TableChip;
 use crate::{
     global::GlobalChip,
     memory::{MemoryLocalChip, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW},
@@ -447,6 +448,7 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                             (MachineAir::<BabyBear>::name(&ProgramChip), 19),
                             (MachineAir::<BabyBear>::name(&ByteChip::default()), 16),
                             (MachineAir::<BabyBear>::name(&CallChip::default()), 16),
+                             (MachineAir::<BabyBear>::name(&TableChip::default()), 16),
                         ])
                         .collect::<Vec<_>>(),
                 )

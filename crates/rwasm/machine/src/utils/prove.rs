@@ -294,7 +294,7 @@ where
 
                                 // Generate the dependencies.
                                 tracing::debug_span!("generate dependencies", index).in_scope(
-                                    || {
+                                    || {println!("deps records{:?}",records_clone[0].stats());
                                         prover.machine().generate_dependencies(
                                             &mut records_clone,
                                             &opts,
@@ -401,6 +401,7 @@ where
                                         .collect::<Vec<_>>();
                                 });
                             } else {
+                                println!("trace records{:?}",records[0].stats());
                                 tracing::info_span!("generate main traces", index).in_scope(|| {
                                     main_traces = records
                                         .par_iter()

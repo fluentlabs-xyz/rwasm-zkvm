@@ -529,6 +529,22 @@ mod tests {
         program
     }
 
+    fn build_table_init()->Program{
+         let ops = vec![
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(2.into()),
+            Opcode::TableGrow(0),
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(2.into()),
+            Opcode::TableInit(0),
+            Opcode::TableGet(0),
+        ];
+        let elements = vec![5u32,7u32];
+        let program = Program::from_instrs(ops).with_elements(elements);
+        program
+    }
+
     #[test]
     fn test_rwasm_proof1() {
         let program = build_elf();
@@ -832,4 +848,10 @@ mod tests {
         let program = build_elf_skipped_ins();
         run_rwasm_prover(program);
     }*/
+
+ #[test]
+ fn test_table_init(){
+    let program=build_table_init();
+     run_rwasm_prover(program);
+ }
 }
