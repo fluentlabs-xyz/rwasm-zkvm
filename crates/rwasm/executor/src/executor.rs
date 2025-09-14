@@ -765,7 +765,7 @@ impl<'a> Executor<'a> {
                 _=>syscall_code,
             };
             self.emit_syscall_event(clk, record.arg1_record, syscall_code, arg2, res, next_pc,fat_op);
-            
+
         } else if opcode.is_const_instruction() {
             self.emit_const_event(opcode);
         } else if opcode.is_state_instrucition() {
@@ -1037,7 +1037,7 @@ impl<'a> Executor<'a> {
         next_pc: u32,
         fat_op:Option<FatOpEvent>
     ) {
-        
+
         let syscall_event =
             self.syscall_event(clk, a_record, Some(true), syscall_code, arg1, arg2, next_pc);
 
@@ -1088,7 +1088,7 @@ impl<'a> Executor<'a> {
                          self.record.precompile_events.add_event(SyscallCode::TABLE_INIT, syscall_event, PrecompileEvent::TableInit(table_init_event))
                     },
                 }
-                
+
             },
         }
     }
@@ -3913,6 +3913,7 @@ mod tests {
         assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
         assert_eq!(rt.state.sp, sp0 - 4);
     }
+
     // --- multiple calls with memory byte assembly inside a function ---
     #[test]
     fn test_call_build_u32_from_bytes() {
@@ -4696,8 +4697,184 @@ mod tests {
         let program = Program::from_instrs(ops).with_elements(elements);
 
         let mut rt = Executor::new(program, SP1CoreOpts::default());
-      
+
         rt.run().unwrap();
           println!("table:{:?}",rt.store.tables);
+    }
+
+    /// Boundary check: a 32‑bit load that starts inside the last page but
+    /// crosses the end of the page must trap. This exercises the VM's
+    /// out‑of‑bounds path (which none of the existing tests hit).
+    #[test]
+    fn test_oob_load_crosses_page_end_traps() {
+        // Allocate exactly one 64KiB page.
+        let mut ops = Vec::new();
+        ops.push(Opcode::I32Const(1u32.into()));
+        ops.push(Opcode::MemoryGrow);
+
+        // Address such that addr + 4 overflows the single page (65536 bytes).
+        let addr = (64 * 1024u32) - 2; // 65534
+
+        // Attempt a 32‑bit load at addr -> must trap as OOB.
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Load(0u32));
+
+        // If the load does not trap, we would return; but we expect an error.
+        ops.push(Opcode::Return);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        let res = rt.run();
+        assert!(res.is_err(), "expected out-of-bounds 32-bit load to trap");
+        if let Err(e) = res {
+            // Make debugging easier when it fails on CI.
+            eprintln!("oob load produced error: {:?}", e);
+        }
+    }
+
+    /// Boundary check: a 32-bit store that starts inside the last page but
+    /// crosses the page end must trap. Complements the load OOB test by
+    /// exercising the write-side error path.
+    #[test]
+    fn test_oob_store_crosses_page_end_traps() {
+        // Grow memory to exactly one 64KiB page.
+        let mut ops = Vec::new();
+        ops.push(Opcode::I32Const(1u32.into()));
+        ops.push(Opcode::MemoryGrow);
+
+        // Choose an address near the very end so addr..addr+3 exceeds bounds.
+        let addr = (64 * 1024u32) - 1; // 65535
+
+        // Push address first so value is on top for store (store pops value, then addr).
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Const(0xDEAD_BEEFu32.into()));
+        ops.push(Opcode::I32Store(0u32));
+
+        // If it didn't trap (it should), execution would continue to Return.
+        ops.push(Opcode::Return);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        let res = rt.run();
+        assert!(res.is_err(), "expected out-of-bounds 32-bit store to trap");
+        if let Err(e) = res {
+            eprintln!("oob store produced error: {:?}", e);
+        }
+    }
+
+    /// OOB via non-zero offset: base address is inside the page but
+    /// `addr + offset + (size-1)` crosses the end. Ensures offset is
+    /// included in bounds checking for loads.
+    #[test]
+    fn test_oob_load_with_nonzero_offset_traps() {
+        // Grow to exactly one 64KiB page.
+        let mut ops = Vec::new();
+        ops.push(Opcode::I32Const(1u32.into()));
+        ops.push(Opcode::MemoryGrow);
+
+        // Choose base so base is valid, but base + 3 (offset) + 3 (size-1) crosses.
+        let base = (64 * 1024u32) - 4; // 65532
+        let offset = 3u32;             // base + offset = 65535; needs 4 bytes -> OOB
+
+        // Attempt a 32-bit load with non-zero offset -> must trap.
+        ops.push(Opcode::I32Const(base.into()));
+        ops.push(Opcode::I32Load(offset));
+
+        // If not trapped, we'd return; but we expect an error.
+        ops.push(Opcode::Return);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        let res = rt.run();
+        assert!(res.is_err(), "expected OOB due to non-zero offset crossing page end");
+        if let Err(e) = res {
+            eprintln!("oob load (with offset) produced error: {:?}", e);
+        }
+    }
+
+    /// Stack underflow: executing I32Add with fewer than two stack values
+    /// must panic in the current rwasm backend (it does not return Err).
+    /// This test documents that behavior explicitly.
+    #[test]
+    #[should_panic(expected = "stack underflow")]
+    fn test_stack_underflow_add_traps() {
+        let ops = vec![
+            // No pushes
+            Opcode::I32Add, // requires two operands -> underflow
+            Opcode::Return,
+        ];
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        // `run()` will panic before returning due to value-stack underflow.
+        let _ = rt.run();
+    }
+
+    /// Sign-extension vs zero-extension on 16-bit loads: for the halfword
+    /// 0x8000, Load16S yields 0xFFFF8000 and Load16U yields 0x00008000.
+    /// Adding them must wrap to 0 in u32 arithmetic. This covers 16-bit
+    /// sign extension and wrapping add semantics.
+    #[test]
+    fn test_load16s_plus_load16u_wraps_to_zero() {
+        let addr: u32 = 0x14000;
+
+        let mut ops = Vec::new();
+        // Ensure memory covers addr
+        ops.push(Opcode::I32Const(2u32.into()));
+        ops.push(Opcode::MemoryGrow);
+
+        // Store 0x00008000 at addr (low 16 bits are 0x8000)
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Const(0x0000_8000u32.into()));
+        ops.push(Opcode::I32Store(0u32));
+
+        // Load16S (=> 0xFFFF8000) and Load16U (=> 0x00008000), add -> 0
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Load16S(0u32));
+        ops.push(Opcode::I32Const(addr.into()));
+        ops.push(Opcode::I32Load16U(0u32));
+        ops.push(Opcode::I32Add);
+
+        // Compare with 0 and return
+        ops.push(Opcode::I32Const(0u32.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+
+    /// Success-path boundary check: writing a single byte at the very last
+    /// address of a 64KiB page (65535) must SUCCEED, and reading it back
+    /// via Load8U must yield the same value. This complements the OOB tests
+    /// by exercising the inclusive upper bound for 1-byte accesses.
+    #[test]
+    fn test_store8_at_last_byte_succeeds() {
+        let last: u32 = (64 * 1024) - 1; // 65535
+        let byte: u32 = 0xAB;
+
+        let mut ops = Vec::new();
+        // Allocate exactly one page
+        ops.push(Opcode::I32Const(1u32.into()));
+        ops.push(Opcode::MemoryGrow);
+
+        // Store8 at the last byte (value must be on top; store pops (value, addr))
+        ops.push(Opcode::I32Const(last.into()));
+        ops.push(Opcode::I32Const(byte.into()));
+        ops.push(Opcode::I32Store8(0u32));
+
+        // Load8U back from the same address and compare
+        ops.push(Opcode::I32Const(last.into()));
+        ops.push(Opcode::I32Load8U(0u32));
+        ops.push(Opcode::I32Const(byte.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return);
+
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
     }
 }
