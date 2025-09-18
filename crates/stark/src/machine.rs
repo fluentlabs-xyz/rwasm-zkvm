@@ -232,16 +232,14 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>>> StarkMachine<SC, A> {
                         };
                         
                         if global_sum!=SepticDigest::zero(){
-                            println!("chip:{}",chip.name());
-                             println!("global:{:?}",global_sum);
+                           
+                             println!("chip:{},global sum:{:?}",chip.name(),global_sum);
                         }
                         if local_sum!=SC::Challenge::zero(){
                             println!("chip:{}",chip.name());
-                            println!("local:{}",local_sum);
+                            println!("local sum:{}",local_sum);
                         }
-                        if chip.name()=="Table"{
-                            println!("trace:{:?}",main_trace);
-                        }
+                       
                         (trace, (global_sum, local_sum))
                     })
                     .unzip_into_vecs(&mut permutation_traces, &mut chip_cumulative_sums);

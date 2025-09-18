@@ -41,8 +41,9 @@
   "Bn254Fp2AddSubAssign": 1454,
   "Bls12381FpOpAssign": 1098,
   "Cpu": 109,
-   "Call": 1000,
+  "Call": 1000,
   "ShaCompress": 506,
   "MemoryInstrs": 93,
-  "Secp256k1DoubleAssign": 4564
+  "Secp256k1DoubleAssign": 4564,
+  "Table": 10000
 }

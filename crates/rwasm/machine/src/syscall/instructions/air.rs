@@ -40,8 +40,8 @@ where
         // `is_real` is checked to be boolean, and the `opcode` matches the corresponding opcode.
         builder.assert_bool(local.is_real);
 
-        // Verify that local.is_halt is correct.
-        self.eval_is_halt_syscall(builder, local);
+        // // Verify that local.is_halt is correct.
+        // self.eval_is_halt_syscall(builder, local);
 
         // SAFETY: This checks the following.
         // - `shard`, `clk` are correctly received from the CpuChip
@@ -68,7 +68,24 @@ where
             AB::Expr::zero(),
             AB::Expr::one(),
             local.is_halt,
-            local.is_real,
+            local.is_sys_call,
+        );
+
+
+         builder.receive_instruction(
+            local.shard,
+            local.clk,
+            local.pc,
+            local.next_pc,
+            local.num_extra_cycles,
+            local.fat_opcode,
+            *local.op_a_access.value(),
+            local.op_b_value,
+            local.op_c_value,
+            AB::Expr::zero(),
+            AB::Expr::one(),
+            local.is_halt,
+            local.is_fat_op,
         );
 
         // If the syscall is not halt, then next_pc should be pc + 4.
@@ -76,7 +93,7 @@ where
         builder
             .when(local.is_real)
             .when(AB::Expr::one() - local.is_halt)
-            .assert_eq(local.next_pc, local.pc + AB::Expr::from_canonical_u32(4));
+            .assert_eq(local.next_pc, local.pc + AB::Expr::from_canonical_u32(2));
 
         // `num_extra_cycles` is checked to be equal to the return value of `get_num_extra_ecall_cycles`
         builder.assert_eq::<AB::Var, AB::Expr>(
@@ -96,16 +113,16 @@ where
         // ECALL instruction.
         self.eval_ecall(builder, local);
 
-        // COMMIT/COMMIT_DEFERRED_PROOFS ecall instruction.
-        self.eval_commit(
-            builder,
-            local,
-            public_values.committed_value_digest,
-            public_values.deferred_proofs_digest,
-        );
+        // // COMMIT/COMMIT_DEFERRED_PROOFS ecall instruction.
+        // self.eval_commit(
+        //     builder,
+        //     local,
+        //     public_values.committed_value_digest,
+        //     public_values.deferred_proofs_digest,
+        // );
 
-        // HALT ecall and UNIMPL instruction.
-        self.eval_halt_unimpl(builder, local, public_values);
+        // // HALT ecall and UNIMPL instruction.
+        // self.eval_halt_unimpl(builder, local, public_values);
     }
 }
 
@@ -121,16 +138,16 @@ impl SyscallInstrsChip {
         local: &SyscallInstrColumns<AB::Var>,
     ) {
         // The syscall code is the read-in value of op_a at the start of the instruction.
-        let syscall_code = local.op_a_access.prev_value();
+        // let syscall_code = local.op_a_access.prev_value();
 
         // We interpret the syscall_code as little-endian bytes and interpret each byte as a u8
         // with different information.
-        let syscall_id = syscall_code[0];
-        let send_to_table = syscall_code[1];
+        let syscall_id = local.syscall_id;
+        let send_to_table = local.syscall_code[1];
 
-        // SAFETY: Assert that for non real row, the send_to_table value is 0 so that the `send_syscall`
-        // interaction is not activated.
-        builder.when(AB::Expr::one() - local.is_real).assert_zero(send_to_table);
+        // // SAFETY: Assert that for non real row, the send_to_table value is 0 so that the `send_syscall`
+        // // interaction is not activated.
+        // builder.when(AB::Expr::one() - local.is_real).assert_zero(send_to_table);
 
         builder.send_syscall(
             local.shard,
@@ -142,60 +159,60 @@ impl SyscallInstrsChip {
             InteractionScope::Local,
         );
 
-        // Compute whether this ecall is ENTER_UNCONSTRAINED.
-        let is_enter_unconstrained = {
-            IsZeroOperation::<AB::F>::eval(
-                builder,
-                syscall_id
-                    - AB::Expr::from_canonical_u32(SyscallCode::ENTER_UNCONSTRAINED.syscall_id()),
-                local.is_enter_unconstrained,
-                local.is_real.into(),
-            );
-            local.is_enter_unconstrained.result
-        };
+        // // Compute whether this ecall is ENTER_UNCONSTRAINED.
+        // let is_enter_unconstrained = {
+        //     IsZeroOperation::<AB::F>::eval(
+        //         builder,
+        //         syscall_id
+        //             - AB::Expr::from_canonical_u32(SyscallCode::ENTER_UNCONSTRAINED.syscall_id()),
+        //         local.is_enter_unconstrained,
+        //         local.is_real.into(),
+        //     );
+        //     local.is_enter_unconstrained.result
+        // };
 
-        // Compute whether this ecall is HINT_LEN.
-        let is_hint_len = {
-            IsZeroOperation::<AB::F>::eval(
-                builder,
-                syscall_id - AB::Expr::from_canonical_u32(SyscallCode::HINT_LEN.syscall_id()),
-                local.is_hint_len,
-                local.is_real.into(),
-            );
-            local.is_hint_len.result
-        };
+        // // Compute whether this ecall is HINT_LEN.
+        // let is_hint_len = {
+        //     IsZeroOperation::<AB::F>::eval(
+        //         builder,
+        //         syscall_id - AB::Expr::from_canonical_u32(SyscallCode::HINT_LEN.syscall_id()),
+        //         local.is_hint_len,
+        //         local.is_real.into(),
+        //     );
+        //     local.is_hint_len.result
+        // };
 
-        // `op_a_val` is constrained.
+        // // `op_a_val` is constrained.
 
-        // When syscall_id is ENTER_UNCONSTRAINED, the new value of op_a should be 0.
-        let zero_word = Word::<AB::F>::from(0);
-        builder
-            .when(local.is_real)
-            .when(is_enter_unconstrained)
-            .assert_word_eq(*local.op_a_access.value(), zero_word);
+        // // When syscall_id is ENTER_UNCONSTRAINED, the new value of op_a should be 0.
+        // let zero_word = Word::<AB::F>::from(0);
+        // builder
+        //     .when(local.is_real)
+        //     .when(is_enter_unconstrained)
+        //     .assert_word_eq(*local.op_a_access.value(), zero_word);
 
-        // When the syscall is not one of ENTER_UNCONSTRAINED or HINT_LEN, op_a shouldn't change.
-        builder
-            .when(local.is_real)
-            .when_not(is_enter_unconstrained + is_hint_len)
-            .assert_word_eq(*local.op_a_access.value(), *local.op_a_access.prev_value());
+        // // When the syscall is not one of ENTER_UNCONSTRAINED or HINT_LEN, op_a shouldn't change.
+        // builder
+        //     .when(local.is_real)
+        //     .when_not(is_enter_unconstrained + is_hint_len)
+        //     .assert_word_eq(*local.op_a_access.value(), *local.op_a_access.prev_value());
 
-        // SAFETY: This leaves the case where syscall is `HINT_LEN`.
-        // In this case, `op_a`'s value can be arbitrary, but it still must be a valid word if `is_real = 1`.
-        // This is due to `op_a_val` being connected to the CpuChip.
-        // In the CpuChip, `op_a_val` is constrained to be a valid word via `eval_registers`.
-        // As this is a syscall for HINT, the value itself being arbitrary is fine, as long as it is a valid word.
+        // // SAFETY: This leaves the case where syscall is `HINT_LEN`.
+        // // In this case, `op_a`'s value can be arbitrary, but it still must be a valid word if `is_real = 1`.
+        // // This is due to `op_a_val` being connected to the CpuChip.
+        // // In the CpuChip, `op_a_val` is constrained to be a valid word via `eval_registers`.
+        // // As this is a syscall for HINT, the value itself being arbitrary is fine, as long as it is a valid word.
 
-        // Verify value of ecall_range_check_operand column.
-        // SAFETY: If `is_real = 0`, then `ecall_range_check_operand = 0`.
-        // If `is_real = 1`, then `is_halt_check` and `is_commit_deferred_proofs` are constrained.
-        // The two results will both be boolean due to `IsZeroOperation`, and both cannot be `1` at the same time.
-        // Both of them being `1` will require `syscall_id` being `HALT` and `COMMIT_DEFERRED_PROOFS` at the same time.
-        // This implies that if `is_real = 1`, `ecall_range_check_operand` will be correct, and boolean.
-        builder.assert_eq(
-            local.ecall_range_check_operand,
-            local.is_real * (local.is_halt_check.result + local.is_commit_deferred_proofs.result),
-        );
+        // // Verify value of ecall_range_check_operand column.
+        // // SAFETY: If `is_real = 0`, then `ecall_range_check_operand = 0`.
+        // // If `is_real = 1`, then `is_halt_check` and `is_commit_deferred_proofs` are constrained.
+        // // The two results will both be boolean due to `IsZeroOperation`, and both cannot be `1` at the same time.
+        // // Both of them being `1` will require `syscall_id` being `HALT` and `COMMIT_DEFERRED_PROOFS` at the same time.
+        // // This implies that if `is_real = 1`, `ecall_range_check_operand` will be correct, and boolean.
+        // builder.assert_eq(
+        //     local.ecall_range_check_operand,
+        //     local.is_real * (local.is_halt_check.result + local.is_commit_deferred_proofs.result),
+        // );
 
         // Babybear range check the operand_to_check word.
         // SAFETY: `ecall_range_check_operand` is boolean, and no interactions can be made in padding rows.

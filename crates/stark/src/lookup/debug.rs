@@ -155,12 +155,8 @@ where
     let chips = machine.chips();
     
     for chip in chips.iter() {
-        println!("chip name:{}",chip.name());
-        if chip.name() =="Table"{
-            println!("chip name:{}",chip.name());
-            let stats = chip.stats(&shards[0]);
-            println!("stats: {:?}",stats);
-        }
+        
+       
         let mut total_events = 0;
        
         
@@ -168,7 +164,7 @@ where
             if !chip.included(shard) {
                 continue;
             }
-            println!("chipname :{}", chip.name());
+           
             let (_, count) =
                 debug_interactions::<SC, A>(chip, pkey, shard, interaction_kinds.clone(), scope);
             total_events += count.len();
@@ -180,7 +176,7 @@ where
                 *entry.1.entry(chip.name()).or_insert(SC::Val::zero()) += *value;
             }
         }
-        tracing::info!("{} chip has {} distinct events", chip.name(), total_events);
+        tracing::info!(" scope:{},{} chip has {} distinct events", scope,chip.name(), total_events);
     }
 
     tracing::info!("Final counts below.");

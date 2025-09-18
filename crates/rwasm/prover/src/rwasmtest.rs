@@ -64,9 +64,9 @@ mod tests {
     use p3_field::PrimeField32;
     use serde::{Deserialize, Serialize};
     use serial_test::serial;
+    use sp1_stark::SP1CoreOpts;
     use std::fs::File;
     use std::io::{Read, Write};
-    use sp1_stark::SP1CoreOpts;
 
     fn build_elf() -> Program {
         let x_value: u32 = 0x11;
@@ -529,8 +529,8 @@ mod tests {
         program
     }
 
-    fn build_table_init()->Program{
-         let ops = vec![
+    fn build_table_init() -> Program {
+        let ops = vec![
             Opcode::I32Const(0.into()),
             Opcode::I32Const(2.into()),
             Opcode::TableGrow(0),
@@ -540,7 +540,7 @@ mod tests {
             Opcode::TableInit(0),
             Opcode::TableGet(0),
         ];
-        let elements = vec![5u32,7u32];
+        let elements = vec![5u32, 7u32];
         let program = Program::from_instrs(ops).with_elements(elements);
         program
     }
@@ -655,12 +655,9 @@ mod tests {
         let program = build_test_call_direct_add();
         run_rwasm_prover(program);
     }
-    fn build_test_call_direct_add() -> Program{
+    fn build_test_call_direct_add() -> Program {
         // f_add(x,y) = x + y
-        let f_add = vec![
-            rwasm::Opcode::I32Add,
-            rwasm::Opcode::Return,
-        ]; // len = 2
+        let f_add = vec![rwasm::Opcode::I32Add, rwasm::Opcode::Return]; // len = 2
 
         // main: push x, y; Call(f_add); const expected; eq; return  => 6 ops
         let main_len = 6u32;
@@ -688,37 +685,40 @@ mod tests {
     fn build_test_fibonacci_n25_callinternal() -> Program {
         let base: u32 = 0x10000;
         let addr_tmp = base + 0;
-        let addr_a   = base + 4;   // F(n)
-        let addr_b   = base + 8;   // F(n+1)
-        let addr_n   = base + 12;
+        let addr_a = base + 4; // F(n)
+        let addr_b = base + 8; // F(n+1)
+        let addr_n = base + 12;
 
         // step(): (a,b,n) -> (b, a+b, n-1); returns new n (ignored by caller)
         let step_fn = vec![
             // tmp = a + b
             rwasm::Opcode::I32Const(addr_tmp.into()),
-            rwasm::Opcode::I32Const(addr_a.into()), rwasm::Opcode::I32Load(0u32),
-            rwasm::Opcode::I32Const(addr_b.into()), rwasm::Opcode::I32Load(0u32),
+            rwasm::Opcode::I32Const(addr_a.into()),
+            rwasm::Opcode::I32Load(0u32),
+            rwasm::Opcode::I32Const(addr_b.into()),
+            rwasm::Opcode::I32Load(0u32),
             rwasm::Opcode::I32Add,
             rwasm::Opcode::I32Store(0u32),
-
             // a = b
             rwasm::Opcode::I32Const(addr_a.into()),
-            rwasm::Opcode::I32Const(addr_b.into()), rwasm::Opcode::I32Load(0u32),
+            rwasm::Opcode::I32Const(addr_b.into()),
+            rwasm::Opcode::I32Load(0u32),
             rwasm::Opcode::I32Store(0u32),
-
             // b = tmp
             rwasm::Opcode::I32Const(addr_b.into()),
-            rwasm::Opcode::I32Const(addr_tmp.into()), rwasm::Opcode::I32Load(0u32),
+            rwasm::Opcode::I32Const(addr_tmp.into()),
+            rwasm::Opcode::I32Load(0u32),
             rwasm::Opcode::I32Store(0u32),
-
             // n = n - 1
             rwasm::Opcode::I32Const(addr_n.into()),
-            rwasm::Opcode::I32Const(addr_n.into()), rwasm::Opcode::I32Load(0u32),
-            rwasm::Opcode::I32Const(1u32.into()), rwasm::Opcode::I32Sub,
+            rwasm::Opcode::I32Const(addr_n.into()),
+            rwasm::Opcode::I32Load(0u32),
+            rwasm::Opcode::I32Const(1u32.into()),
+            rwasm::Opcode::I32Sub,
             rwasm::Opcode::I32Store(0u32),
-
             // return n
-            rwasm::Opcode::I32Const(addr_n.into()), rwasm::Opcode::I32Load(0u32),
+            rwasm::Opcode::I32Const(addr_n.into()),
+            rwasm::Opcode::I32Load(0u32),
             rwasm::Opcode::Return,
         ];
 
@@ -757,7 +757,9 @@ mod tests {
 
         // patch function position and append
         let step_pos = ops.len() as u32;
-        for idx in call_sites { ops[idx] = rwasm::Opcode::CallInternal(step_pos.into()); }
+        for idx in call_sites {
+            ops[idx] = rwasm::Opcode::CallInternal(step_pos.into());
+        }
         ops.extend(step_fn);
 
         let program = Program::from_instrs(ops);
@@ -793,7 +795,9 @@ mod tests {
         ]; // len 3
 
         // main: push z, y, x (so top=x,y below,z bottom) ; call f1 ; cmp ; return
-        let x = 3u32; let y = 5u32; let z = 7u32;
+        let x = 3u32;
+        let y = 5u32;
+        let z = 7u32;
         let expected = (2 * x) + y + z; // 18
 
         let mut ops = Vec::new();
@@ -806,11 +810,11 @@ mod tests {
         ops.push(rwasm::Opcode::Return);
 
         // compute positions
-        let f1_pos = ops.len() as u32;              // after main
+        let f1_pos = ops.len() as u32; // after main
         let mut f1_patched = f1.clone();
-        let f2_pos = f1_pos + f1.len() as u32;      // after f1
+        let f2_pos = f1_pos + f1.len() as u32; // after f1
         let mut f2_patched = f2.clone();
-        let f3_pos = f2_pos + f2.len() as u32;      // after f2
+        let f3_pos = f2_pos + f2.len() as u32; // after f2
 
         // patch call targets
         f1_patched[0] = rwasm::Opcode::CallInternal(f2_pos.into());
@@ -843,15 +847,15 @@ mod tests {
     //     run_rwasm_prover(program);
     // }
 
-   /* #[test]
+    /* #[test]
     fn test_rwasm_skipped() {
         let program = build_elf_skipped_ins();
         run_rwasm_prover(program);
     }*/
 
- #[test]
- fn test_table_init(){
-    let program=build_table_init();
-     run_rwasm_prover(program);
- }
+    #[test]
+    fn test_table_init() {
+        let program = build_table_init();
+        run_rwasm_prover(program);
+    }
 }

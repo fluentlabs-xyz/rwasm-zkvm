@@ -1,7 +1,10 @@
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
 use crate::{
-    SP_START, dependencies::{emit_branch_dependencies, emit_divrem_dependencies, emit_memory_dependencies}, estimator::RecordEstimator, events::{CallEvent, ConstEvent, PrecompileEvent, SysStateEvent, SyscallEvent}, syscalls
+    dependencies::{emit_branch_dependencies, emit_divrem_dependencies, emit_memory_dependencies},
+    estimator::RecordEstimator,
+    events::{CallEvent, ConstEvent, PrecompileEvent, SysStateEvent, SyscallEvent},
+    syscalls, SP_START,
 };
 use std::rc::Rc;
 #[cfg(feature = "profiling")]
@@ -13,7 +16,12 @@ use enum_map::EnumMap;
 use hashbrown::HashMap;
 
 use rwasm::{
-    CallStack, ExecutionEngine, ExecutorConfig, ImportLinker, InstructionPtr, Opcode, RwasmExecutor, RwasmModule, RwasmStore, Store, TraceCallData, Tracer, TrapCode, ValueStack, ValueStackPtr, always_failing_syscall_handler, event::FatOpEvent, mem::{MemoryLocalEvent, MemoryRecordEnum}
+    always_failing_syscall_handler,
+    event::FatOpEvent,
+    mem::{MemoryLocalEvent, MemoryRecordEnum},
+    CallStack, ExecutionEngine, ExecutorConfig, ImportLinker, InstructionPtr, Opcode,
+    RwasmExecutor, RwasmModule, RwasmStore, Store, TraceCallData, Tracer, TrapCode, ValueStack,
+    ValueStackPtr,
 };
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
@@ -714,7 +722,7 @@ impl<'a> Executor<'a> {
         res: u32,
         record: MemoryAccessRecord,
         call_data: Option<TraceCallData>,
-        fat_op:Option<FatOpEvent>
+        fat_op: Option<FatOpEvent>,
     ) {
         println!("emit cpu");
         if opcode.is_memory_instruction() {
@@ -759,13 +767,18 @@ impl<'a> Executor<'a> {
             self.emit_branch_event(opcode, arg1, arg2, res, next_pc);
         } else if opcode.is_ecall_instruction() {
             let syscall_code = match opcode {
-                Opcode::TableInit(_)=>{
-                    SyscallCode::TABLE_INIT
-                }
-                _=>syscall_code,
+                Opcode::TableInit(_) => SyscallCode::TABLE_INIT,
+                _ => syscall_code,
             };
-            self.emit_syscall_event(clk, record.arg1_record, syscall_code, arg2, res, next_pc,fat_op);
-
+            self.emit_syscall_event(
+                clk,
+                record.arg1_record,
+                syscall_code,
+                arg2,
+                res,
+                next_pc,
+                fat_op,
+            );
         } else if opcode.is_const_instruction() {
             self.emit_const_event(opcode);
         } else if opcode.is_state_instrucition() {
@@ -1035,9 +1048,8 @@ impl<'a> Executor<'a> {
         arg1: u32,
         arg2: u32,
         next_pc: u32,
-        fat_op:Option<FatOpEvent>
+        fat_op: Option<FatOpEvent>,
     ) {
-
         let syscall_event =
             self.syscall_event(clk, a_record, Some(true), syscall_code, arg1, arg2, next_pc);
 
@@ -1082,13 +1094,12 @@ impl<'a> Executor<'a> {
             SyscallCode::SECP256R1_ADD => todo!(),
             SyscallCode::SECP256R1_DOUBLE => todo!(),
             SyscallCode::SECP256R1_DECOMPRESS => todo!(),
-            SyscallCode::TABLE_INIT =>{
-                match fat_op.unwrap() {
-                    FatOpEvent::TableInit(table_init_event) =>{
-                         self.record.precompile_events.add_event(SyscallCode::TABLE_INIT, syscall_event, PrecompileEvent::TableInit(table_init_event))
-                    },
-                }
-
+            SyscallCode::TABLE_INIT => match fat_op.unwrap() {
+                FatOpEvent::TableInit(table_init_event) => self.record.precompile_events.add_event(
+                    SyscallCode::TABLE_INIT,
+                    syscall_event,
+                    PrecompileEvent::TableInit(table_init_event),
+                ),
             },
         }
     }
@@ -1414,8 +1425,8 @@ impl<'a> Executor<'a> {
         let public_values = removed_record.public_values;
         self.record.public_values = public_values;
         self.records.push(removed_record);
+        println!("after bump records:{:?}", self.records);
     }
-
     /// Execute up to `self.shard_batch_size` cycles, returning the events emitted and whether the
     /// program ended.
     ///
@@ -1429,11 +1440,9 @@ impl<'a> Executor<'a> {
         self.executor_mode = ExecutorMode::Trace;
         self.emit_global_memory_events = emit_global_memory_events;
         self.print_report = true;
-        println!("pre_execute_records:{:?}", self.records);
-        println!("pre_execute_record:{:?}", self.record);
 
         let done = self.execute()?; //TODO: fix execute
-        println!("post_execute_record:{:?}", self.records);
+
         Ok((std::mem::take(&mut self.records), done))
     }
 
@@ -2058,12 +2067,12 @@ mod tests {
         // Start with the same arithmetic prelude as the not-taken test
         let x = 1u32;
         let opcodes = vec![
-            Opcode::I32Const(x.into()),       // 1
-            Opcode::I32Const((x + 1).into()), // 2
-            Opcode::I32Const((x + 2).into()), // 3
-            Opcode::I32Add,                   // 2 + 3 = 5
-            Opcode::I32Add,                   // 1 + 5 = 6
-            Opcode::I32Const(1u32.into()),    // non-zero -> branch TAKEN
+            Opcode::I32Const(x.into()),                 // 1
+            Opcode::I32Const((x + 1).into()),           // 2
+            Opcode::I32Const((x + 2).into()),           // 3
+            Opcode::I32Add,                             // 2 + 3 = 5
+            Opcode::I32Add,                             // 1 + 5 = 6
+            Opcode::I32Const(1u32.into()),              // non-zero -> branch TAKEN
             Opcode::BrIfNez(BranchOffset::from(16i32)), // skip 4-op block below
             // --- skipped block if branch taken ---
             Opcode::I32Const((x + 3).into()), // 4
@@ -2083,18 +2092,18 @@ mod tests {
     fn test_branch_ifnez_taken_with_max_nonzero() {
         let x = 2u32;
         let opcodes = vec![
-            Opcode::I32Const(x.into()),        // 2
-            Opcode::I32Const((x + 1).into()),  // 3
-            Opcode::I32Const((x + 2).into()),  // 4
-            Opcode::I32Add,                    // 3 + 4 = 7
-            Opcode::I32Add,                    // 2 + 7 = 9
+            Opcode::I32Const(x.into()),              // 2
+            Opcode::I32Const((x + 1).into()),        // 3
+            Opcode::I32Const((x + 2).into()),        // 4
+            Opcode::I32Add,                          // 3 + 4 = 7
+            Opcode::I32Add,                          // 2 + 7 = 9
             Opcode::I32Const(0xFFFF_FFFFu32.into()), // still non-zero
             Opcode::BrIfNez(BranchOffset::from(16i32)),
             // --- would add 5 and 6 if not skipped ---
-            Opcode::I32Const((x + 3).into()),  // 5
-            Opcode::I32Const((x + 4).into()),  // 6
-            Opcode::I32Add,                    // 5 + 6 = 11
-            Opcode::I32Add,                    // 9 + 11 = 20
+            Opcode::I32Const((x + 3).into()), // 5
+            Opcode::I32Const((x + 4).into()), // 6
+            Opcode::I32Add,                   // 5 + 6 = 11
+            Opcode::I32Add,                   // 9 + 11 = 20
         ];
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
@@ -2114,7 +2123,6 @@ mod tests {
             Opcode::I32Const((x + 2).into()), // 3
             Opcode::I32Add,                   // 2 + 3 = 5
             Opcode::I32Add,                   // 1 + 5 = 6
-
             // First branch: NOT taken (cond = 0) -> execute next 4 ops (block A)
             Opcode::I32Const(0u32.into()),
             Opcode::BrIfNez(BranchOffset::from(16i32)),
@@ -2123,15 +2131,14 @@ mod tests {
             Opcode::I32Const((x + 4).into()), // 5
             Opcode::I32Add,                   // 4 + 5 = 9
             Opcode::I32Add,                   // 6 + 9 = 15
-
             // Second branch: TAKEN (cond = 1) -> skip next 4 ops (block B)
             Opcode::I32Const(1u32.into()),
             Opcode::BrIfNez(BranchOffset::from(16i32)),
             // ---- block B (skipped) ----
             Opcode::I32Const(10u32.into()),
             Opcode::I32Const(20u32.into()),
-            Opcode::I32Add,                   // 10 + 20 = 30
-            Opcode::I32Add,                   // would be 15 + 30 = 45 if not skipped
+            Opcode::I32Add, // 10 + 20 = 30
+            Opcode::I32Add, // would be 15 + 30 = 45 if not skipped
         ];
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
@@ -2323,12 +2330,11 @@ mod tests {
         for (i, b) in bytes.into_iter().enumerate() {
             let shift = (i as u32) * 8;
             w = (w & !(0xFFu32 << shift)) | ((b & 0xFF) << shift);
-            rt.mw(base, w, /*shard=*/0, /*timestamp=*/ (i as u32) + 1, None);
+            rt.mw(base, w, /*shard=*/ 0, /*timestamp=*/ (i as u32) + 1, None);
         }
 
         assert_eq!(rt.word(base), 0x7856_3412, "word should equal assembled bytes (LE)");
     }
-
 
     #[test]
     fn test_byte_overwrite_then_word_read() {
@@ -4693,13 +4699,13 @@ mod tests {
             Opcode::TableInit(0),
             Opcode::TableGet(0),
         ];
-        let elements = vec![5u32,7u32];
+        let elements = vec![5u32, 7u32];
         let program = Program::from_instrs(ops).with_elements(elements);
 
         let mut rt = Executor::new(program, SP1CoreOpts::default());
 
         rt.run().unwrap();
-          println!("table:{:?}",rt.store.tables);
+        println!("table:{:?}", rt.store.tables);
     }
 
     /// Boundary check: a 32‑bit load that starts inside the last page but

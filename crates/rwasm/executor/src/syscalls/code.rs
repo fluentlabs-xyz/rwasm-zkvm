@@ -158,7 +158,7 @@ pub enum SyscallCode {
     SECP256R1_DECOMPRESS = 0x00_00_01_2E,
 
     /// Executes the `TableInit` FatOp.
-    TABLE_INIT = 0x00_04_01_00,
+    TABLE_INIT = 0x00_00_01_2F 
 }
 
 impl SyscallCode {
@@ -205,7 +205,7 @@ impl SyscallCode {
             0x00_01_01_2C => SyscallCode::SECP256R1_ADD,
             0x00_00_01_2D => SyscallCode::SECP256R1_DOUBLE,
             0x00_00_01_2E => SyscallCode::SECP256R1_DECOMPRESS,
-            0x00_01_01_2F => SyscallCode::TABLE_INIT,
+            0x00_00_01_2F => SyscallCode::TABLE_INIT,
             _ => panic!("invalid syscall number: {value}"),
         }
     }

@@ -104,7 +104,7 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
          for (idx,event) in events.iter().enumerate(){
             println!("global event:{:?} ,idx:{},",event,idx);
          }
-       
+         
         let nb_rows = events.len();
         let padded_nb_rows = <GlobalChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_GLOBAL_COLS);

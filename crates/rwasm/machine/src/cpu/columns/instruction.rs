@@ -61,6 +61,8 @@ pub struct InstructionCols<T> {
     pub is_localtee: T,
     pub is_i32const: T,
 
+    pub is_table_grow: T,
+
     pub is_callinternal: T,
     pub is_callindirect: T,
     pub is_call:T,
@@ -156,6 +158,7 @@ impl<F: PrimeField> InstructionCols<F> {
             Opcode::ConsumeFuel(_) => self.is_skipped = F::one(),
             Opcode::SignatureCheck(_) => self.is_skipped = F::one(),
             Opcode::Drop => self.is_skipped = F::one(),
+            Opcode::TableGrow(_)=>self.is_table_grow = F::one(),
 
             _ => {}
         }

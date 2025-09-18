@@ -23,19 +23,21 @@ use sp1_curves::{
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::air::{BaseAirBuilder, InteractionScope, MachineAir, Polynomial, SP1AirBuilder};
- mod trace;
- mod column;
-pub use trace::*;
-pub use column::*;
+mod column;
+mod trace;
 use crate::{
     memory::{value_as_limbs, MemoryReadCols, MemoryWriteCols},
     operations::field::field_op::FieldOpCols,
-   
 };
-use rwasm::{N_MAX_TABLE_SIZE, mem_index::{AddressType, TABLE_ELEM_SIZE, UNIT}};
+pub use column::*;
 use rwasm::mem_index::ELEMENT_SEG_START;
+use rwasm::{
+    mem_index::{AddressType, TABLE_ELEM_SIZE, UNIT},
+    N_MAX_TABLE_SIZE,
+};
+pub use trace::*;
 #[derive(Default)]
-pub struct TableChip{}
+pub struct TableChip {}
 impl<AB> Air<AB> for TableChip
 where
     AB: SP1AirBuilder,
@@ -46,60 +48,66 @@ where
         let local: &TableCols<AB::Var> = (*local).borrow();
         let next: &TableCols<AB::Var> = (*next).borrow();
 
-        
         self.eval_memory_access(local, builder);
 
-        builder.receive_syscall(local.shard, local.clk, AB::Expr::zero(),AB::Expr::zero(), AB::Expr::zero(),local.is_first,InteractionScope::Local);
-
-
+        builder.receive_syscall(
+            local.shard,
+            local.clk,
+            AB::Expr::from_canonical_u32(SyscallCode::TABLE_INIT.syscall_id() as u32),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.is_first,
+            InteractionScope::Local,
+        );
     }
-
-    
-
 }
 
-impl TableChip
- {
+impl TableChip {
     fn eval_memory_access<AB: SP1AirBuilder>(&self, local: &TableCols<AB::Var>, builder: &mut AB) {
-        let base_elem_addr = AB::Expr::from_canonical_u32(AddressType::Element(0).to_virtual_addr());
-          let base_table_addr = AB::Expr::from_canonical_u32(AddressType::Table(0).to_virtual_addr());
+        let base_elem_addr =
+            AB::Expr::from_canonical_u32(AddressType::Element(0).to_virtual_addr());
+        let base_table_addr = AB::Expr::from_canonical_u32(AddressType::Table(0).to_virtual_addr());
         builder.eval_memory_access(
-            local.clk,
             local.shard,
+            local.clk,
             local.sp,
             &local.length_access,
             local.is_first,
         );
 
-         builder.eval_memory_access(
-            local.clk,
+        builder.eval_memory_access(
             local.shard,
-            local.sp+AB::Expr::from_canonical_u32(UNIT),
-           &local.dst_access,
+            local.clk,
+            local.sp + AB::Expr::from_canonical_u32(UNIT),
+            &local.dst_access,
             local.is_first,
         );
 
-         builder.eval_memory_access(
-            local.clk,
+        builder.eval_memory_access(
             local.shard,
-            local.sp+AB::Expr::from_canonical_u32(2*UNIT),
+            local.clk,
+            local.sp + AB::Expr::from_canonical_u32(2 * UNIT),
             &local.src_access,
             local.is_first,
         );
 
         builder.eval_memory_access(
-            local.clk,
             local.shard,
-            base_elem_addr+local.src_idx+local.idx,
+            local.clk,
+            base_elem_addr + (local.src_idx + local.idx) * AB::Expr::from_canonical_u32(UNIT),
             &local.src_read_access,
-            local.is_real);
+            local.is_real,
+        );
 
-         builder.eval_memory_access(
-            local.clk,
+        builder.eval_memory_access(
             local.shard,
-            base_table_addr+local.table_idx*AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE)+local.dst_idx+local.idx,
+            local.clk+AB::Expr::from_canonical_u32(1),
+            base_table_addr
+                + local.table_idx * AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE)
+                + (local.dst_idx + local.idx) * AB::Expr::from_canonical_u32(UNIT),
             &local.dst_write_access,
-            local.is_real);
+            local.is_real,
+        );
     }
 }
 

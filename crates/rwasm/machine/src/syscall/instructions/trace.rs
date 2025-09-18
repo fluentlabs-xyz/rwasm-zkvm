@@ -11,6 +11,7 @@ use rwasm_executor::{
     ExecutionRecord, Program,
 };
 use sp1_stark::air::MachineAir;
+use rwasm::Opcode;
 
 use crate::utils::{next_power_of_two, zeroed_f_vec};
 
@@ -33,6 +34,7 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
+        println!("SyscallInstrsEvent to Trace ");
         let chunk_size = std::cmp::max((input.syscall_events.len()) / num_cpus::get(), 1);
         let nb_rows = input.syscall_events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
@@ -80,20 +82,34 @@ impl SyscallInstrsChip {
         cols: &mut SyscallInstrColumns<F>,
         blu: &mut impl ByteRecord,
     ) {
+        println!("sys instr event:{:?}",event);
         cols.is_real = F::one();
         cols.pc = F::from_canonical_u32(event.pc);
         cols.next_pc = F::from_canonical_u32(event.next_pc);
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
-
-        cols.op_a_access.populate(MemoryRecordEnum::Write(event.a_record), blu);
+        let is_fat_op = match event.syscall_code{
+            SyscallCode::TABLE_INIT=>true,
+            _=>false
+        };
+        cols.is_fat_op = F::from_bool(is_fat_op);
+        let fat_opcode =  match event.syscall_code{
+            SyscallCode::TABLE_INIT=>Opcode::TableInit(0u32).code(),
+            _=>Opcode::Unreachable.code(),
+        };
+        cols.fat_opcode = F::from_canonical_u32(fat_opcode);
+        cols.is_sys_call= F::from_bool(!is_fat_op);
+        // cols.op_a_access.populate(MemoryRecordEnum::Write(event.a_record), blu);
         cols.op_b_value = event.arg1.into();
         cols.op_c_value = event.arg2.into();
-
-        let syscall_id = cols.op_a_access.prev_value[0];
-        let num_cycles = cols.op_a_access.prev_value[2];
-
-        cols.num_extra_cycles = num_cycles;
+        cols.syscall_code = (event.syscall_code as u32).into();
+        let syscall_id = F::from_canonical_u32(event.syscall_id);
+         println!("code :{}should send:{}",event.syscall_code,event.syscall_code.should_send());
+        cols.syscall_id =syscall_id;
+        let num_cycles = event.syscall_code.num_cycles();
+      
+        
+        cols.num_extra_cycles =   F::from_canonical_u32(num_cycles);
         cols.is_halt =
             F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
 

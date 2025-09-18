@@ -28,6 +28,8 @@ impl<F: PrimeField32> MachineAir<F> for TableChip {
         "Table".to_string()
     }
 
+   
+
     fn generate_trace(
         &self,
         input: &ExecutionRecord,
@@ -64,6 +66,7 @@ impl<F: PrimeField32> MachineAir<F> for TableChip {
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
          println!("generate deps Table:");
         let events = input.get_precompile_events(SyscallCode::TABLE_INIT);
+        println!("table events:{:?}",events);
         let chunk_size = 1usize;
 
         let blu_batches = events
@@ -120,7 +123,7 @@ impl TableChip {
             cols.next_sp=F::from_canonical_u32(event.next_sp);
             cols.src_read_access.populate(event.memory_read_access[idx],blu);
             cols.dst_write_access.populate(event.memory_write_acess[idx],blu);
-
+            cols.idx= F::from_canonical_u32(idx as u32);
             cols.is_table_init=F::one();
             if idx ==event.n as usize -1{
                 cols.is_last =F::one();

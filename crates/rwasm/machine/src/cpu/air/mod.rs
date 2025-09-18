@@ -62,6 +62,7 @@ where
         self.eval_call(builder, local,next);
         self.eval_memory(builder, local);
         self.eval_local(builder, local, clk.clone());
+        self.eval_ecall(builder, local);
 
         // Check that the shard and clk is updated correctly.
         self.eval_shard_clk(builder, local, next, public_values, clk.clone());
@@ -307,6 +308,28 @@ impl CpuChip {
             .assert_word_eq(local.instruction.aux_val, local.op_res_val());
     }
 
+      pub(crate) fn eval_ecall<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &CpuCols<AB::Var>,
+    ){
+           builder.send_instruction(
+            local.shard_to_send,
+            local.clk_to_send,
+            local.pc,
+            local.next_pc,
+            local.num_extra_cycles,
+            local.instruction.opcode,
+            local.op_res_val(),
+            local.op_arg1_val(),
+            local.instruction.aux_val,
+            local.is_memory,
+            local.is_syscall,
+            local.is_halt,
+            local.instruction.is_ecall
+        );
+    }
+
     /// Constraints related to the shard and clk.
     ///
     /// This method ensures that all of the shard values are the same and that the clk starts at 0
@@ -523,8 +546,10 @@ impl CpuChip {
             clk.clone() + AB::Expr::from_canonical_u8(1),
             local.sp + AB::Expr::from_canonical_u8(4),
             &local.op_res_access,
-            local.instruction.is_binary,
+            local.instruction.is_binary+local.instruction.is_table_grow,
         );
+
+       
 
         builder.eval_memory_access(
             local.shard,
@@ -534,7 +559,8 @@ impl CpuChip {
             local.instruction.is_binary
                 + local.instruction.is_i32store
                 + local.instruction.is_i32store16
-                + local.instruction.is_i32store8,
+                + local.instruction.is_i32store8
+                + local.instruction.is_table_grow,
         );
 
         builder.eval_memory_access(
@@ -545,7 +571,8 @@ impl CpuChip {
             local.instruction.is_binary
                 + local.instruction.is_i32store
                 + local.instruction.is_i32store16
-                + local.instruction.is_i32store8,
+                + local.instruction.is_i32store8
+                + local.instruction.is_table_grow,
         );
         builder
             .when(local.instruction.is_binary)
@@ -609,6 +636,8 @@ impl CpuChip {
         builder.when(local.instruction.is_return).when(local.call_data.call_sp_is_zero).assert_zero(next.is_real);
         builder.when(local.instruction.is_return).when(local.call_data.call_sp_is_zero).assert_zero(local.call_data.call_sp);
     }
+
+   
 }
 
 impl<F> BaseAir<F> for CpuChip {

@@ -181,7 +181,12 @@ impl CpuChip {
         }
 
         if instruction.is_ecall_instruction() {
-            let syscall_id = cols.op_res_access.prev_value[0];
+            let syscall_id =match instruction {
+                Opcode::Call(_)=>instruction.aux_value(),
+                Opcode::TableInit(_)=>SyscallCode::TABLE_INIT.syscall_id(),
+                _=>unimplemented!(),
+            };
+            let syscall_id=F::from_canonical_u32(syscall_id);
             let num_extra_cycles = cols.op_res_access.prev_value[2];
             cols.is_halt =
                 F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
