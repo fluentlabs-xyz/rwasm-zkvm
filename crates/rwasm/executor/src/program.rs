@@ -63,6 +63,7 @@ impl Program {
     #[must_use]
     pub fn with_elements(mut self, elements: Vec<u32>) -> Self {
         self.module.elem_section = elements;
+        self.memory_image=Program::memory_image(&self.module);
         self
     }
 
@@ -98,23 +99,9 @@ impl Program {
         })
     }
 
+    #[must_use]
     pub fn memory_image(module: &RwasmModule) -> HashMap<u32, u32> {
-        let len = module.data_section.len() / 4;
-        module
-            .data_section
-            .chunks(4)
-            .zip(0..len as u32)
-            .map(|x| (u32::from_le_bytes(x.0.try_into().unwrap()), x.1))
-            .collect()
-    }
-    /// get Opcode by programm counter
-    pub fn fetch(&self, pc: u32) -> Opcode {
-        self.module.code_section[pc as usize]
-    }
-
-    pub fn build_memory_image_vec(&self) -> Vec<(u32, u32)> {
-        let mut v_data: Vec<_> = self
-            .module
+       let mut v_data: HashMap<_,_> = module
             .data_section
             .windows(4)
             .enumerate()
@@ -126,12 +113,18 @@ impl Program {
             })
             .collect();
 
-        v_data.extend(self.module.elem_section.iter().enumerate().map(|(addr, data)| {
+        v_data.extend(module.elem_section.iter().enumerate().map(|(addr, data)| {
             let v_addr = AddressType::Element(addr as u32).to_virtual_addr();
             (v_addr, *data)
         }));
         v_data
     }
+    /// get Opcode by programm counter
+    pub fn fetch(&self, pc: u32) -> Opcode {
+        self.module.code_section[pc as usize]
+    }
+
+   
 }
 
 impl<F: PrimeField32> MachineProgram<F> for Program {
@@ -140,8 +133,8 @@ impl<F: PrimeField32> MachineProgram<F> for Program {
     }
 
     fn initial_global_cumulative_sum(&self) -> SepticDigest<F> {
-        let mut digests: Vec<SepticCurveComplete<F>> = self
-            .build_memory_image_vec()
+        let mut digests: Vec<SepticCurveComplete<F>> = 
+            Program::memory_image(&self.module)
             .iter()
             .par_bridge()
             .map(|(addr, word)| {

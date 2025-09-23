@@ -1787,7 +1787,8 @@ impl<'a> Executor<'a> {
             self.report.touched_memory_addresses = 0;
 
             for addr in self.state.memory.page_table.keys() {
-                println!("addr:{}", addr);
+                if !self.program.memory_image.contains_key(&addr){
+                    println!("addr:{}", addr);
                 self.report.touched_memory_addresses += 1;
 
                 // Program memory is initialized in the MemoryProgram chip and doesn't require any
@@ -1799,11 +1800,14 @@ impl<'a> Executor<'a> {
                 println!("init_event:{:?}", init_event);
                 memory_initialize_events.push(init_event);
 
-                let record = *self.state.memory.get(addr).unwrap();
+              
+                }
+                  let record = *self.state.memory.get(addr).unwrap();
                 let final_event =
                     MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record);
                 println!("final_event:{:?}", final_event);
                 memory_finalize_events.push(final_event);
+                
             }
         }
     }

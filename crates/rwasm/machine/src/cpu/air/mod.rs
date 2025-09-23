@@ -459,7 +459,8 @@ impl CpuChip {
             clk + AB::Expr::from_canonical_u8(1),
             local.sp - AB::Expr::from_canonical_u8(4),
             &local.op_res_access,
-            local.instruction.is_localget + local.instruction.is_i32const,
+            local.instruction.is_localget
+             + local.instruction.is_i32const,
         );
 
         builder
@@ -546,7 +547,8 @@ impl CpuChip {
             clk.clone() + AB::Expr::from_canonical_u8(1),
             local.sp + AB::Expr::from_canonical_u8(4),
             &local.op_res_access,
-            local.instruction.is_binary+local.instruction.is_table_grow,
+            local.instruction.is_binary
+            // +local.instruction.is_table_grow,
         );
 
        
@@ -560,7 +562,7 @@ impl CpuChip {
                 + local.instruction.is_i32store
                 + local.instruction.is_i32store16
                 + local.instruction.is_i32store8
-                + local.instruction.is_table_grow,
+                // + local.instruction.is_table_grow,
         );
 
         builder.eval_memory_access(
@@ -572,7 +574,7 @@ impl CpuChip {
                 + local.instruction.is_i32store
                 + local.instruction.is_i32store16
                 + local.instruction.is_i32store8
-                + local.instruction.is_table_grow,
+                // + local.instruction.is_table_grow,
         );
         builder
             .when(local.instruction.is_binary)
