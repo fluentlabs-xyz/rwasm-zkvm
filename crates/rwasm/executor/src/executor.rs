@@ -19,7 +19,7 @@ use rwasm::{
     always_failing_syscall_handler,
     event::FatOpEvent,
     mem::{MemoryLocalEvent, MemoryRecordEnum},
-    CallStack, ExecutionEngine, ExecutorConfig, ImportLinker, InstructionPtr, Opcode,
+    CallStack, ExecutionEngine, ImportLinker, InstructionPtr, Opcode,
     RwasmExecutor, RwasmModule, RwasmStore, Store, TraceCallData, Tracer, TrapCode, ValueStack,
     ValueStackPtr,
 };
@@ -353,9 +353,9 @@ impl<'a> Executor<'a> {
         let costs: HashMap<RwasmAirId, usize> =
             costs.into_iter().map(|(k, v)| (RwasmAirId::from_str(&k).unwrap(), v)).collect();
 
-        let rwasm_config = ExecutorConfig::default();
+       
         let store = RwasmStore::new(
-            rwasm_config,
+            ExecutionEngine::default(),
             // TODO(dmitry123): "use import linker from fluentbase once tracer is merged"
             Arc::new(ImportLinker::default()),
             (),
@@ -1613,7 +1613,7 @@ impl<'a> Executor<'a> {
         loop {
             let rwasm_state = self.register_state.get_or_insert_with(|| {
                 let sp = self.value_stack.stack_ptr();
-                let ip = InstructionPtr::new(self.program.module.code_section.instr.as_ptr());
+                let ip = InstructionPtr::new((*self.program.module.code_section).as_ptr());
                 RwasmExecutorState { sp, ip }
             });
             let res: Result<bool, TrapCode>;
@@ -1966,7 +1966,7 @@ mod tests {
 
     use rwasm::{
         mem_index::{AddressType, SP_START, UNIT},
-        BranchOffset, Op, Opcode,
+        BranchOffset, Opcode,
     };
     use sp1_stark::SP1CoreOpts;
 

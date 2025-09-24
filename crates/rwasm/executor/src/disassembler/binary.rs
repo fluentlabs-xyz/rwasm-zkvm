@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use hashbrown::HashMap;
 
 use rwasm::{
-    CallStack, ExecutionEngine, ExecutorConfig, RwasmExecutor, RwasmModule, Store, ValueStack,
+    CallStack, ExecutionEngine, RwasmExecutor, RwasmModule, Store, ValueStack,
 };
 
 use crate::executor;

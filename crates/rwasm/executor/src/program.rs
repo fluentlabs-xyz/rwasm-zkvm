@@ -13,7 +13,7 @@ use p3_maybe_rayon::prelude::IntoParallelIterator;
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 
 use rwasm::mem_index::AddressType;
-use rwasm::{InstructionSet, Opcode, RwasmModule};
+use rwasm::{InstructionSet, Opcode, RwasmModule, RwasmModuleInner};
 use serde::{Deserialize, Serialize};
 use sp1_stark::septic_curve::{SepticCurve, SepticCurveComplete};
 use sp1_stark::septic_digest::SepticDigest;
@@ -46,15 +46,15 @@ impl Program {
     #[must_use]
     pub fn from_instrs(vec: Vec<Opcode>) -> Self {
         let mut code_section = InstructionSet::new();
-        code_section.instr = vec;
+        *code_section = vec;
 
         Self {
-            module: RwasmModule {
+            module: RwasmModule::from(RwasmModuleInner {
                 code_section,
                 data_section: vec![],
                 elem_section: vec![],
-                wasm_section: vec![],
-            },
+                hint_section: vec![],
+            }),
             memory_image: HashMap::new(),
             preprocessed_shape: None,
         }
@@ -62,7 +62,13 @@ impl Program {
 
     #[must_use]
     pub fn with_elements(mut self, elements: Vec<u32>) -> Self {
-        self.module.elem_section = elements;
+        let module = RwasmModule::from(RwasmModuleInner {
+                code_section: self.module.code_section.clone(),
+                data_section: vec![],
+                elem_section: elements,
+                hint_section: vec![],
+            });
+        self.module=module;
         self.memory_image=Program::memory_image(&self.module);
         self
     }
