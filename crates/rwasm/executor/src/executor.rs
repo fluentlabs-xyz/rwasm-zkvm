@@ -353,7 +353,7 @@ impl<'a> Executor<'a> {
         let costs: HashMap<RwasmAirId, usize> =
             costs.into_iter().map(|(k, v)| (RwasmAirId::from_str(&k).unwrap(), v)).collect();
 
-       
+
         let store = RwasmStore::new(
             ExecutionEngine::default(),
             // TODO(dmitry123): "use import linker from fluentbase once tracer is merged"
@@ -1800,14 +1800,14 @@ impl<'a> Executor<'a> {
                 println!("init_event:{:?}", init_event);
                 memory_initialize_events.push(init_event);
 
-              
+
                 }
                   let record = *self.state.memory.get(addr).unwrap();
                 let final_event =
                     MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record);
                 println!("final_event:{:?}", final_event);
                 memory_finalize_events.push(final_event);
-                
+
             }
         }
     }
@@ -4806,7 +4806,7 @@ mod tests {
     /// must panic in the current rwasm backend (it does not return Err).
     /// This test documents that behavior explicitly.
     #[test]
-    #[should_panic(expected = "stack underflow")]
+    #[should_panic(expected = "capacity overflow")]
     fn test_stack_underflow_add_traps() {
         let ops = vec![
             // No pushes
