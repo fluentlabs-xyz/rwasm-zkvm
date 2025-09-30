@@ -56,7 +56,7 @@ impl<F: PrimeField32> MachineAir<F> for TableChip {
             || [F::zero(); NUM_TABLE_INIT_SIZE],
             input.fixed_log2_rows::<F, _>(self),
         );
-        println!("rows:{:?}",rows);
+        
       
         // Convert the trace to a row major matrix.
         RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_TABLE_INIT_SIZE)
@@ -103,10 +103,13 @@ impl TableChip {
         blu: &mut impl ByteRecord,
     ) {
          println!("table_init_+event:{:?}",event);
-         for idx in 0..event.n as usize{
-            let mut row = [F::zero(); NUM_TABLE_INIT_SIZE];
-            let cols: &mut TableCols<F> = row.as_mut_slice().borrow_mut();
-             cols.is_real = F::one();
+           let mut row = [F::zero(); NUM_TABLE_INIT_SIZE];
+          let main_cols: &mut TableCols<F> = row.as_mut_slice().borrow_mut();
+            for idx in 0..event.n as usize{
+
+          
+            let mut cols = &mut main_cols.inner[idx];
+            cols.is_real = F::one();
             if idx ==0{
                 cols.is_first=F::one();
                 cols.src_access.populate(event.stack_access[0], blu);
@@ -114,10 +117,12 @@ impl TableChip {
                 cols.length_access.populate(event.stack_access[2], blu);
 
             }
+            
             cols.clk=F::from_canonical_u32(event.clk);
             cols.shard=F::from_canonical_u32(event.shard);
             cols.src_idx=F::from_canonical_u32(event.s);
             cols.dst_idx=F::from_canonical_u32(event.d);
+            cols.length=F::from_canonical_u32(event.n);
             cols.table_idx=F::from_canonical_u32(event.table_idx);
             cols.sp=F::from_canonical_u32(event.sp);
             cols.next_sp=F::from_canonical_u32(event.next_sp);
@@ -130,10 +135,12 @@ impl TableChip {
 
             }
             
-            if rows.as_ref().is_some() {
+            
+           
+         }
+          if rows.as_ref().is_some() {
                 rows.as_mut().unwrap().push(row);
             }
-         }
 
 
             

@@ -179,11 +179,13 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                     self.partial_precompile_shapes.iter()
                 {
                     // Filter to check that the shard and shape air match.
+
                     let Some((height, num_memory_local_events, num_global_events)) =
                         record.precompile_heights().find_map(|x| (x.0 == air).then_some(x.1))
                     else {
                         continue;
                     };
+                    println!("air: {},height{}, num_memory_local_events {}, num_global_events{}",air,height, num_memory_local_events, num_global_events);
                     for allowed_log2_height in allowed_log2_heights {
                         let allowed_height = 1 << allowed_log2_height;
                         if height <= allowed_height {
@@ -205,6 +207,7 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                                             .iter()
                                             .map(|x| (RwasmAirId::from_str(&x.0).unwrap(), x.1)),
                                     );
+                                    println!("actual shape{:?}",actual_shape);
                                     return Ok(actual_shape);
                                 }
                             }
@@ -448,7 +451,7 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                             (MachineAir::<BabyBear>::name(&ProgramChip), 19),
                             (MachineAir::<BabyBear>::name(&ByteChip::default()), 16),
                             (MachineAir::<BabyBear>::name(&CallChip::default()), 16),
-                             (MachineAir::<BabyBear>::name(&TableChip::default()), 16),
+                             (MachineAir::<BabyBear>::name(&TableChip::default()),22 ),
                         ])
                         .collect::<Vec<_>>(),
                 )
