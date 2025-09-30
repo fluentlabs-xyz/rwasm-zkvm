@@ -7,7 +7,7 @@ use std::mem::{transmute};
 use p3_util::indices_arr;
 pub const NUM_INSTRUCTION_COLS: usize = size_of::<InstructionCols<u8>>();
 pub const INSTRUCTION_COL_MAP: InstructionCols<usize> = make_col_map();
-use rwasm::{Op, Opcode};
+use rwasm::{Opcode};
 /// The column layout for instructions.
 #[derive(AlignedBorrow, Clone, Copy, Default, Debug)]
 #[repr(C)]
@@ -81,7 +81,7 @@ impl<F: PrimeField> InstructionCols<F> {
         self.is_call_ins = F::from_bool(opcode.is_call_instruction());
         match opcode {
             Opcode::LocalGet(_) | Opcode::LocalSet(_) | Opcode::LocalTee(_) => {
-                
+
                 self.is_local=F::one();
                 match opcode {
                     Opcode::LocalGet(_)=>self.is_localget=F::one(),
