@@ -297,7 +297,7 @@ where
                                     state.start_pc = state.next_pc;
                                     record.public_values = *state;
                                 }
-                               
+
                                 records_clone.append(&mut deferred);
                                 println!("records clone len:{:?}",records_clone.len());
                                 println!("records clone:{:?}",records_clone);
@@ -320,7 +320,7 @@ where
                                 if let Some(shape_config) = shape_config {
                                     for record in records_clone.iter_mut() {
                                         let fix_shape_res = shape_config.fix_shape(record);
-                                        
+
                                         if fix_shape_res.is_err() {
                                             println!("records shape res:{}",fix_shape_res.err().unwrap());
                                             fixed_shape = false;
@@ -331,8 +331,8 @@ where
                             } else {
                                 None
                             };
-                           
-                            println!("len{} :fix_shape_records{:?}",shape_fixed_records.clone().    unwrap().len(),shape_fixed_records);
+
+                        //    println!("len{} :fix_shape_records{:?}",shape_fixed_records.clone().unwrap().len(),shape_fixed_records);
                             if shape_fixed_records.is_none() {
                                 // See if any deferred shards are ready to be committed to.
                                 let mut deferred = deferred.split(done, None, opts.split_opts);
