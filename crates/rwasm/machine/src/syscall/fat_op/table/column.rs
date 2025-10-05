@@ -11,7 +11,6 @@ pub const fn num_table_cols() -> usize {
     size_of::<TableCols<u8>>()
 }
 
-/// A set of columns for the FpAdd operation.
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
 pub struct TableCols<T> {
@@ -23,12 +22,10 @@ pub struct TableCols<T> {
     pub src_access: MemoryReadCols<T>,
     pub dst_access: MemoryReadCols<T>,
     pub length_access: MemoryReadCols<T>,
-    pub(crate) inner: [TableSubCols<T>; N_MAX_TABLE_SIZE as usize],
-}
-#[derive(Debug, Clone, AlignedBorrow)]
-#[repr(C)]
-pub struct TableSubCols<T> {
     pub src_read_access: MemoryReadCols<T>,
     pub dst_write_access: MemoryWriteCols<T>,
-    pub is_real: T,
+    pub is_first: T,
+    pub is_last: T,
+    pub idx: T,
+    pub is_non_zero_length: T,
 }

@@ -9,7 +9,9 @@ use itertools::Itertools;
 use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
+use rwasm::event;
 use rwasm::event::TableInitEvent;
+use rwasm::mem_index::UNIT;
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, PrecompileEvent, ShaCompressEvent},
     syscalls::SyscallCode,
@@ -49,7 +51,8 @@ impl<F: PrimeField32> MachineAir<F> for TableChip {
         pad_rows_fixed(
             &mut rows,
             || [F::zero(); NUM_TABLE_INIT_SIZE],
-            input.fixed_log2_rows::<F, _>(self),
+            // TODO (Aliaksei): find a way to provide `size_log2` from the shape
+            None,
         );
 
         // Convert the trace to a row major matrix.
@@ -88,10 +91,6 @@ impl<F: PrimeField32> MachineAir<F> for TableChip {
             !shard.get_precompile_events(SyscallCode::TABLE_INIT).is_empty()
         }
     }
-
-    fn local_only(&self) -> bool {
-        true
-    }
 }
 
 impl TableChip {
@@ -102,28 +101,53 @@ impl TableChip {
         blu: &mut impl ByteRecord,
     ) {
         println!("table_init_+event:{:?}", event);
-        let mut row = [F::zero(); NUM_TABLE_INIT_SIZE];
-        let main_cols: &mut TableCols<F> = row.as_mut_slice().borrow_mut();
 
-        main_cols.clk = F::from_canonical_u32(event.clk);
-        main_cols.shard = F::from_canonical_u32(event.shard);
-        main_cols.table_idx = F::from_canonical_u32(event.table_idx);
-        main_cols.sp = F::from_canonical_u32(event.sp);
+        let mut idx = 0;
 
-        main_cols.is_real = F::one();
+        for idx in 0..=event.n as usize {
+            let mut row = [F::zero(); NUM_TABLE_INIT_SIZE];
+            let local: &mut TableCols<F> = row.as_mut_slice().borrow_mut();
 
-        main_cols.dst_access.populate(event.stack_access[0], blu);
-        main_cols.src_access.populate(event.stack_access[1], blu);
-        main_cols.length_access.populate(event.stack_access[2], blu);
+            if idx == event.n as usize && event.n > 0 {
+                break;
+            }
 
-        for idx in 0..event.n as usize {
-            let cols = &mut main_cols.inner[idx];
-            cols.is_real = F::one();
-            cols.src_read_access.populate(event.memory_read_access[idx], blu);
-            cols.dst_write_access.populate(event.memory_write_acess[idx], blu);
-        }
-        if rows.as_ref().is_some() {
-            rows.as_mut().unwrap().push(row);
+            if idx == 0 {
+                local.is_first = F::one();
+                local.dst_access.populate(event.stack_access[0], blu);
+                local.src_access.populate(event.stack_access[1], blu);
+                local.length_access.populate(event.stack_access[2], blu);
+            } else {
+                local.dst_access.populate(event.stack_access[0], &mut Vec::new());
+                local.src_access.populate(event.stack_access[1], &mut Vec::new());
+            }
+
+            if event.n != 0 {
+                local.is_non_zero_length = F::one();
+            }
+
+            local.sp = F::from_canonical_u32(event.sp);
+            local.is_real = F::one();
+            local.shard = F::from_canonical_u32(event.shard);
+            local.clk = F::from_canonical_u32(event.clk);
+
+            if let (Some(memory_read_access), Some(memory_write_access)) =
+                (event.memory_read_access.get(idx), event.memory_write_acess.get(idx))
+            {
+                local.src_read_access.populate(*memory_read_access, blu);
+                local.dst_write_access.populate(*memory_write_access, blu);
+            }
+
+            local.idx = F::from_canonical_u32(idx as u32);
+
+            local.table_idx = F::from_canonical_u32(event.table_idx);
+            if idx == event.n as usize - 1 || event.n == 0 {
+                local.is_last = F::one()
+            }
+
+            if rows.as_ref().is_some() {
+                rows.as_mut().unwrap().push(row);
+            }
         }
     }
 }

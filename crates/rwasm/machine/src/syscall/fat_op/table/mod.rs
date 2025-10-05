@@ -46,32 +46,29 @@ where
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
-        let local = main.row_slice(0);
+        let (local, next) = (main.row_slice(0), main.row_slice(1));
         let local: &TableCols<AB::Var> = (*local).borrow();
+        let next: &TableCols<AB::Var> = (*next).borrow();
 
-        builder.eval_memory_access(
-            local.shard,
-            local.clk,
-            local.sp,
-            &local.length_access.clone(),
-            local.is_real,
-        );
+        builder.assert_bool(local.is_first);
+        builder.assert_bool(local.is_last);
 
-        builder.eval_memory_access(
-            local.shard,
-            local.clk,
-            local.sp + AB::Expr::from_canonical_u32(UNIT),
-            &local.src_access.clone(),
-            local.is_real,
-        );
+        builder.when_first_row().assert_one(local.is_first);
 
-        builder.eval_memory_access(
-            local.shard,
-            local.clk,
-            local.sp + AB::Expr::from_canonical_u32(2 * UNIT),
-            &local.dst_access.clone(),
-            local.is_real,
-        );
+        builder.when_transition().when(local.is_last).when(next.is_real).assert_one(next.is_first);
+
+        builder.when_transition().when_not(local.is_last).assert_eq(local.is_real, next.is_real);
+
+        builder.when_transition().when_not(local.is_last).assert_eq(local.clk, next.clk);
+        builder.when_transition().when_not(local.is_last).assert_eq(local.shard, next.shard);
+
+        builder.when(local.is_last).assert_one(local.is_real);
+        builder.when(local.is_first).assert_one(local.is_real);
+
+        builder
+            .when(local.is_first)
+            .when_not(local.is_non_zero_length)
+            .assert_word_zero(*local.length_access.value());
 
         self.eval_memory_access(local, builder);
 
@@ -81,7 +78,7 @@ where
             AB::Expr::from_canonical_u32(SyscallCode::TABLE_INIT.syscall_id() as u32),
             AB::Expr::zero(),
             AB::Expr::zero(),
-            local.is_real,
+            local.is_first,
             InteractionScope::Local,
         );
     }
@@ -91,78 +88,54 @@ impl TableChip {
     fn eval_memory_access<AB: SP1AirBuilder>(&self, local: &TableCols<AB::Var>, builder: &mut AB) {
         let unit = AB::Expr::from_canonical_u32(UNIT);
 
-        let mut src_addr = AB::Expr::from_canonical_u32(AddressType::Element(0).to_virtual_addr())
-            + local.src_access.value().reduce::<AB>() * unit.clone();
+        builder.eval_memory_access(
+            local.shard,
+            local.clk,
+            local.sp,
+            &local.length_access.clone(),
+            local.is_first,
+        );
 
-        let mut table_addr = AB::Expr::from_canonical_u32(AddressType::Table(0).to_virtual_addr())
-            + (local.dst_access.value().reduce::<AB>()
-                + local.table_idx * AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE))
-                * unit.clone();
+        builder.eval_memory_access(
+            local.shard,
+            local.clk,
+            local.sp + AB::Expr::from_canonical_u32(UNIT),
+            &local.src_access.clone(),
+            local.is_first,
+        );
 
-        let n = local.length_access.value().reduce::<AB>();
+        builder.eval_memory_access(
+            local.shard,
+            local.clk,
+            local.sp + AB::Expr::from_canonical_u32(2 * UNIT),
+            &local.dst_access.clone(),
+            local.is_first,
+        );
 
-        // check case when n = 0
-        builder.when_not(local.inner[0].is_real.clone()).assert_zero(n.clone());
+        let src_addr = AB::Expr::from_canonical_u32(AddressType::Element(0).to_virtual_addr())
+            + (local.src_access.value().reduce::<AB>() + local.idx) * unit.clone();
 
-        builder
-            .when(local.inner[N_MAX_TABLE_SIZE as usize - 1].is_real.clone())
-            .assert_eq(n.clone(), AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE - 1));
+        let table_addr = AB::Expr::from_canonical_u32(AddressType::Table(0).to_virtual_addr())
+            + (local.table_idx * AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE)
+                + local.dst_access.value().reduce::<AB>()
+                + local.idx)
+                * unit;
 
-        for idx in 0..N_MAX_TABLE_SIZE as usize {
-            let current = &local.inner[idx];
+        builder.eval_memory_access(
+            local.shard,
+            local.clk,
+            src_addr,
+            &local.src_read_access,
+            local.is_non_zero_length,
+        );
 
-            builder.assert_bool(current.is_real.clone());
-
-            if idx != N_MAX_TABLE_SIZE as usize - 1 {
-                let next = &local.inner[idx + 1];
-
-                let idx = idx as u32;
-
-                builder
-                    .when_ne(n.clone(), AB::Expr::from_canonical_u32(idx + 1))
-                    .assert_eq(current.is_real.clone(), next.is_real.clone());
-
-                builder
-                    .when_ne(current.is_real.clone(), next.is_real.clone())
-                    .assert_one(current.is_real.clone());
-
-                builder
-                    .when_ne(current.is_real.clone(), next.is_real.clone())
-                    .assert_eq(n.clone(), AB::Expr::from_canonical_u32(idx + 1));
-            }
-
-            // TODO:(Aliaksei) check memory out of bounds
-            // builder
-            //     .when_ne(AB::Expr::from_canonical_u32(ELEMENT_SEG_END) - src_addr.clone())
-            //     .assert_zero(current.is_real.clone());
-            // builder
-            //     .when_not(AB::Expr::from_canonical_u32(TABLE_SEG_END) - table_addr.clone())
-            //     .assert_zero(current.is_real.clone());
-
-            builder.when(current.is_real.clone()).assert_eq(
-                current.src_read_access.value().reduce::<AB>(),
-                current.dst_write_access.value().reduce::<AB>(),
-            );
-
-            builder.eval_memory_access(
-                local.shard,
-                local.clk,
-                src_addr.clone(),
-                &current.src_read_access.clone(),
-                current.is_real.clone(),
-            );
-
-            builder.eval_memory_access(
-                local.shard,
-                local.clk + AB::Expr::from_canonical_u32(1),
-                table_addr.clone(),
-                &current.dst_write_access.clone(),
-                current.is_real.clone(),
-            );
-
-            src_addr += unit.clone();
-            table_addr += unit.clone();
-        }
+        builder.eval_memory_access(
+            local.shard,
+            local.clk + AB::Expr::from_canonical_u32(1),
+            table_addr,
+            &local.dst_write_access,
+            local.is_non_zero_length,
+        );
     }
 }
 
