@@ -858,4 +858,135 @@ mod tests {
         let program = build_table_init();
         run_rwasm_prover(program);
     }
+
+    fn build_elf_load8u() -> Program {
+        let addr: u32 = 0x10000;
+        let value: u32 = 0xABCD_00EF; // low byte = 0xEF
+        let ops = vec![
+            Opcode::I32Const(2u32.into()),
+            Opcode::MemoryGrow,
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Const(value.into()),
+            Opcode::I32Store(0u32),
+            // load the lowest byte back unsigned
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Load8U(0u32),
+            Opcode::Drop, // discard loaded byte; proof just needs a valid trace
+        ];
+        Program::from_instrs(ops)
+    }
+
+    #[test]
+    fn test_rwasm_load8u() {
+        let program = build_elf_load8u();
+        run_rwasm_prover(program);
+    }
+
+    fn build_elf_mem_overwrite() -> Program {
+        // Write 32-bit word, then overwrite its second byte via Store8 with offset=1,
+        // finally read back the 32-bit word (exercise mixed width stores/loads).
+        let addr: u32 = 0x10020;
+        let word: u32 = 0x0102_0304; // bytes: 04 03 02 01 (LE)
+        let ops = vec![
+            Opcode::I32Const(2u32.into()),
+            Opcode::MemoryGrow,
+            // store initial 32-bit word
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Const(word.into()),
+            Opcode::I32Store(0u32),
+            // overwrite byte at addr+1 with 0xAA
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Const(0xAAu32.into()),
+            Opcode::I32Store8(1u32),
+            // read back full 32-bit word (unaltered semantics validated by executor)
+            Opcode::I32Const(addr.into()),
+            Opcode::I32Load(0u32),
+            Opcode::Drop,
+        ];
+        Program::from_instrs(ops)
+    }
+
+    #[test]
+    fn test_rwasm_mem_overwrite() {
+        let program = build_elf_mem_overwrite();
+        run_rwasm_prover(program);
+    }
+
+    fn build_test_call_direct_mul() -> Program {
+        // f_mul(x,y) = x * y
+        let f_mul = vec![rwasm::Opcode::I32Mul, rwasm::Opcode::Return]; // len = 2
+
+        // main: push x, y; Call(f_mul); const expected; eq; return
+        let main_len = 6u32;
+        let f_mul_pos = main_len;
+
+        let x = 7u32;
+        let y = 9u32;
+        let expected = x * y;
+
+        let mut ops = Vec::new();
+        ops.push(Opcode::I32Const(x.into()));
+        ops.push(Opcode::I32Const(y.into()));
+        ops.push(Opcode::CallInternal(f_mul_pos.into()));
+        ops.push(Opcode::I32Const(expected.into()));
+        ops.push(Opcode::I32Eq);
+        ops.push(Opcode::Return);
+
+        // append callee
+        ops.extend(f_mul);
+
+        Program::from_instrs(ops)
+    }
+
+    #[test]
+    fn test_call_direct_mul() {
+        let program = build_test_call_direct_mul();
+        run_rwasm_prover(program);
+    }
+
+    fn build_elf_brtable_zero_index() -> Program {
+        // Use BrTable with index 0; ensure enough stack for 3 shifts if fallthrough occurs.
+        let x_value: u32 = 1;
+        let ops = vec![
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(x_value.into()), // extra operand so 3 shifts are safe
+            Opcode::I32Const(0u32.into()),    // table index = 0
+            Opcode::BrTable(3u32),            // table size = 3
+            // these would be skipped if correct table mapping branches;
+            // if fallthrough, they still have enough operands.
+            Opcode::I32Shl,
+            Opcode::I32Shl,
+            Opcode::I32Shl,
+            Opcode::Return,
+        ];
+        Program::from_instrs(ops)
+    }
+
+    #[test]
+    fn test_rwasm_brtable_zero_index() {
+        let program = build_elf_brtable_zero_index();
+        run_rwasm_prover(program);
+    }
+
+    fn build_table_grow_and_get() -> Program {
+        let ops = vec![
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(2.into()), // delta = 2
+            Opcode::TableGrow(0),
+
+            Opcode::I32Const(1.into()),
+            Opcode::TableGet(0),
+            Opcode::Drop,
+            Opcode::Return,
+        ];
+        Program::from_instrs(ops)
+    }
+
+    #[test]
+    fn test_table_grow_and_get() {
+        let program = build_table_grow_and_get();
+        run_rwasm_prover(program);
+    }
 }
