@@ -231,9 +231,11 @@ mod tests {
     #![allow(clippy::print_stdout)]
 
     use p3_baby_bear::BabyBear;
+    use p3_field::AbstractField;
     use p3_matrix::dense::RowMajorMatrix;
+    use p3_matrix::Matrix;
     use rand::{thread_rng, Rng};
-    use rwasm::Opcode;
+    use rwasm::{Opcode, UntypedValue};
     use rwasm_executor::{
         events::{AluEvent, MemoryRecordEnum},
         ExecutionRecord, Program,
@@ -254,11 +256,109 @@ mod tests {
     #[test]
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
-        shard.bitwise_events = vec![AluEvent::new(0, Opcode::XOR, 25, 10, 19, false)];
+        shard.bitwise_events = vec![AluEvent::new(0, Opcode::I32Xor, 25, 10, 19, Opcode::I32Xor.code())];
         let chip = BitwiseChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
         println!("{:?}", trace.values)
+    }
+
+    #[test]
+    fn generate_trace_row_layout_xor() {
+        use p3_field::AbstractField;
+
+        let mut shard = ExecutionRecord::default();
+        shard.bitwise_events = vec![AluEvent::new(
+            0,
+            Opcode::I32Xor,
+            25,
+            10,
+            19,
+            Opcode::I32Xor.code(),
+        )];
+
+        let chip = BitwiseChip::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        // Matrix width should match chip width
+        assert_eq!(trace.width(), super::NUM_BITWISE_COLS);
+
+        // Take the first (real) row.
+        let row = &trace.values[0..super::NUM_BITWISE_COLS];
+
+        let z = BabyBear::zero();
+        let f = |x: u32| BabyBear::from_canonical_u32(x);
+
+        // pc
+        assert_eq!(row[0], f(0));
+        // a = 25 in little-endian limbs
+        assert_eq!(row[1], f(25));
+        assert_eq!(row[2], z);
+        assert_eq!(row[3], z);
+        assert_eq!(row[4], z);
+        // b = 10
+        assert_eq!(row[5], f(10));
+        assert_eq!(row[6], z);
+        assert_eq!(row[7], z);
+        assert_eq!(row[8], z);
+        // c = 19
+        assert_eq!(row[9], f(19));
+        assert_eq!(row[10], z);
+        assert_eq!(row[11], z);
+        assert_eq!(row[12], z);
+        // op_a_not_0 is left at 0 by trace generation
+        assert_eq!(row[13], z);
+        // flags: XOR=1, OR=0, AND=0
+        assert_eq!(row[14], f(1));
+        assert_eq!(row[15], z);
+        assert_eq!(row[16], z);
+    }
+
+    #[test]
+    fn selector_flags_xor_or_and() {
+        use p3_field::AbstractField;
+
+        let mut shard = ExecutionRecord::default();
+        shard.bitwise_events = vec![
+            AluEvent::new(0, Opcode::I32Xor, 1, 2, 3, Opcode::I32Xor.code()),
+            AluEvent::new(4, Opcode::I32Or, 1, 2, 3, Opcode::I32Or.code()),
+            AluEvent::new(8, Opcode::I32And, 1, 2, 3, Opcode::I32And.code()),
+        ];
+
+        let chip = BitwiseChip::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        let width = trace.width();
+        let rows = [
+            &trace.values[0..width],
+            &trace.values[width..2 * width],
+            &trace.values[2 * width..3 * width],
+        ];
+
+        let z = BabyBear::zero();
+        let o = BabyBear::one();
+
+        // Row 0 => XOR
+        assert_eq!(rows[0][14], o);
+        assert_eq!(rows[0][15], z);
+        assert_eq!(rows[0][16], o - o + z); // = 0, keep it obviously zero
+
+        // Row 1 => OR
+        assert_eq!(rows[1][14], z);
+        assert_eq!(rows[1][15], o);
+        assert_eq!(rows[1][16], z);
+
+        // Row 2 => AND
+        assert_eq!(rows[2][14], z);
+        assert_eq!(rows[2][15], z);
+        assert_eq!(rows[2][16], o);
+
+        // pc column should match the event pc we provided
+        assert_eq!(rows[0][0], BabyBear::from_canonical_u32(0));
+        assert_eq!(rows[1][0], BabyBear::from_canonical_u32(4));
+        assert_eq!(rows[2][0], BabyBear::from_canonical_u32(8));
     }
 
     #[test]
@@ -268,11 +368,11 @@ mod tests {
 
         let mut shard = ExecutionRecord::default();
         shard.bitwise_events = [
-            AluEvent::new(0, Opcode::XOR, 25, 10, 19, false),
-            AluEvent::new(0, Opcode::OR, 27, 10, 19, false),
-            AluEvent::new(0, Opcode::AND, 2, 10, 19, false),
+            AluEvent::new(0, Opcode::I32Xor, 25, 10, 19, Opcode::I32Xor.code()),
+            AluEvent::new(0, Opcode::I32Or, 27, 10, 19, Opcode::I32Or.code()),
+            AluEvent::new(0, Opcode::I32And, 2, 10, 19, Opcode::I32And.code()),
         ]
-        .repeat(1000);
+            .repeat(1000);
         let chip = BitwiseChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
@@ -281,57 +381,4 @@ mod tests {
         let mut challenger = config.challenger();
         uni_stark_verify(&config, &chip, &mut challenger, &proof).unwrap();
     }
-
-    // #[test]
-    // fn test_malicious_bitwise() {
-    //     const NUM_TESTS: usize = 5;
-
-    //     for opcode in [Opcode::XOR, Opcode::OR, Opcode::AND] {
-    //         for _ in 0..NUM_TESTS {
-    //             let op_a = thread_rng().gen_range(0..u32::MAX);
-    //             let op_b = thread_rng().gen_range(0..u32::MAX);
-    //             let op_c = thread_rng().gen_range(0..u32::MAX);
-
-    //             let correct_op_a = if opcode == Opcode::XOR {
-    //                 op_b ^ op_c
-    //             } else if opcode == Opcode::OR {
-    //                 op_b | op_c
-    //             } else {
-    //                 op_b & op_c
-    //             };
-
-    //             assert!(op_a != correct_op_a);
-
-    //             let instructions = vec![
-    //                 Opcode::new(opcode, 5, op_b, op_c, true, true),
-    //                 Opcode::new(Opcode::ADD, 10, 0, 0, false, false),
-    //             ];
-    //             let program = Program::new(instructions, 0, 0);
-    //             let stdin = SP1Stdin::new();
-
-    //             type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
-
-    //             let malicious_trace_pv_generator = move |prover: &P,
-    //                                                      record: &mut ExecutionRecord|
-    //                   -> Vec<(
-    //                 String,
-    //                 RowMajorMatrix<Val<BabyBearPoseidon2>>,
-    //             )> {
-    //                 let mut malicious_record = record.clone();
-    //                 malicious_record.cpu_events[0].a = op_a;
-    //                 if let Some(MemoryRecordEnum::Write(mut write_record)) =
-    //                     malicious_record.cpu_events[0].a_record
-    //                 {
-    //                     write_record.value = op_a;
-    //                 }
-    //                 malicious_record.bitwise_events[0].a = op_a;
-    //                 prover.generate_traces(&malicious_record)
-    //             };
-
-    //             let result =
-    //                 run_malicious_test::<P>(program, stdin,
-    // Box::new(malicious_trace_pv_generator));             assert!(result.is_err() &&
-    // result.unwrap_err().is_local_cumulative_sum_failing());         }
-    //     }
-    // }
 }
