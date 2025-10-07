@@ -48,6 +48,8 @@ pub mod programs {
 
         use rwasm::Opcode;
         use rwasm_executor::Program;
+        use sp1_stark::InteractionKind::Instruction;
+
         #[must_use]
         pub fn build_elf() -> Program {
             let x_value: u32 = 0x11;
@@ -80,15 +82,26 @@ pub mod programs {
             Program::from_instrs(instructions)
         }
 
-        // #[must_use]
-        // pub fn simple_program() -> Program {
-        //     let instructions = vec![
-        //         Opcode::new(Opcode::ADD, 29, 0, 5, false, true),
-        //         Opcode::new(Opcode::ADD, 30, 0, 37, false, true),
-        //         Opcode::new(Opcode::ADD, 31, 30, 29, false, false),
-        //     ];
-        //     Program::new(instructions, 0, 0)
-        // }
+        #[must_use]
+        pub fn simple_program() -> Program {
+            let instructions = vec![
+                Opcode::I32Const(29.into()),
+                Opcode::I32Const(5.into()),
+                Opcode::I32Const(30.into()),
+                Opcode::I32Const(37.into()),
+                Opcode::I32Const(31.into()),
+                Opcode::I32Const(30.into()),
+                Opcode::I32Const(29.into()),
+                Opcode::I32Add,
+                Opcode::I32Add,
+                Opcode::I32Add,
+            ];
+
+            let program = Program::from_instrs(instructions);
+            //  memory_image: BTreeMap::new() };
+
+            program
+        }
 
         // /// Get the fibonacci program.
         // ///
