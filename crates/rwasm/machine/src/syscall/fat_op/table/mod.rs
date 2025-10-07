@@ -66,6 +66,10 @@ where
         builder.when(local.is_first).assert_one(local.is_real);
 
         builder
+            .when(local.is_real)
+            .assert_word_eq(*local.src_read_access.value(), *local.dst_write_access.value());
+
+        builder
             .when(local.is_first)
             .when_not(local.is_non_zero_length)
             .assert_word_zero(*local.length_access.value());
