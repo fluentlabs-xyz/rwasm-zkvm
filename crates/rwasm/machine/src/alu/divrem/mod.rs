@@ -824,27 +824,20 @@ where
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use crate::{
-        io::SP1Stdin,
-        rwasm::RwasmAir,
-        utils::{run_malicious_test, uni_stark_prove, uni_stark_verify},
-    };
     use p3_baby_bear::BabyBear;
     use p3_matrix::dense::RowMajorMatrix;
-    use rand::{thread_rng, Rng};
     use rwasm_executor::{
-        events::{AluEvent, MemoryRecordEnum},
-        ExecutionRecord, Opcode, Program,
+        events::AluEvent,
+        ExecutionRecord, Opcode,
     };
     use sp1_stark::{
-        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
-        MachineProver, StarkGenericConfig, Val,
+        air::MachineAir,
+        MachineProver,
     };
 
     use super::DivRemChip;
 
     #[test]
-
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
         shard.divrem_events =
@@ -853,6 +846,117 @@ mod tests {
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
         println!("{:?}", trace.values)
+    }
+
+    #[test]
+    fn divu_trace_basic() {
+        use core::borrow::Borrow;
+        use p3_field::AbstractField;
+
+        let mut shard = ExecutionRecord::default();
+        // b=17, c=3 -> quotient=5, remainder=2
+        shard.divrem_events =
+            vec![AluEvent::new(0, Opcode::I32DivU, 0, 17, 3, Opcode::I32DivU.code())];
+
+        let chip = DivRemChip::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        // Read the first (and only) row back into column form
+        let mut row = [BabyBear::zero(); super::NUM_DIVREM_COLS];
+        row.copy_from_slice(&trace.values[..super::NUM_DIVREM_COLS]);
+        let cols: &super::DivRemCols<BabyBear> = row.as_slice().borrow();
+
+        // Correct opcode flags
+        assert_eq!(cols.is_divu, BabyBear::one());
+        assert_eq!(cols.is_div, BabyBear::zero());
+
+        // Quotient and remainder bytes
+        assert_eq!(cols.quotient[0], BabyBear::from_canonical_u8(5));
+        assert_eq!(cols.remainder[0], BabyBear::from_canonical_u8(2));
+        for i in 1..sp1_primitives::consts::WORD_SIZE {
+            assert_eq!(cols.quotient[i], BabyBear::zero());
+            assert_eq!(cols.remainder[i], BabyBear::zero());
+        }
+
+        // c * q = 3 * 5 = 15 -> least-significant byte is 15
+        assert_eq!(cols.c_times_quotient[0], BabyBear::from_canonical_u8(15));
+    }
+
+    #[test]
+    fn divs_overflow_flags_and_remainder_zero() {
+        use core::borrow::Borrow;
+        use p3_field::AbstractField;
+
+        let b = i32::MIN as u32;
+        let c = (-1i32) as u32;
+
+        let mut shard = ExecutionRecord::default();
+        shard.divrem_events =
+            vec![AluEvent::new(0, Opcode::I32DivS, 0, b, c, Opcode::I32DivS.code())];
+
+        let chip = DivRemChip::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        let mut row = [BabyBear::zero(); super::NUM_DIVREM_COLS];
+        row.copy_from_slice(&trace.values[..super::NUM_DIVREM_COLS]);
+        let cols: &super::DivRemCols<BabyBear> = row.as_slice().borrow();
+
+        // Signed division and overflow are flagged
+        assert_eq!(cols.is_div, BabyBear::one());
+        assert_eq!(cols.is_overflow, BabyBear::one());
+
+        // In the overflow case (INT_MIN / -1), remainder must be 0
+        for i in 0..sp1_primitives::consts::WORD_SIZE {
+            assert_eq!(cols.remainder[i], BabyBear::zero());
+        }
+
+        // Signs: b and c are both negative
+        assert_eq!(cols.b_neg, BabyBear::one());
+        assert_eq!(cols.c_neg, BabyBear::one());
+
+        // max(abs(c), 1) == 1
+        assert_eq!(cols.max_abs_c_or_1[0], BabyBear::one());
+        for i in 1..sp1_primitives::consts::WORD_SIZE {
+            assert_eq!(cols.max_abs_c_or_1[i], BabyBear::zero());
+        }
+    }
+
+    #[test]
+    fn div_by_zero_sets_quotient_to_all_ones() {
+        use core::borrow::Borrow;
+        use p3_field::AbstractField;
+
+        let mut shard = ExecutionRecord::default();
+        // Division by zero: c = 0. For DIV(U), quotient must be 0xffffffff
+        shard.divrem_events = vec![AluEvent::new(
+            0,
+            Opcode::I32DivU,
+            0,
+            123_456u32,
+            0u32,
+            Opcode::I32DivU.code(),
+        )];
+
+        let chip = DivRemChip::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        let mut row = [BabyBear::zero(); super::NUM_DIVREM_COLS];
+        row.copy_from_slice(&trace.values[..super::NUM_DIVREM_COLS]);
+        let cols: &super::DivRemCols<BabyBear> = row.as_slice().borrow();
+
+        // c==0 is detected
+        assert_eq!(cols.is_c_0.result, BabyBear::one());
+
+        // Quotient is 0xffffffff (all bytes 0xff)
+        for i in 0..sp1_primitives::consts::WORD_SIZE {
+            assert_eq!(cols.quotient[i], BabyBear::from_canonical_u8(u8::MAX));
+        }
+
+        // Remainder range check multiplicity is disabled when c==0
+        assert_eq!(cols.remainder_check_multiplicity, BabyBear::zero());
     }
 
     fn neg(a: u32) -> u32 {
