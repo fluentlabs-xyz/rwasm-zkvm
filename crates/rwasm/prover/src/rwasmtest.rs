@@ -532,15 +532,15 @@ mod tests {
     fn build_table_init() -> Program {
         let ops = vec![
             Opcode::I32Const(0.into()),
-            Opcode::I32Const(2.into()),
+            Opcode::I32Const(64.into()),
             Opcode::TableGrow(0),
-            Opcode::I32Const(0.into()),
-            Opcode::I32Const(0.into()),
+            Opcode::I32Const(1.into()),
+            Opcode::I32Const(1.into()),
             Opcode::I32Const(2.into()),
             Opcode::TableInit(0),
             Opcode::TableGet(0),
         ];
-        let elements = vec![5u32, 7u32];
+        let elements = vec![5u32, 7u32, 9u32, 12u32];
         let program = Program::from_instrs(ops).with_elements(elements);
         program
     }

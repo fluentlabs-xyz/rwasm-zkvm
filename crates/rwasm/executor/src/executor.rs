@@ -6,7 +6,6 @@ use crate::{
     events::{CallEvent, ConstEvent, PrecompileEvent, SysStateEvent, SyscallEvent},
     syscalls, SP_START,
 };
-use std::rc::Rc;
 #[cfg(feature = "profiling")]
 use std::{fs::File, io::BufWriter};
 use std::{str::FromStr, sync::Arc};
@@ -19,11 +18,10 @@ use rwasm::{
     always_failing_syscall_handler,
     event::FatOpEvent,
     mem::{MemoryLocalEvent, MemoryRecordEnum},
-    CallStack, ExecutionEngine, ImportLinker, InstructionPtr, Opcode,
-    RwasmExecutor, RwasmModule, RwasmStore, Store, TraceCallData, Tracer, TrapCode, ValueStack,
-    ValueStackPtr,
+    CallStack, ExecutionEngine, ImportLinker, InstructionPtr, Opcode, RwasmExecutor, RwasmModule,
+    RwasmStore, Store, TraceCallData, Tracer, TrapCode, ValueStack, ValueStackPtr,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::value, Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
 use sp1_stark::{air::PublicValues, SP1CoreOpts};
 use strum::IntoEnumIterator;
@@ -111,8 +109,9 @@ pub struct Executor<'a> {
     /// checkpoints.
     pub memory_checkpoint: Memory<Option<MemoryRecord>>,
 
-    /// Memory addresses that were initialized in this batch of shards. Used to minimize the size of
-    /// checkpoints. The value stored is whether or not it had a value at the beginning of the batch.
+    /// Memory addresses that were initialized in this batch of shards. Used to minimize the size
+    /// of checkpoints. The value stored is whether or not it had a value at the beginning of
+    /// the batch.
     pub uninitialized_memory_checkpoint: Memory<bool>,
 
     /// Report of the program execution.
@@ -295,13 +294,14 @@ impl<'a> Executor<'a> {
 
     /// WARNING: This function's API is subject to change without a major version bump.
     ///
-    /// If the feature `"profiling"` is enabled, this sets up the profiler. Otherwise, it does nothing.
-    /// The argument `elf_bytes` must describe the same program as `self.program`.
+    /// If the feature `"profiling"` is enabled, this sets up the profiler. Otherwise, it does
+    /// nothing. The argument `elf_bytes` must describe the same program as `self.program`.
     ///
     /// The profiler is configured by the following environment variables:
     ///
     /// - `TRACE_FILE`: writes Gecko traces to this path. If unspecified, the profiler is disabled.
-    /// - `TRACE_SAMPLE_RATE`: The period between clock cycles where samples are taken. Defaults to 1.
+    /// - `TRACE_SAMPLE_RATE`: The period between clock cycles where samples are taken. Defaults to
+    ///   1.
     #[inline]
     #[allow(unused_variables)]
     pub fn maybe_setup_profiler(&mut self, elf_bytes: &[u8]) {
@@ -352,7 +352,6 @@ impl<'a> Executor<'a> {
             serde_json::from_str(include_str!("./artifacts/rv32im_costs.json")).unwrap();
         let costs: HashMap<RwasmAirId, usize> =
             costs.into_iter().map(|(k, v)| (RwasmAirId::from_str(&k).unwrap(), v)).collect();
-
 
         let store = RwasmStore::new(
             ExecutionEngine::default(),
@@ -538,11 +537,11 @@ impl<'a> Executor<'a> {
         };
 
         // We update the local memory counter in two cases:
-        //  1. This is the first time the address is touched, this corresponds to the
-        //     condition record.shard != shard.
+        //  1. This is the first time the address is touched, this corresponds to the condition
+        //     record.shard != shard.
         //  2. The address is being accessed in a syscall. In this case, we need to send it. We use
-        //     local_memory_access to detect this. *WARNING*: This means that we are counting
-        //     on the .is_some() condition to be true only in the SyscallContext.
+        //     local_memory_access to detect this. *WARNING*: This means that we are counting on the
+        //     .is_some() condition to be true only in the SyscallContext.
         if !self.unconstrained && (record.shard != shard || local_memory_access.is_some()) {
             self.local_counts.local_mem += 1;
         }
@@ -647,11 +646,11 @@ impl<'a> Executor<'a> {
         };
 
         // We update the local memory counter in two cases:
-        //  1. This is the first time the address is touched, this corresponds to the
-        //     condition record.shard != shard.
+        //  1. This is the first time the address is touched, this corresponds to the condition
+        //     record.shard != shard.
         //  2. The address is being accessed in a syscall. In this case, we need to send it. We use
-        //     local_memory_access to detect this. *WARNING*: This means that we are counting
-        //     on the .is_some() condition to be true only in the SyscallContext.
+        //     local_memory_access to detect this. *WARNING*: This means that we are counting on the
+        //     .is_some() condition to be true only in the SyscallContext.
         if !self.unconstrained && (record.shard != shard || local_memory_access.is_some()) {
             self.local_counts.local_mem += 1;
         }
@@ -883,17 +882,17 @@ impl<'a> Executor<'a> {
             Opcode::I32ShrS | Opcode::I32ShrU => {
                 self.record.shift_right_events.push(event);
             }
-            Opcode::I32GeS
-            | Opcode::I32GtS
-            | Opcode::I32GeU
-            | Opcode::I32GtU
-            | Opcode::I32LeS
-            | Opcode::I32LeU
-            | Opcode::I32LtS
-            | Opcode::I32LtU
-            | Opcode::I32Eq
-            | Opcode::I32Eqz
-            | Opcode::I32Ne => {
+            Opcode::I32GeS |
+            Opcode::I32GtS |
+            Opcode::I32GeU |
+            Opcode::I32GtU |
+            Opcode::I32LeS |
+            Opcode::I32LeU |
+            Opcode::I32LtS |
+            Opcode::I32LtU |
+            Opcode::I32Eq |
+            Opcode::I32Eqz |
+            Opcode::I32Ne => {
                 let use_signed_comparison = matches!(
                     opcode,
                     Opcode::I32GeS | Opcode::I32GtS | Opcode::I32LeS | Opcode::I32LtS
@@ -1018,9 +1017,10 @@ impl<'a> Executor<'a> {
         };
 
         // If op_a_0 is None, then we assume it is not register 0.  Note that this will happen
-        // for syscall events that are created within the precompiles' execute function.  Those events will be
-        // added to precompile tables, which wouldn't use the op_a_0 field.  Note that we can't make
-        // the op_a_0 field an Option<bool> in SyscallEvent because of the cbindgen.
+        // for syscall events that are created within the precompiles' execute function.  Those
+        // events will be added to precompile tables, which wouldn't use the op_a_0 field.
+        // Note that we can't make the op_a_0 field an Option<bool> in SyscallEvent because
+        // of the cbindgen.
         let op_a_0 = op_a_0.unwrap_or(false);
 
         SyscallEvent {
@@ -1181,8 +1181,8 @@ impl<'a> Executor<'a> {
         // which is not permitted in unconstrained mode. This will result in
         // non-zero memory interactions when generating a proof.
 
-        if self.unconstrained
-            && (syscall != SyscallCode::EXIT_UNCONSTRAINED && syscall != SyscallCode::WRITE)
+        if self.unconstrained &&
+            (syscall != SyscallCode::EXIT_UNCONSTRAINED && syscall != SyscallCode::WRITE)
         {
             return Err(ExecutionError::InvalidSyscallUsage(syscall_id as u64));
         }
@@ -1234,9 +1234,9 @@ impl<'a> Executor<'a> {
             estimator.current_precompile_touched_compressed_addresses.clear();
         }
 
-        // // If the syscall is `EXIT_UNCONSTRAINED`, the memory was restored to pre-unconstrained code
-        // // in the execute function, so we need to re-read from x10 and x11.  Just do a peek on the
-        // // registers.
+        // // If the syscall is `EXIT_UNCONSTRAINED`, the memory was restored to pre-unconstrained
+        // code // in the execute function, so we need to re-read from x10 and x11.  Just do
+        // a peek on the // registers.
         // let (b, c) = if syscall == SyscallCode::EXIT_UNCONSTRAINED {
         //     (self.register(Register::X10), self.register(Register::X11))
         // } else {
@@ -1527,9 +1527,7 @@ impl<'a> Executor<'a> {
         self.state.clk = 0;
 
         tracing::debug!("loading memory image");
-        for item in self.program.memory_image.iter() {
-            let addr = item.1;
-            let value = item.0;
+        for (addr, value) in self.program.memory_image.iter() {
             self.state.memory.insert(*addr, MemoryRecord { value: *value, shard: 0, timestamp: 0 });
         }
     }
@@ -1596,7 +1594,9 @@ impl<'a> Executor<'a> {
 
         // If it's the first cycle, initialize the program.
         if self.state.global_clk == 0 {
-            self.initialize();
+            // We initialize in tracer
+
+            // self.initialize();
         }
 
         let unconstrained_cycle_limit =
@@ -1741,7 +1741,8 @@ impl<'a> Executor<'a> {
             //     1 + (1..32).filter(|&r| self.state.memory.registers.get(r).is_some()).count();
             let total_mem = self.state.memory.page_table.exact_len(); //TODO: fix esitmator
                                                                       // The memory_image is already initialized in the MemoryProgram chip
-                                                                      // so we subtract it off. It is initialized in the executor in the `initialize` function.
+                                                                      // so we subtract it off. It is initialized in the executor in the `initialize`
+                                                                      // function.
             estimator.memory_global_init_events = total_mem
                 .checked_sub(self.record.program.module.data_section.len())
                 .expect("program memory image should be accounted for in memory exact len")
@@ -1749,9 +1750,9 @@ impl<'a> Executor<'a> {
             estimator.memory_global_finalize_events = total_mem as u64;
         }
 
-        if self.emit_global_memory_events
-            && (self.executor_mode == ExecutorMode::Trace
-                || self.executor_mode == ExecutorMode::Checkpoint)
+        if self.emit_global_memory_events &&
+            (self.executor_mode == ExecutorMode::Trace ||
+                self.executor_mode == ExecutorMode::Checkpoint)
         {
             // SECTION: Set up all MemoryInitializeFinalizeEvents needed for memory argument.
             let memory_finalize_events = &mut self.record.global_memory_finalize_events;
@@ -1774,8 +1775,9 @@ impl<'a> Executor<'a> {
             memory_initialize_events.push(addr_0_initialize_event);
 
             // let memory_initialize_events = &mut self.record.global_memory_initialize_events;
-            // let addr_0_init = MemoryInitializeFinalizeEvent { addr: 0, value: 0, shard: 1, timestamp: 1, used: 1 };
-            // let addr_0_final =  MemoryInitializeFinalizeEvent{ addr: 0, value: 0, shard: 1, timestamp: 2, used: 1 };
+            // let addr_0_init = MemoryInitializeFinalizeEvent { addr: 0, value: 0, shard: 1,
+            // timestamp: 1, used: 1 }; let addr_0_final =
+            // MemoryInitializeFinalizeEvent{ addr: 0, value: 0, shard: 1, timestamp: 2, used: 1 };
             // let addr_0_initialize_event =
             //     MemoryInitializeFinalizeEvent::initialize(0, 0, true);
             // println!("addr0init:{:?}",addr_0_initialize_event);
@@ -1787,27 +1789,25 @@ impl<'a> Executor<'a> {
             self.report.touched_memory_addresses = 0;
 
             for addr in self.state.memory.page_table.keys() {
-                if !self.program.memory_image.contains_key(&addr){
+                if !self.program.memory_image.contains_key(&addr) {
                     println!("addr:{}", addr);
-                self.report.touched_memory_addresses += 1;
+                    self.report.touched_memory_addresses += 1;
 
-                // Program memory is initialized in the MemoryProgram chip and doesn't require any
-                // events, so we only send init events for other memory addresses.
+                    // Program memory is initialized in the MemoryProgram chip and doesn't require
+                    // any events, so we only send init events for other memory
+                    // addresses.
 
-                let initial_value = self.state.uninitialized_memory.get(addr).unwrap_or(&0);
-                let init_event =
-                    MemoryInitializeFinalizeEvent::initialize(addr, *initial_value, true);
-                println!("init_event:{:?}", init_event);
-                memory_initialize_events.push(init_event);
-
-
+                    let initial_value = self.state.uninitialized_memory.get(addr).unwrap_or(&0);
+                    let init_event =
+                        MemoryInitializeFinalizeEvent::initialize(addr, *initial_value, true);
+                    println!("init_event:{:?}", init_event);
+                    memory_initialize_events.push(init_event);
                 }
-                  let record = *self.state.memory.get(addr).unwrap();
+                let record = *self.state.memory.get(addr).unwrap();
                 let final_event =
                     MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record);
                 println!("final_event:{:?}", final_event);
                 memory_finalize_events.push(final_event);
-
             }
         }
     }
@@ -1830,7 +1830,8 @@ impl<'a> Executor<'a> {
     //     event_counts[RwasmAirId::Cpu] = cpu_cycles;
 
     //     // Compute the number of events in the add sub chip.
-    //     event_counts[RwasmAirId::AddSub] = opcode_counts[Opcode::ADD] + opcode_counts[Opcode::SUB];
+    //     event_counts[RwasmAirId::AddSub] = opcode_counts[Opcode::ADD] +
+    // opcode_counts[Opcode::SUB];
 
     //     // Compute the number of events in the mul chip.
     //     event_counts[RwasmAirId::Mul] = opcode_counts[Opcode::MUL]
@@ -1871,7 +1872,8 @@ impl<'a> Executor<'a> {
     //         + opcode_counts[Opcode::BGEU];
 
     //     // Compute the number of events in the jump chip.
-    //     event_counts[RwasmAirId::Jump] = opcode_counts[Opcode::JAL] + opcode_counts[Opcode::JALR];
+    //     event_counts[RwasmAirId::Jump] = opcode_counts[Opcode::JAL] +
+    // opcode_counts[Opcode::JALR];
 
     //     // Compute the number of events in the auipc chip.
     //     event_counts[RwasmAirId::Auipc] = opcode_counts[Opcode::AUIPC]
@@ -1902,8 +1904,8 @@ impl<'a> Executor<'a> {
     //     event_counts[RwasmAirId::Mul] += event_counts[RwasmAirId::DivRem];
     //     event_counts[RwasmAirId::Lt] += event_counts[RwasmAirId::DivRem];
 
-    //     // Note: we ignore the additional dependencies for addsub, since they are accounted for in
-    //     // the maximal shapes.
+    //     // Note: we ignore the additional dependencies for addsub, since they are accounted for
+    // in     // the maximal shapes.
     // }
 
     #[inline]
@@ -1992,7 +1994,7 @@ mod tests {
 
         // Write a word and check byte-level reads
         let val: u32 = 0x11_22_33_44;
-        rt.mw(8, val, /*shard=*/ 0, /*timestamp=*/ 1, None);
+        rt.mw(8, val, /* shard= */ 0, /* timestamp= */ 1, None);
 
         assert_eq!(rt.word(8), val);
         assert_eq!(rt.byte(8), 0x44); // least-significant byte at lowest address
@@ -2334,7 +2336,7 @@ mod tests {
         for (i, b) in bytes.into_iter().enumerate() {
             let shift = (i as u32) * 8;
             w = (w & !(0xFFu32 << shift)) | ((b & 0xFF) << shift);
-            rt.mw(base, w, /*shard=*/ 0, /*timestamp=*/ (i as u32) + 1, None);
+            rt.mw(base, w, /* shard= */ 0, /* timestamp= */ (i as u32) + 1, None);
         }
 
         assert_eq!(rt.word(base), 0x7856_3412, "word should equal assembled bytes (LE)");
@@ -2386,8 +2388,8 @@ mod tests {
             Opcode::I32Const(y_value.into()),
             Opcode::I32Add, // 32 + 4 = 36
             Opcode::I32Const((x_value + y_value).into()),
-            Opcode::I32Eq, //stack has now 1
-                           //Opcode::Drop,
+            Opcode::I32Eq, /*stack has now 1
+                            *Opcode::Drop, */
         ];
 
         let program = Program::from_instrs(opcodes);
@@ -2697,8 +2699,10 @@ mod tests {
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32Const(z_value.into()),
-            Opcode::I32GeS, // check whether signed x_value is greater than or equal to signed y_value
-            Opcode::I32GeU, // check whether unsigned x_value is greater than or equal to unsigned y_value
+            Opcode::I32GeS, /* check whether signed x_value is greater than or equal to signed
+                             * y_value */
+            Opcode::I32GeU, /* check whether unsigned x_value is greater than or equal to
+                             * unsigned y_value */
         ];
 
         let program = Program::from_instrs(opcodes);
@@ -2720,7 +2724,8 @@ mod tests {
             Opcode::I32Const(y_value.into()),
             Opcode::I32Const(z_value.into()),
             Opcode::I32LeS, // check whether signed x_value is less than or equal to signed y_value
-            Opcode::I32LeU, // check whether unsigned x_value is less than or equal to unsigned y_value
+            Opcode::I32LeU, /* check whether unsigned x_value is less than or equal to unsigned
+                             * y_value */
         ];
 
         let program = Program::from_instrs(opcodes);
@@ -3027,7 +3032,8 @@ mod tests {
 
         let addr: u32 = 0x10000;
 
-        //discuss why Opcode::I32Store16(0.into()),Opcode::I32Store16(1.into()) are not working if they are subsequent
+        //discuss why Opcode::I32Store16(0.into()),Opcode::I32Store16(1.into()) are not working if
+        // they are subsequent
         let opcodes = vec![
             Opcode::I32Const(2.into()),
             Opcode::MemoryGrow,
@@ -3084,10 +3090,10 @@ mod tests {
         let v_addr = AddressType::GlobalMemory(addr).to_virtual_addr();
         assert_eq!(
             runtime.state.memory.get(v_addr).unwrap().value,
-            ((x_value & 0x0000_00FF)
-                + ((y_value & 0x0000_00FF) << 8)
-                + ((z_value & 0x0000_00FF) << 16)
-                + ((t_value & 0x0000_00FF) << 24))
+            ((x_value & 0x0000_00FF) +
+                ((y_value & 0x0000_00FF) << 8) +
+                ((z_value & 0x0000_00FF) << 16) +
+                ((t_value & 0x0000_00FF) << 24))
         );
         assert_eq!(sp_value, runtime.state.sp + UNIT);
     }
@@ -3651,7 +3657,8 @@ mod tests {
             Opcode::I32Const((x_value + 3).into()),
             Opcode::I32Const((x_value + 4).into()),
             Opcode::I32Const((x_value + 7).into()),
-            Opcode::LocalTee(4u32), // get last element and put it into address (where address = last sp + 16)
+            Opcode::LocalTee(4u32), /* get last element and put it into address (where address =
+                                     * last sp + 16) */
         ];
 
         let program = Program::from_instrs(opcodes);
@@ -3750,7 +3757,8 @@ mod tests {
 
         // Main: x -> inc -> inc -> (== expected) -> Return
         // Count main ops carefully and include the final Return to avoid fall-through.
-        // main ops: I32Const(x), CallInternal, CallInternal, I32Const(expected), I32Eq, Return  => 6
+        // main ops: I32Const(x), CallInternal, CallInternal, I32Const(expected), I32Eq, Return  =>
+        // 6
         let main_len = 6;
         let inc_pos = main_len as u32; // function starts right after main
 
@@ -3887,7 +3895,8 @@ mod tests {
         // Placeholder only to get its length (3):
         let f_body_len = 3;
 
-        // main has: I32Const(x), I32Const(y), CallInternal(f_pos), I32Const(expected), I32Eq, Return
+        // main has: I32Const(x), I32Const(y), CallInternal(f_pos), I32Const(expected), I32Eq,
+        // Return
         let main_len = 6u32;
 
         // final layout: [ main | f | inc ]
@@ -3956,7 +3965,8 @@ mod tests {
 
         // Stack on function entry must be (top right):
         // [ addr(load), addr(b3), b3, addr(b2), b2, addr(b1), b1, addr(b0), b0 ]
-        // so each store8 pops value then addr in order b0, b1, b2, b3; and one addr remains for load.
+        // so each store8 pops value then addr in order b0, b1, b2, b3; and one addr remains for
+        // load.
         ops.push(Opcode::I32Const(addr.into())); // for final load (bottom-most)
         ops.push(Opcode::I32Const(addr.into()));
         ops.push(Opcode::I32Const(b3.into()));
@@ -3990,7 +4000,8 @@ mod tests {
 
         let times2 = vec![Opcode::I32Const(1u32.into()), Opcode::I32Shl, Opcode::Return]; // len 3
 
-        // main: const x, call inc, call inc, call times2, const 1, shrU, const expected, eq, return => 9
+        // main: const x, call inc, call inc, call times2, const 1, shrU, const expected, eq, return
+        // => 9
         let main_len = 9u32;
 
         let inc1_pos = main_len;
@@ -4140,11 +4151,11 @@ mod tests {
             .records
             .iter()
             .map(|r| {
-                r.add_events.len()
-                    + r.mul_events.len()
-                    + r.bitwise_events.len()
-                    + r.shift_left_events.len()
-                    + r.shift_right_events.len()
+                r.add_events.len() +
+                    r.mul_events.len() +
+                    r.bitwise_events.len() +
+                    r.shift_left_events.len() +
+                    r.shift_right_events.len()
             })
             .sum();
         let mems: usize = rt.records.iter().map(|r| r.memory_instr_events.len()).sum();
@@ -4784,7 +4795,7 @@ mod tests {
 
         // Choose base so base is valid, but base + 3 (offset) + 3 (size-1) crosses.
         let base = (64 * 1024u32) - 4; // 65532
-        let offset = 3u32;             // base + offset = 65535; needs 4 bytes -> OOB
+        let offset = 3u32; // base + offset = 65535; needs 4 bytes -> OOB
 
         // Attempt a 32-bit load with non-zero offset -> must trap.
         ops.push(Opcode::I32Const(base.into()));
