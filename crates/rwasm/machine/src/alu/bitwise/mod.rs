@@ -256,7 +256,8 @@ mod tests {
     #[test]
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
-        shard.bitwise_events = vec![AluEvent::new(0, Opcode::I32Xor, 25, 10, 19, Opcode::I32Xor.code())];
+        shard.bitwise_events =
+            vec![AluEvent::new(0, Opcode::I32Xor, 25, 10, 19, Opcode::I32Xor.code())];
         let chip = BitwiseChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
@@ -268,14 +269,8 @@ mod tests {
         use p3_field::AbstractField;
 
         let mut shard = ExecutionRecord::default();
-        shard.bitwise_events = vec![AluEvent::new(
-            0,
-            Opcode::I32Xor,
-            25,
-            10,
-            19,
-            Opcode::I32Xor.code(),
-        )];
+        shard.bitwise_events =
+            vec![AluEvent::new(0, Opcode::I32Xor, 25, 10, 19, Opcode::I32Xor.code())];
 
         let chip = BitwiseChip::default();
         let trace: RowMajorMatrix<BabyBear> =
@@ -372,7 +367,7 @@ mod tests {
             AluEvent::new(0, Opcode::I32Or, 27, 10, 19, Opcode::I32Or.code()),
             AluEvent::new(0, Opcode::I32And, 2, 10, 19, Opcode::I32And.code()),
         ]
-            .repeat(1000);
+        .repeat(1000);
         let chip = BitwiseChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
@@ -380,5 +375,50 @@ mod tests {
 
         let mut challenger = config.challenger();
         uni_stark_verify(&config, &chip, &mut challenger, &proof).unwrap();
+    }
+    #[test]
+    fn test_malicious_bitwise() {
+        type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
+
+        let mut rng = thread_rng();
+        for &opcode in &[Opcode::I32Xor, Opcode::I32Or, Opcode::I32And] {
+            let (op_b, op_c): (u32, u32) = (rng.gen(), rng.gen());
+            let correct = match opcode {
+                Opcode::I32Xor => op_b ^ op_c,
+                Opcode::I32Or  => op_b | op_c,
+                Opcode::I32And => op_b & op_c,
+                _ => unreachable!(),
+            };
+            let op_a = correct.wrapping_add(16); // force an incorrect result
+
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(op_b.into()),
+                Opcode::I32Const(op_c.into()),
+                opcode,
+            ]);
+            let stdin = SP1Stdin::new();
+
+            let malicious = move |prover: &P, record: &mut ExecutionRecord| {
+                let mut rec = record.clone();
+                if rec.cpu_events.len() > 2 {
+                    let evt = &mut rec.cpu_events[2];
+                    evt.res = op_a;
+
+                    // persist the mutated write record back into the event
+                    if let Some(MemoryRecordEnum::Write(mut wr)) = evt.res_record.take() {
+                        wr.value = op_a;
+                        evt.res_record = Some(MemoryRecordEnum::Write(wr));
+                    }
+
+                    if let Some(bw) = rec.bitwise_events.get_mut(0) {
+                        bw.a = op_a;
+                    }
+                }
+                prover.generate_traces(&rec)
+            };
+
+            let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
+            assert!(matches!(result, Err(e) if e.is_local_cumulative_sum_failing()));
+        }
     }
 }

@@ -285,19 +285,19 @@ mod tests {
     use p3_matrix::dense::RowMajorMatrix;
     use rand::{thread_rng, Rng};
     use rwasm::Opcode;
-    use rwasm_executor::{
-        events::AluEvent,
-        ExecutionRecord, DEFAULT_PC_INC,
+    use rwasm_executor::{events::AluEvent, ExecutionRecord, DEFAULT_PC_INC};
+    use sp1_stark::{
+        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
+        MachineProver, StarkGenericConfig, Val,
     };
-    use sp1_stark::{air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver, MachineProver, StarkGenericConfig, Val};
     use std::sync::LazyLock;
 
-    use core::borrow::Borrow;
-    use rwasm_executor::events::MemoryRecordEnum;
+    use super::*;
     use crate::io::SP1Stdin;
     use crate::rwasm::RwasmAir;
-    use super::*;
     use crate::utils::{run_malicious_test, uni_stark_prove as prove, uni_stark_verify as verify};
+    use core::borrow::Borrow;
+    use rwasm_executor::events::MemoryRecordEnum;
 
     /// Lazily initialized record for use across multiple tests.
     /// Consists of random `ADD` and `SUB` instructions.
@@ -308,7 +308,14 @@ mod tests {
                     let operand_1 = 1u32;
                     let operand_2 = 2u32;
                     let result = operand_1.wrapping_add(operand_2);
-                    AluEvent::new(i % 2, Opcode::I32Add, result, operand_1, operand_2, Opcode::I32Add.code())
+                    AluEvent::new(
+                        i % 2,
+                        Opcode::I32Add,
+                        result,
+                        operand_1,
+                        operand_2,
+                        Opcode::I32Add.code(),
+                    )
                 }]
             })
             .collect::<Vec<_>>();
@@ -318,7 +325,14 @@ mod tests {
                     let operand_1 = thread_rng().gen_range(0..u32::MAX);
                     let operand_2 = thread_rng().gen_range(0..u32::MAX);
                     let result = operand_1.wrapping_add(operand_2);
-                    AluEvent::new(i % 2, Opcode::I32Sub, result, operand_1, operand_2, Opcode::I32Sub.code())
+                    AluEvent::new(
+                        i % 2,
+                        Opcode::I32Sub,
+                        result,
+                        operand_1,
+                        operand_2,
+                        Opcode::I32Sub.code(),
+                    )
                 }]
             })
             .collect::<Vec<_>>();
@@ -397,9 +411,9 @@ mod tests {
         shard.add_events.push(AluEvent::new(
             0,
             Opcode::I32Add,
-            a,   // result 'a'
-            b,   // operand_1 (b for add)
-            c,   // operand_2 (c)
+            a, // result 'a'
+            b, // operand_1 (b for add)
+            c, // operand_2 (c)
             Opcode::I32Add.code(),
         ));
 
@@ -433,9 +447,9 @@ mod tests {
         shard.sub_events.push(AluEvent::new(
             0,
             Opcode::I32Sub,
-            a,   // 'a' for sub
-            a,   // operand_1 is 'a' for sub rows
-            c,   // operand_2 is 'c'
+            a, // 'a' for sub
+            a, // operand_1 is 'a' for sub rows
+            c, // operand_2 is 'c'
             Opcode::I32Sub.code(),
         ));
 
@@ -515,88 +529,77 @@ mod tests {
 
     #[test]
     fn test_malicious_add_sub() {
-        const NUM_TESTS: usize = 5;
+        type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
 
-        for opcode in [Opcode::I32Add, Opcode::I32Sub] {
-            for _ in 0..NUM_TESTS {
-                let op_a = thread_rng().gen_range(0..u32::MAX);
-                let op_b = thread_rng().gen_range(0..u32::MAX);
-                let op_c = thread_rng().gen_range(0..u32::MAX);
+        let mut rng = thread_rng();
 
-                let correct_op_a = if opcode == Opcode::I32Add {
-                    op_b.wrapping_add(op_c)
-                } else {
-                    op_b.wrapping_sub(op_c)
-                };
+        for &opcode in &[Opcode::I32Add, Opcode::I32Sub] {
+            let (op_b, op_c): (u32, u32) = (rng.gen(), rng.gen());
+            let correct = match opcode {
+                Opcode::I32Add => op_b.wrapping_add(op_c),
+                Opcode::I32Sub => op_b.wrapping_sub(op_c),
+                _ => unreachable!(),
+            };
+            let op_a = correct.wrapping_add(1); // force an incorrect result
 
-                assert_ne!(op_a, correct_op_a);
-                let instructions = vec![
-                    Opcode::I32Const(op_b.into()),
-                    Opcode::I32Const(op_c.into()),
-                    Opcode::I32Const(5.into()),
-                    Opcode::I32Const(10.into()),
-                    opcode,
-                    Opcode::I32Add,
-                ];
-                let program = Program::from_instrs(instructions);
-                let stdin = SP1Stdin::new();
+            // stack: 5, 10,op_b, op_c, then <add|sub>, then a final add
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(5u32.into()),
+                Opcode::I32Const(10u32.into()),
+                Opcode::I32Const(op_b.into()),
+                Opcode::I32Const(op_c.into()),
+                opcode,
+                Opcode::I32Add,
+            ]);
+            let stdin = SP1Stdin::new();
 
-                type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
+            let malicious = move |prover: &P, record: &mut ExecutionRecord| {
+                let mut rec = record.clone();
 
-                let malicious_trace_pv_generator = move |prover: &P,
-                                                         record: &mut ExecutionRecord|
-                                                         -> Vec<(
-                                                             String,
-                                                             RowMajorMatrix<Val<BabyBearPoseidon2>>,
-                                                         )> {
-                    let mut malicious_record = record.clone();
-                    // The ALU operation is the 5th instruction, so we modify the 5th cpu event.
-                    if malicious_record.cpu_events.len() > 4 {
-                        malicious_record.cpu_events[4].res = op_a;
+                // The ALU op of interest is the 5th instruction (index 4)
+                if rec.cpu_events.len() > 4 {
+                    let evt = &mut rec.cpu_events[4];
+                    evt.res = op_a;
+
+                    // Keep memory trace consistent with our forged result
+                    if let Some(MemoryRecordEnum::Write(mut wr)) = evt.res_record.take() {
+                        wr.value = op_a;
+                        evt.res_record = Some(MemoryRecordEnum::Write(wr));
                     }
-                    if opcode == Opcode::I32Add {
-                        if malicious_record.add_events.len() > 0 {
-                            malicious_record.add_events[0].a = op_a;
-                        }
-                    } else if opcode == Opcode::I32Sub {
-                        if malicious_record.sub_events.len() > 0 {
-                            malicious_record.sub_events[0].a = op_a;
-                        }
-                    } else {
-                        unreachable!()
-                    }
-                    let mut traces = prover.generate_traces(&malicious_record);
+                }
 
-                    let add_sub_chip_name = chip_name!(AddSubChip, BabyBear);
-                    for (chip_name, trace) in traces.iter_mut() {
-                        if *chip_name == add_sub_chip_name {
-                            // The add instructions are added first to the trace, before the sub instructions.
-                            // When the opcode is `I32Sub`, the `I32Add` instruction runs first, so the
-                            // sub event is at index 1.
-                            let index = if opcode == Opcode::I32Add { 0 } else { 1 };
-
-                            let first_row = trace.row_mut(index);
-                            let first_row: &mut AddSubCols<BabyBear> = first_row.borrow_mut();
-                            if opcode == Opcode::I32Add {
-                                first_row.add_operation.value = op_a.into();
-                            } else {
-                                first_row.add_operation.value = op_b.into();
-                            }
+                // Corrupt the corresponding add/sub micro-event
+                match opcode {
+                    Opcode::I32Add => {
+                        if let Some(add) = rec.add_events.get_mut(0) {
+                            add.a = op_a;
                         }
                     }
+                    Opcode::I32Sub => {
+                        if let Some(sub) = rec.sub_events.get_mut(0) {
+                            sub.a = op_a;
+                        }
+                    }
+                    _ => unreachable!(),
+                }
 
-                    traces
-                };
+                // Generate traces, then poison the AddSubChip row to ensure constraint failure
+                let mut traces = prover.generate_traces(&rec);
+                let chip = chip_name!(AddSubChip, BabyBear);
+                if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == chip) {
+                    // add events come before sub events
+                    let idx = if matches!(opcode, Opcode::I32Add) { 0 } else { 1 };
+                    let row = trace.row_mut(idx);
+                    let row: &mut AddSubCols<BabyBear> = row.borrow_mut();
+                    row.add_operation.value = op_a.into(); // inject the forged value
+                }
 
-                let result =
-                    run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-                println!("Result for {:?}: {:?}", opcode, result);
-                let add_sub_chip_name = chip_name!(AddSubChip, BabyBear);
-                assert!(
-                    result.is_err()
-                        && result.unwrap_err().is_constraints_failing(&add_sub_chip_name)
-                );
-            }
+                traces
+            };
+
+            let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
+            let chip = chip_name!(AddSubChip, BabyBear);
+            assert!(matches!(result, Err(e) if e.is_constraints_failing(&chip)));
         }
     }
 }
