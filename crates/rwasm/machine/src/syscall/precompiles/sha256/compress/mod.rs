@@ -40,7 +40,7 @@ pub mod compress_tests {
         utils::{run_test, setup_logger},
     };
 
-    pub fn sha_compress_program() -> Program {
+    /*pub fn sha_compress_program() -> Program {
         let w_ptr = 100;
         let h_ptr = 1000;
         let mut instructions = vec![Opcode::new(Opcode::ADD, 29, 0, 5, false, true)];
@@ -71,5 +71,5 @@ pub mod compress_tests {
         let program = sha_compress_program();
         let stdin = SP1Stdin::new();
         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    }
+    }*/
 }

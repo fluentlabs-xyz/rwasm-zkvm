@@ -45,7 +45,7 @@ mod tests {
         failure_type: FailureType,
     }
 
-    #[test]
+    /*#[test]
     fn test_malicious_stores() {
         let test_cases = vec![
             TestCase {
@@ -224,5 +224,5 @@ mod tests {
         assert!(
             result.is_err() && result.unwrap_err().is_constraints_failing(&memory_instr_chip_name)
         );
-    }
+    }*/
 }

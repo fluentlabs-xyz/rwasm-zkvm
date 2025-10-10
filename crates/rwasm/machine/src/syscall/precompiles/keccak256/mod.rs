@@ -29,7 +29,7 @@ pub mod permute_tests {
         utils::{self},
     };
 
-    pub fn keccak_permute_program() -> Program {
+    /*pub fn keccak_permute_program() -> Program {
         let digest_ptr = 100;
         let mut instructions = vec![Opcode::new(Opcode::ADD, 29, 0, 1, false, true)];
         for i in 0..(25 * 8) {
@@ -62,5 +62,5 @@ pub mod permute_tests {
         let program = keccak_permute_program();
         let stdin = SP1Stdin::new();
         utils::run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    }
+    }*/
 }

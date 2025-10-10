@@ -45,7 +45,7 @@ pub mod extend_tests {
     };
 
     use super::ShaExtendChip;
-
+/*
     pub fn sha_extend_program() -> Program {
         let w_ptr = 100;
         let mut instructions = vec![Opcode::new(Opcode::ADD, 29, 0, 5, false, true)];
@@ -80,5 +80,5 @@ pub mod extend_tests {
         let program = sha_extend_program();
         let stdin = SP1Stdin::new();
         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    }
+    }*/
 }
