@@ -1,21 +1,24 @@
 use std::borrow::BorrowMut;
 
-use crate::syscall::fat_op::table::MemoryReadCols;
-use crate::syscall::fat_op::table::MemoryWriteCols;
-use crate::syscall::fat_op::table::TableCols;
-use crate::{syscall::fat_op::table::NUM_TABLE_INIT_SIZE, utils::pad_rows_fixed};
+use crate::{
+    memory::MemoryCols,
+    syscall::fat_op::table::{MemoryReadCols, MemoryWriteCols, TableCols, NUM_TABLE_INIT_SIZE},
+    utils::pad_rows_fixed,
+};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
-use rwasm::event;
-use rwasm::event::TableInitEvent;
-use rwasm::mem_index::UNIT;
+use rwasm::{
+    event::{self, TableInitEvent},
+    mem_index::{ELEMENT_SEG_END, UNIT},
+    N_MAX_ELEM_SEGMENTS_BITS, N_MAX_TABLES, N_MAX_TABLE_SIZE,
+};
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, PrecompileEvent, ShaCompressEvent},
     syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    ByteOpcode, ExecutionRecord, Program,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::MachineAir, Word};
@@ -120,6 +123,7 @@ impl TableChip {
             } else {
                 local.dst_access.populate(event.stack_access[0], &mut Vec::new());
                 local.src_access.populate(event.stack_access[1], &mut Vec::new());
+                local.length_access.populate(event.stack_access[2], &mut Vec::new());
             }
 
             if event.n != 0 {
@@ -138,11 +142,37 @@ impl TableChip {
                 local.dst_write_access.populate(*memory_write_access, blu);
             }
 
-            local.idx = F::from_canonical_u32(idx as u32);
+            local.src_offset = (event.s + idx as u32).into();
+
+            local.dst_offset = (event.d + idx as u32).into();
 
             local.table_idx = F::from_canonical_u32(event.table_idx);
             if idx == event.n as usize - 1 || event.n == 0 {
-                local.is_last = F::one()
+                local.is_last = F::one();
+
+                blu.add_byte_lookup_event(ByteLookupEvent {
+                    opcode: ByteOpcode::LTU,
+                    a1: 1,
+                    a2: 0,
+                    b: ((event.s + idx as u32) >> 8) as u8,
+                    c: (N_MAX_ELEM_SEGMENTS_BITS >> 8) as u8,
+                });
+
+                blu.add_byte_lookup_event(ByteLookupEvent {
+                    opcode: ByteOpcode::LTU,
+                    a1: 1,
+                    a2: 0,
+                    b: ((event.d + idx as u32) >> 8) as u8,
+                    c: (N_MAX_TABLE_SIZE >> 8) as u8,
+                });
+
+                blu.add_byte_lookup_event(ByteLookupEvent {
+                    opcode: ByteOpcode::LTU,
+                    a1: 1,
+                    a2: 0,
+                    b: event.table_idx as u8,
+                    c: N_MAX_TABLES as u8,
+                });
             }
 
             if rows.as_ref().is_some() {

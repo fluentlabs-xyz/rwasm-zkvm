@@ -1,3 +1,5 @@
+mod table_init;
+
 use hashbrown::HashMap;
 
 use rwasm_executor::{Opcode, Program, SP_START};
@@ -9,8 +11,10 @@ use build::try_build_plonk_bn254_artifacts_dev;
 use p3_field::PrimeField32;
 use serde::{Deserialize, Serialize};
 use serial_test::serial;
-use std::fs::File;
-use std::io::{Read, Write};
+use std::{
+    fs::File,
+    io::{Read, Write},
+};
 
 pub fn run_rwasm_prover(mut program: Program) {
     setup_logger();
@@ -54,19 +58,21 @@ mod tests {
 
     use rwasm::BranchOffset;
     use rwasm_executor::{Opcode, Program, SP_START};
-    use rwasm_machine::program;
-    use rwasm_machine::utils::setup_logger;
+    use rwasm_machine::{program, utils::setup_logger};
 
-    use super::super::*;
-    use super::*;
+    use super::{super::*, *};
     use anyhow::Result;
     use build::try_build_plonk_bn254_artifacts_dev;
     use p3_field::PrimeField32;
     use serde::{Deserialize, Serialize};
     use serial_test::serial;
     use sp1_stark::SP1CoreOpts;
-    use std::fs::File;
-    use std::io::{Read, Write};
+    use std::{
+        fs::File,
+        io::{Read, Write},
+    };
+
+    use table_init::*;
 
     fn build_elf() -> Program {
         let x_value: u32 = 0x11;
@@ -853,12 +859,6 @@ mod tests {
         run_rwasm_prover(program);
     }*/
 
-    #[test]
-    fn test_table_init() {
-        let program = build_table_init();
-        run_rwasm_prover(program);
-    }
-
     fn build_elf_load8u() -> Program {
         let addr: u32 = 0x10000;
         let value: u32 = 0xABCD_00EF; // low byte = 0xEF
@@ -975,7 +975,6 @@ mod tests {
             Opcode::I32Const(0.into()),
             Opcode::I32Const(2.into()), // delta = 2
             Opcode::TableGrow(0),
-
             Opcode::I32Const(1.into()),
             Opcode::TableGet(0),
             Opcode::Drop,

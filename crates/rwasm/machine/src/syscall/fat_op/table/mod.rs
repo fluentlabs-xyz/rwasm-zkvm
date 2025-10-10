@@ -17,7 +17,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, FieldOperation, PrecompileEvent},
     syscalls::SyscallCode,
-    ExecutionRecord, Program,
+    ByteOpcode, ExecutionRecord, Program,
 };
 use sp1_curves::{
     params::{Limbs, NumLimbs},
@@ -32,10 +32,11 @@ use crate::{
     operations::field::field_op::FieldOpCols,
 };
 pub use column::*;
-use rwasm::mem_index::{ELEMENT_SEG_END, ELEMENT_SEG_START, TABLE_SEG_END};
 use rwasm::{
-    mem_index::{AddressType, TABLE_ELEM_SIZE, UNIT},
-    N_MAX_TABLE_SIZE,
+    mem_index::{
+        AddressType, ELEMENT_SEG_END, ELEMENT_SEG_START, TABLE_ELEM_SIZE, TABLE_SEG_END, UNIT,
+    },
+    N_MAX_ELEM_SEGMENTS_BITS, N_MAX_TABLES, N_MAX_TABLE_SIZE,
 };
 pub use trace::*;
 #[derive(Default)]
@@ -52,18 +53,36 @@ where
 
         builder.assert_bool(local.is_first);
         builder.assert_bool(local.is_last);
+        builder.assert_bool(local.is_real);
+        builder.assert_bool(local.is_non_zero_length);
 
         builder.when_first_row().assert_one(local.is_first);
-
-        builder.when_transition().when(local.is_last).when(next.is_real).assert_one(next.is_first);
-
-        builder.when_transition().when_not(local.is_last).assert_eq(local.is_real, next.is_real);
-
-        builder.when_transition().when_not(local.is_last).assert_eq(local.clk, next.clk);
-        builder.when_transition().when_not(local.is_last).assert_eq(local.shard, next.shard);
-
         builder.when(local.is_last).assert_one(local.is_real);
         builder.when(local.is_first).assert_one(local.is_real);
+
+        // check transition between events
+        builder.when_transition().when(local.is_last).when(next.is_real).assert_one(next.is_first);
+
+        // check in event transitions
+        builder.when_transition().when_not(local.is_last).assert_eq(local.is_real, next.is_real);
+        builder.when_transition().when_not(local.is_last).assert_eq(local.clk, next.clk);
+        builder.when_transition().when_not(local.is_last).assert_eq(local.shard, next.shard);
+        builder
+            .when_transition()
+            .when_not(local.is_last)
+            .assert_eq(local.table_idx, next.table_idx);
+        builder
+            .when_transition()
+            .when_not(local.is_last)
+            .assert_word_eq(*local.src_access.value(), *next.src_access.value());
+        builder
+            .when_transition()
+            .when_not(local.is_last)
+            .assert_word_eq(*local.length_access.value(), *next.length_access.value());
+        builder
+            .when_transition()
+            .when_not(local.is_last)
+            .assert_word_eq(*local.dst_access.value(), *next.dst_access.value());
 
         builder
             .when(local.is_real)
@@ -73,6 +92,59 @@ where
             .when(local.is_first)
             .when_not(local.is_non_zero_length)
             .assert_word_zero(*local.length_access.value());
+
+        builder.when(local.is_last).when(local.is_non_zero_length).assert_eq(
+            local.src_access.value().reduce::<AB>() + local.length_access.value().reduce::<AB>() -
+                AB::Expr::one(),
+            local.src_offset.reduce::<AB>(),
+        );
+        builder.when(local.is_last).when(local.is_non_zero_length).assert_eq(
+            local.dst_access.value().reduce::<AB>() + local.length_access.value().reduce::<AB>() -
+                AB::Expr::one(),
+            local.dst_offset.reduce::<AB>(),
+        );
+
+        // check that it does not go out of memory bounds
+        builder.when(local.is_first).assert_word_eq(*local.src_access.value(), local.src_offset);
+        builder.when(local.is_first).assert_word_eq(*local.dst_access.value(), local.dst_offset);
+
+        builder.when_transition().when(local.is_real).when_not(local.is_last).assert_eq(
+            local.src_offset.reduce::<AB>() + AB::Expr::one(),
+            next.src_offset.reduce::<AB>(),
+        );
+        builder.when_transition().when(local.is_real).when_not(local.is_last).assert_eq(
+            local.dst_offset.reduce::<AB>() + AB::Expr::one(),
+            next.dst_offset.reduce::<AB>(),
+        );
+
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
+            AB::Expr::one(),
+            local.src_offset[1],
+            AB::Expr::from_canonical_u32(N_MAX_ELEM_SEGMENTS_BITS as u32 >> 8),
+            local.is_last,
+        );
+
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
+            AB::Expr::one(),
+            local.dst_offset[1],
+            AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE as u32 >> 8),
+            local.is_last,
+        );
+
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
+            AB::Expr::one(),
+            local.table_idx,
+            AB::Expr::from_canonical_u32(N_MAX_TABLES),
+            local.is_last,
+        );
+
+        builder.assert_zero(local.src_offset[2]);
+        builder.assert_zero(local.src_offset[3]);
+        builder.assert_zero(local.dst_offset[2]);
+        builder.assert_zero(local.dst_offset[3]);
 
         self.eval_memory_access(local, builder);
 
@@ -116,14 +188,13 @@ impl TableChip {
             local.is_first,
         );
 
-        let src_addr = AB::Expr::from_canonical_u32(AddressType::Element(0).to_virtual_addr())
-            + (local.src_access.value().reduce::<AB>() + local.idx) * unit.clone();
+        let src_addr = AB::Expr::from_canonical_u32(AddressType::Element(0).to_virtual_addr()) +
+            local.src_offset.reduce::<AB>() * unit.clone();
 
-        let table_addr = AB::Expr::from_canonical_u32(AddressType::Table(0).to_virtual_addr())
-            + (local.table_idx * AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE)
-                + local.dst_access.value().reduce::<AB>()
-                + local.idx)
-                * unit;
+        let table_addr = AB::Expr::from_canonical_u32(AddressType::Table(0).to_virtual_addr()) +
+            (local.dst_offset.reduce::<AB>() +
+                local.table_idx * AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE)) *
+                unit;
 
         builder.eval_memory_access(
             local.shard,
