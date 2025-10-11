@@ -393,6 +393,8 @@ mod tests {
             let op_a = correct.wrapping_add(16); // force an incorrect result
 
             let program = Program::from_instrs(vec![
+                Opcode::I32Const(5u32.into()),
+                Opcode::I32Const(10u32.into()),
                 Opcode::I32Const(op_b.into()),
                 Opcode::I32Const(op_c.into()),
                 opcode,
@@ -401,8 +403,8 @@ mod tests {
 
             let malicious = move |prover: &P, record: &mut ExecutionRecord| {
                 let mut rec = record.clone();
-                if rec.cpu_events.len() > 2 {
-                    let evt = &mut rec.cpu_events[2];
+                if rec.cpu_events.len() > 5 {
+                    let evt = &mut rec.cpu_events[5];
                     evt.res = op_a;
 
                     // persist the mutated write record back into the event

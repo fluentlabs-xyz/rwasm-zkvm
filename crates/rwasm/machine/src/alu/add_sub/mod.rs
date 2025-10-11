@@ -540,7 +540,7 @@ mod tests {
                 Opcode::I32Sub => op_b.wrapping_sub(op_c),
                 _ => unreachable!(),
             };
-            let op_a = correct.wrapping_add(1); // force an incorrect result
+            let op_a = correct.wrapping_add(16); // force an incorrect result
 
             // stack: 5, 10,op_b, op_c, then <add|sub>, then a final add
             let program = Program::from_instrs(vec![
