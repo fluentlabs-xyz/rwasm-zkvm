@@ -241,17 +241,17 @@ mod tests {
         ExecutionRecord, Program,
     };
     use sp1_stark::{
-        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver,
-        StarkGenericConfig, Val,
+        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
+        MachineProver, StarkGenericConfig, Val,
     };
 
+    use super::BitwiseChip;
+    use crate::alu::{BitwiseCols, DivRemCols};
     use crate::{
         io::SP1Stdin,
         rwasm::RwasmAir,
         utils::{run_malicious_test, uni_stark_prove, uni_stark_verify},
     };
-
-    use super::BitwiseChip;
 
     #[test]
     fn generate_trace() {
@@ -378,6 +378,7 @@ mod tests {
     }
     #[test]
     fn test_malicious_bitwise() {
+        use core::borrow::BorrowMut;
         type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
 
         let mut rng = thread_rng();
@@ -385,7 +386,7 @@ mod tests {
             let (op_b, op_c): (u32, u32) = (rng.gen(), rng.gen());
             let correct = match opcode {
                 Opcode::I32Xor => op_b ^ op_c,
-                Opcode::I32Or  => op_b | op_c,
+                Opcode::I32Or => op_b | op_c,
                 Opcode::I32And => op_b & op_c,
                 _ => unreachable!(),
             };
@@ -409,16 +410,19 @@ mod tests {
                         wr.value = op_a;
                         evt.res_record = Some(MemoryRecordEnum::Write(wr));
                     }
-
-                    if let Some(bw) = rec.bitwise_events.get_mut(0) {
-                        bw.a = op_a;
-                    }
                 }
-                prover.generate_traces(&rec)
+                let chip = chip_name!(BitwiseChip, BabyBear);
+                let mut traces = prover.generate_traces(&rec);
+                if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == chip) {
+                    let row = trace.row_mut(0);
+                    let row: &mut BitwiseCols<BabyBear> = row.borrow_mut();
+                    row.a = op_a.into(); // inject the forged value
+                }
+                traces
             };
 
             let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
-            assert!(matches!(result, Err(e) if e.is_local_cumulative_sum_failing()));
+            assert!(matches!(&result, Err(e) if e.is_local_cumulative_sum_failing()));
         }
     }
 }

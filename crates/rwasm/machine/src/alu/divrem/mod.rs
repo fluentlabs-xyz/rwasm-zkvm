@@ -824,18 +824,23 @@ where
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use p3_baby_bear::BabyBear;
-    use p3_matrix::dense::RowMajorMatrix;
-    use rwasm_executor::{
-        events::AluEvent,
-        ExecutionRecord, Opcode,
-    };
-    use sp1_stark::{
-        air::MachineAir,
-        MachineProver,
-    };
-
     use super::DivRemChip;
+    use crate::io::SP1Stdin;
+    use crate::rwasm::RwasmAir;
+    use p3_baby_bear::BabyBear;
+    use p3_field::AbstractField;
+    use p3_matrix::dense::RowMajorMatrix;
+    use p3_matrix::Matrix;
+    use rand::{thread_rng, Rng};
+    use rwasm::UntypedValue;
+    use rwasm_executor::events::MemoryRecordEnum;
+    use rwasm_executor::{events::AluEvent, ExecutionRecord, Opcode, Program};
+    use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
+    use sp1_stark::{air::MachineAir, chip_name, CpuProver, MachineProver};
+
+    use crate::alu::{AddSubCols, DivRemCols};
+    use crate::utils::run_malicious_test;
+    use sp1_stark::{StarkGenericConfig, Val};
 
     #[test]
     fn generate_trace() {
@@ -930,14 +935,8 @@ mod tests {
 
         let mut shard = ExecutionRecord::default();
         // Division by zero: c = 0. For DIV(U), quotient must be 0xffffffff
-        shard.divrem_events = vec![AluEvent::new(
-            0,
-            Opcode::I32DivU,
-            0,
-            123_456u32,
-            0u32,
-            Opcode::I32DivU.code(),
-        )];
+        shard.divrem_events =
+            vec![AluEvent::new(0, Opcode::I32DivU, 0, 123_456u32, 0u32, Opcode::I32DivU.code())];
 
         let chip = DivRemChip::default();
         let trace: RowMajorMatrix<BabyBear> =
@@ -963,75 +962,78 @@ mod tests {
         u32::MAX - a + 1
     }
 
-    // #[test]
-    // fn test_malicious_divrem() {
-    //     const NUM_TESTS: usize = 5;
+    #[test]
+    fn test_malicious_divrem() {
+        use core::borrow::BorrowMut;
+        use rand::{thread_rng, Rng};
 
-    //     for opcode in [
-    //         Opcode::I32DivS,
-    //         Opcode::I32DivSU,
-    //         Opcode::I32RemS,
-    //         Opcode::I32RemU,
-    //     ] {
-    //         for _ in 0..NUM_TESTS {
-    //             let (correct_op_a, op_b, op_c) = if opcode == Opcode::I32DivS {
-    //                 let op_b = thread_rng().gen_range(0..i32::MAX);
-    //                 let op_c = thread_rng().gen_range(0..i32::MAX);
-    //                 ((op_b / op_c) as u32, op_b as u32, op_c as u32)
-    //             } else if opcode == Opcode::I32DivSU {
-    //                 let op_b = thread_rng().gen_range(0..u32::MAX);
-    //                 let op_c = thread_rng().gen_range(0..u32::MAX);
-    //                 (op_b / op_c, op_b as u32, op_c as u32)
-    //             } else if opcode == Opcode::I32RemS {
-    //                 let op_b = thread_rng().gen_range(0..i32::MAX);
-    //                 let op_c = thread_rng().gen_range(0..i32::MAX);
-    //                 ((op_b % op_c) as u32, op_b as u32, op_c as u32)
-    //             } else if opcode == Opcode::I32RemU {
-    //                 let op_b = thread_rng().gen_range(0..u32::MAX);
-    //                 let op_c = thread_rng().gen_range(0..u32::MAX);
-    //                 (op_b % op_c, op_b as u32, op_c as u32)
-    //             } else {
-    //                 unreachable!()
-    //             };
+        type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
 
-    //             let op_a = thread_rng().gen_range(0..u32::MAX);
-    //             assert!(op_a != correct_op_a);
+        let mut rng = thread_rng();
 
-    //             let instructions = vec![
-    //                 Opcode::new(opcode, 5, op_b, op_c, true, true),
-    //                 Opcode::new(Opcode::ADD, 10, 0, 0, false, false),
-    //             ];
+        for &opcode in &[Opcode::I32RemS, Opcode::I32RemU, Opcode::I32DivS, Opcode::I32DivU] {
+            let (op_b_u32, op_c_u32, correct): (u32, u32, u32) = match opcode {
+                Opcode::I32DivS => {
+                    let b: i32 = rng.gen_range(0..i32::MAX);
+                    let c: i32 = rng.gen_range(1..i32::MAX); // avoid div-by-zero
+                    (b as u32, c as u32, (b / c) as u32)
+                }
+                Opcode::I32DivU => {
+                    let b: u32 = rng.gen();
+                    let c: u32 = rng.gen_range(1..=u32::MAX); // avoid div-by-zero
+                    (b, c, b / c)
+                }
+                Opcode::I32RemS => {
+                    let b: i32 = rng.gen_range(0..i32::MAX);
+                    let c: i32 = rng.gen_range(1..i32::MAX); // avoid div-by-zero
+                    (b as u32, c as u32, (b % c) as u32)
+                }
+                Opcode::I32RemU => {
+                    let b: u32 = rng.gen();
+                    let c: u32 = rng.gen_range(1..=u32::MAX); // avoid div-by-zero
+                    (b, c, b % c)
+                }
+                _ => unreachable!(),
+            };
 
-    //             let program = Program::new(instructions, 0, 0);
-    //             let stdin = SP1Stdin::new();
+            let op_a = correct.wrapping_add(16); // force an incorrect result
 
-    //             type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(op_c_u32.into()),
+                Opcode::I32Const(op_b_u32.into()),
+                opcode,
+            ]);
+            let stdin = SP1Stdin::new();
 
-    //             let malicious_trace_pv_generator = move |prover: &P,
-    //                                                      record: &mut ExecutionRecord|
-    //                   -> Vec<(
-    //                 String,
-    //                 RowMajorMatrix<Val<BabyBearPoseidon2>>,
-    //             )> {
-    //                 let mut malicious_record = record.clone();
-    //                 malicious_record.cpu_events[0].a = op_a;
-    //                 if let Some(MemoryRecordEnum::Write(mut write_record)) =
-    //                     malicious_record.cpu_events[0].a_record
-    //                 {
-    //                     write_record.value = op_a;
-    //                 }
-    //                 malicious_record.divrem_events[0].a = op_a;
-    //                 prover.generate_traces(&malicious_record)
-    //             };
+            let malicious = move |prover: &P, record: &mut ExecutionRecord| {
+                let mut rec = record.clone();
 
-    //             let result =
-    //                 run_malicious_test::<P>(program, stdin,
-    // Box::new(malicious_trace_pv_generator));             let divrem_chip_name =
-    // chip_name!(DivRemChip, BabyBear);             assert!(
-    //                 result.is_err()
-    //                     && result.unwrap_err().is_constraints_failing(&divrem_chip_name)
-    //             );
-    //         }
-    //     }
-    // }
+                // The ALU op is the 3rd instruction (index 2)
+                if rec.cpu_events.len() > 2 {
+                    let evt = &mut rec.cpu_events[2];
+                    evt.res = op_a;
+
+                    // keep memory write consistent
+                    if let Some(MemoryRecordEnum::Write(mut wr)) = evt.res_record.take() {
+                        wr.value = op_a;
+                        evt.res_record = Some(MemoryRecordEnum::Write(wr));
+                    }
+                }
+
+                // Generate traces, then poison the DivRemChip row to ensure failure
+                let mut traces = prover.generate_traces(&rec);
+                let chip = chip_name!(DivRemChip, BabyBear);
+                if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == chip) {
+                    let row = trace.row_mut(0);
+                    let row: &mut DivRemCols<BabyBear> = row.borrow_mut();
+                    row.a = op_a.into();
+                }
+
+                traces
+            };
+
+            let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
+            assert!(matches!(result, Err(e) if e.is_local_cumulative_sum_failing()));
+        }
+    }
 }
