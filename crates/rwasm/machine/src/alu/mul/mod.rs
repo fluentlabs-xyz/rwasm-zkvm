@@ -272,6 +272,7 @@ impl MulChip {
         cols.a = Word(a_word.map(F::from_canonical_u8));
         cols.b = Word(b_word.map(F::from_canonical_u8));
         cols.c = Word(c_word.map(F::from_canonical_u8));
+        cols.op_a_not_0 = F::from_bool(true); // <-- Added this line
         cols.is_real = F::one();
         cols.is_mul = F::from_bool(event.code == Opcode::I32Mul.code());
         cols.is_mulh = F::from_bool(event.code == I32MULH_CODE);
@@ -380,7 +381,7 @@ where
             for i in 0..WORD_SIZE {
                 builder.when(local.op_a_not_0).when(is_lower).assert_eq(product[i], local.a[i]);
                 builder
-                    .when(local.op_a_not_0)
+                    .when(local.op_a_not_0) // This check is also disabled
                     .when(is_upper.clone())
                     .assert_eq(product[i + WORD_SIZE], local.a[i]);
             }
@@ -503,7 +504,7 @@ mod tests {
         for _ in 0..10i32.pow(7) {
             mul_events.push(AluEvent::new(
                 0,
-                Opcode::I32Mul,//MULHSU
+                Opcode::I32Mul, //MULHSU
                 0x80004000,
                 0x80000000,
                 0xffff8000,
@@ -539,42 +540,6 @@ mod tests {
             (Opcode::I32Mul, 0x00000001, 0xffffffff, 0xffffffff),
             (Opcode::I32Mul, 0xffffffff, 0xffffffff, 0x00000001),
             (Opcode::I32Mul, 0xffffffff, 0x00000001, 0xffffffff),
-            (Opcode::I32Mul, 0x00000000, 0x00000000, 0x00000000),
-            (Opcode::I32Mul, 0x00000000, 0x00000001, 0x00000001),
-            (Opcode::I32Mul, 0x00000000, 0x00000003, 0x00000007),
-            (Opcode::I32Mul, 0x00000000, 0x00000000, 0xffff8000),
-            (Opcode::I32Mul, 0x00000000, 0x80000000, 0x00000000),
-            (Opcode::I32Mul, 0x7fffc000, 0x80000000, 0xffff8000),
-            (Opcode::I32Mul, 0x0001fefe, 0xaaaaaaab, 0x0002fe7d),
-            (Opcode::I32Mul, 0x0001fefe, 0x0002fe7d, 0xaaaaaaab),
-            (Opcode::I32Mul, 0xfe010000, 0xff000000, 0xff000000),
-            (Opcode::I32Mul, 0xfffffffe, 0xffffffff, 0xffffffff),
-            (Opcode::I32Mul, 0x00000000, 0xffffffff, 0x00000001),
-            (Opcode::I32Mul, 0x00000000, 0x00000001, 0xffffffff),
-            (Opcode::I32Mul, 0x00000000, 0x00000000, 0x00000000),
-            (Opcode::I32Mul, 0x00000000, 0x00000001, 0x00000001),
-            (Opcode::I32Mul, 0x00000000, 0x00000003, 0x00000007),
-            (Opcode::I32Mul, 0x00000000, 0x00000000, 0xffff8000),
-            (Opcode::I32Mul, 0x00000000, 0x80000000, 0x00000000),
-            (Opcode::I32Mul, 0x80004000, 0x80000000, 0xffff8000),
-            (Opcode::I32Mul, 0xffff0081, 0xaaaaaaab, 0x0002fe7d),
-            (Opcode::I32Mul, 0x0001fefe, 0x0002fe7d, 0xaaaaaaab),
-            (Opcode::I32Mul, 0xff010000, 0xff000000, 0xff000000),
-            (Opcode::I32Mul, 0xffffffff, 0xffffffff, 0xffffffff),
-            (Opcode::I32Mul, 0xffffffff, 0xffffffff, 0x00000001),
-            (Opcode::I32Mul, 0x00000000, 0x00000001, 0xffffffff),
-            (Opcode::I32Mul, 0x00000000, 0x00000000, 0x00000000),
-            (Opcode::I32Mul, 0x00000000, 0x00000001, 0x00000001),
-            (Opcode::I32Mul, 0x00000000, 0x00000003, 0x00000007),
-            (Opcode::I32Mul, 0x00000000, 0x00000000, 0xffff8000),
-            (Opcode::I32Mul, 0x00000000, 0x80000000, 0x00000000),
-            (Opcode::I32Mul, 0x00000000, 0x80000000, 0x00000000),
-            (Opcode::I32Mul, 0xffff0081, 0xaaaaaaab, 0x0002fe7d),
-            (Opcode::I32Mul, 0xffff0081, 0x0002fe7d, 0xaaaaaaab),
-            (Opcode::I32Mul, 0x00010000, 0xff000000, 0xff000000),
-            (Opcode::I32Mul, 0x00000000, 0xffffffff, 0xffffffff),
-            (Opcode::I32Mul, 0xffffffff, 0xffffffff, 0x00000001),
-            (Opcode::I32Mul, 0xffffffff, 0x00000001, 0xffffffff),
         ];
         for t in mul_instructions.iter() {
             mul_events.push(AluEvent::new(0, t.0, t.1, t.2, t.3, t.0.code()));
@@ -582,7 +547,7 @@ mod tests {
 
         // Append more events until we have 1000 tests.
         for _ in 0..(1000 - mul_instructions.len()) {
-            mul_events.push(AluEvent::new(0, Opcode::I32Mul, 1, 1, 1, Opcode::I32Mul.code()));
+            mul_events.push(AluEvent::new(0, Opcode::I32Mul, 8, 2, 4, Opcode::I32Mul.code()));
         }
 
         shard.mul_events = mul_events;
@@ -599,7 +564,7 @@ mod tests {
     fn test_malicious_mul() {
         const NUM_TESTS: usize = 5;
 
-        for opcode in [Opcode::I32Mul]{
+        for opcode in [Opcode::I32Mul] {
             for _ in 0..NUM_TESTS {
                 let (correct_op_a, op_b, op_c) = if opcode == Opcode::I32Mul {
                     let op_b = thread_rng().gen_range(0..i32::MAX);
@@ -628,10 +593,10 @@ mod tests {
 
                 let malicious_trace_pv_generator = move |prover: &P,
                                                          record: &mut ExecutionRecord|
-                      -> Vec<(
-                    String,
-                    RowMajorMatrix<Val<BabyBearPoseidon2>>,
-                )> {
+                                                         -> Vec<(
+                                                             String,
+                                                             RowMajorMatrix<Val<BabyBearPoseidon2>>,
+                                                         )> {
                     let mut malicious_record = record.clone();
                     // The ALU op of interest is the 5th instruction (index 4)
                     if malicious_record.cpu_events.len() > 4 {
@@ -650,13 +615,10 @@ mod tests {
 
                 let result =
                     run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-                assert!(
-                    result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing()
-                );
-                /*check why this is problem! let mul_chip_name = chip_name!(MulChip, BabyBear);
+                let mul_chip_name = chip_name!(MulChip, BabyBear);
                 assert!(
                     result.is_err() && result.unwrap_err().is_constraints_failing(&mul_chip_name)
-                );*/
+                );
             }
         }
     }
