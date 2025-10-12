@@ -145,10 +145,22 @@ impl BitwiseChip {
         cols.a = Word::from(event.a);
         cols.b = Word::from(event.b);
         cols.c = Word::from(event.c);
+        cols.op_a_not_0 = F::from_bool(true);
 
         cols.is_xor = F::from_bool(event.opcode == Opcode::I32Xor);
         cols.is_or = F::from_bool(event.opcode == Opcode::I32Or);
         cols.is_and = F::from_bool(event.opcode == Opcode::I32And);
+
+        for ((b_a, b_b), b_c) in a.into_iter().zip(b).zip(c) {
+            let byte_event = ByteLookupEvent {
+                opcode: ByteOpcode::from(event.opcode),
+                a1: b_a as u16,
+                a2: 0,
+                b: b_b,
+                c: b_c,
+            };
+            blu.add_byte_lookup_event(byte_event);
+        }
     }
 }
 
@@ -303,7 +315,7 @@ mod tests {
         assert_eq!(row[11], z);
         assert_eq!(row[12], z);
         // op_a_not_0 is left at 0 by trace generation
-        assert_eq!(row[13], z);
+        assert_eq!(row[13], f(1));
         // flags: XOR=1, OR=0, AND=0
         assert_eq!(row[14], f(1));
         assert_eq!(row[15], z);
@@ -380,51 +392,51 @@ mod tests {
     fn test_malicious_bitwise() {
         use core::borrow::BorrowMut;
         type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
-
+        const NUM_TESTS: usize = 5;
         let mut rng = thread_rng();
         for &opcode in &[Opcode::I32Xor, Opcode::I32Or, Opcode::I32And] {
-            let (op_b, op_c): (u32, u32) = (rng.gen(), rng.gen());
-            let correct = match opcode {
-                Opcode::I32Xor => op_b ^ op_c,
-                Opcode::I32Or => op_b | op_c,
-                Opcode::I32And => op_b & op_c,
-                _ => unreachable!(),
-            };
-            let op_a = correct.wrapping_add(16); // force an incorrect result
+            for _ in 0..NUM_TESTS {
+                let (op_b, op_c): (u32, u32) = (rng.gen(), rng.gen());
+                let correct = match opcode {
+                    Opcode::I32Xor => op_b ^ op_c,
+                    Opcode::I32Or => op_b | op_c,
+                    Opcode::I32And => op_b & op_c,
+                    _ => unreachable!(),
+                };
+                let op_a = correct.wrapping_add(16); // force an incorrect result
 
-            let program = Program::from_instrs(vec![
-                Opcode::I32Const(5u32.into()),
-                Opcode::I32Const(10u32.into()),
-                Opcode::I32Const(op_b.into()),
-                Opcode::I32Const(op_c.into()),
-                opcode,
-            ]);
-            let stdin = SP1Stdin::new();
+                let program = Program::from_instrs(vec![
+                    Opcode::I32Const(5u32.into()),
+                    Opcode::I32Const(10u32.into()),
+                    Opcode::I32Const(op_b.into()),
+                    Opcode::I32Const(op_c.into()),
+                    opcode,
+                ]);
+                let stdin = SP1Stdin::new();
 
-            let malicious = move |prover: &P, record: &mut ExecutionRecord| {
-                let mut rec = record.clone();
-                if rec.cpu_events.len() > 5 {
-                    let evt = &mut rec.cpu_events[5];
-                    evt.res = op_a;
-
-                    // persist the mutated write record back into the event
-                    if let Some(MemoryRecordEnum::Write(mut wr)) = evt.res_record.take() {
-                        wr.value = op_a;
-                        evt.res_record = Some(MemoryRecordEnum::Write(wr));
+                let malicious = move |prover: &P, record: &mut ExecutionRecord| {
+                    let mut malicious_record = record.clone();
+                    if malicious_record.cpu_events.len() > 4 {
+                        malicious_record.cpu_events[4].res = op_a as u32;
+                        if let Some(MemoryRecordEnum::Write(mut write_record)) =
+                            malicious_record.cpu_events[4].res_record
+                        {
+                            write_record.value = op_a as u32;
+                        }
                     }
-                }
-                let chip = chip_name!(BitwiseChip, BabyBear);
-                let mut traces = prover.generate_traces(&rec);
-                if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == chip) {
-                    let row = trace.row_mut(0);
-                    let row: &mut BitwiseCols<BabyBear> = row.borrow_mut();
-                    row.a = op_a.into(); // inject the forged value
-                }
-                traces
-            };
+                    let chip = chip_name!(BitwiseChip, BabyBear);
+                    let mut traces = prover.generate_traces(&malicious_record);
+                    if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == chip) {
+                        let row = trace.row_mut(0);
+                        let row: &mut BitwiseCols<BabyBear> = row.borrow_mut();
+                        row.a = op_a.into(); // inject the forged value
+                    }
+                    traces
+                };
 
-            let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
-            assert!(matches!(&result, Err(e) if e.is_local_cumulative_sum_failing()));
+                let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
+                assert!(matches!(&result, Err(e) if e.is_local_cumulative_sum_failing()));
+            }
         }
     }
 }
