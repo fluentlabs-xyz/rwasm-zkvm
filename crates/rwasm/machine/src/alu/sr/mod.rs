@@ -224,6 +224,7 @@ impl ShiftRightChip {
             cols.a = Word::from(event.a);
             cols.b = Word::from(event.b);
             cols.c = Word::from(event.c);
+            cols.op_a_not_0 = F::from_bool(true);
 
             cols.b_msb = F::from_canonical_u32((event.b >> 31) & 1);
 
@@ -695,15 +696,11 @@ mod tests {
 
                 let result =
                     run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-                assert!(result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing());
-                /*
-                 *
-                 * TODO why this test fails
                 let shift_right_chip_name = chip_name!(ShiftRightChip, BabyBear);
                 assert!(
                     result.is_err()
                         && result.unwrap_err().is_constraints_failing(&shift_right_chip_name)
-                );*/
+                );
             }
         }
     }
