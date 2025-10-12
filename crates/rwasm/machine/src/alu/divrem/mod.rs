@@ -233,6 +233,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 cols.a = Word::from(event.a);
                 cols.b = Word::from(event.b);
                 cols.c = Word::from(event.c);
+                cols.op_a_not_0 = F::one(); // <-- Added this line
                 cols.is_real = F::one();
                 cols.is_divu = F::from_bool(event.opcode == Opcode::I32DivU);
                 cols.is_remu = F::from_bool(event.opcode == Opcode::I32RemU);
@@ -830,17 +831,14 @@ mod tests {
     use p3_baby_bear::BabyBear;
     use p3_field::AbstractField;
     use p3_matrix::dense::RowMajorMatrix;
-    use p3_matrix::Matrix;
     use rand::{thread_rng, Rng};
-    use rwasm::UntypedValue;
     use rwasm_executor::events::MemoryRecordEnum;
     use rwasm_executor::{events::AluEvent, ExecutionRecord, Opcode, Program};
     use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
     use sp1_stark::{air::MachineAir, chip_name, CpuProver, MachineProver};
 
-    use crate::alu::{AddSubCols, DivRemCols};
     use crate::utils::run_malicious_test;
-    use sp1_stark::{StarkGenericConfig, Val};
+    use sp1_stark::StarkGenericConfig;
 
     #[test]
     fn generate_trace() {
@@ -964,7 +962,6 @@ mod tests {
 
     #[test]
     fn test_malicious_divrem() {
-        use core::borrow::BorrowMut;
         use rand::{thread_rng, Rng};
 
         type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
@@ -1015,22 +1012,18 @@ mod tests {
                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
                         malicious_record.cpu_events[2].res_record
                     {
-                        write_record.value = op_a;
+                        write_record.value = op_a.into();
                     }
                     malicious_record.divrem_events[0].a = op_a;
                 }
                 prover.generate_traces(&malicious_record)
-
             };
 
             let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
-            assert!(matches!(result, Err(e) if e.is_local_cumulative_sum_failing()));
-
-            /* TODO: check why this test is failed: let divrem_chip_name = chip_name!(DivRemChip, BabyBear);
+            let divrem_chip_name = chip_name!(DivRemChip, BabyBear);
             assert!(
-                result.is_err() &&
-                    result.unwrap_err().is_constraints_failing(&divrem_chip_name)
-            );*/
+                result.is_err() && result.unwrap_err().is_constraints_failing(&divrem_chip_name)
+            );
         }
     }
 }
