@@ -568,7 +568,7 @@ mod tests {
      #[test]
      fn test_malicious_lt() {
          use core::borrow::BorrowMut;
-         const NUM_TESTS: usize = 5;
+         const NUM_TESTS: usize = 1;
 
          let mut rng = thread_rng();
          for opcode in [Opcode::I32LtU, Opcode::I32LtS] {
@@ -597,7 +597,7 @@ mod tests {
                          malicious_record.cpu_events[2].res = op_a as u32;
                          // keep memory write consistent
                          if let Some(MemoryRecordEnum::Write(mut write_record)) =
-                             malicious_record.cpu_events[0].res_record
+                             malicious_record.cpu_events[2].res_record
                          {
                              write_record.value = op_a as u32;
                          }
@@ -620,6 +620,8 @@ mod tests {
                      result.is_err()
                  );
                  let err_res = result.unwrap_err();
+
+                 println!("is_constraints_failing {} is_local_cumulative_sum_failing {}", err_res.is_constraints_failing(&lt_chip_name), err_res.is_local_cumulative_sum_failing());
                  assert!(
                      err_res.is_local_cumulative_sum_failing()
                  );

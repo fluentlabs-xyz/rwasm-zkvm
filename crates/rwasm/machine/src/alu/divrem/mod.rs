@@ -1013,7 +1013,7 @@ mod tests {
 
                     // keep memory write consistent
                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
-                        malicious_record.cpu_events[0].res_record
+                        malicious_record.cpu_events[2].res_record
                     {
                         write_record.value = op_a;
                     }
