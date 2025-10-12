@@ -206,7 +206,7 @@ impl ShiftLeft {
         cols.a = Word(a.map(F::from_canonical_u8));
         cols.b = Word(b.map(F::from_canonical_u8));
         cols.c = Word(c.map(F::from_canonical_u8));
-
+        cols.op_a_not_0 = F::from_bool(true);
         cols.is_real = F::one();
         for i in 0..BYTE_SIZE {
             cols.c_least_sig_byte[i] = F::from_canonical_u32((event.c >> i) & 1);
@@ -487,7 +487,7 @@ mod tests {
 
         // Append more events until we have 1000 tests.
         for _ in 0..(1000 - shift_instructions.len()) {
-            //shift_events.push(AluEvent::new(0, 0, Opcode::SLL, 14, 8, 6));
+            shift_events.push(AluEvent::new(0, Opcode::I32Shl, 256, 1, 8, Opcode::I32Shl.code()));
         }
 
         let mut shard = ExecutionRecord::default();
@@ -630,15 +630,11 @@ mod tests {
 
             let result =
                 run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-            assert!(
-                result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing()
-            );
-            /*TODO check: why this test fails
             let shift_left_chip_name = chip_name!(ShiftLeft, BabyBear);
             assert!(
                 result.is_err()
                     && result.unwrap_err().is_constraints_failing(&shift_left_chip_name)
-            );*/
+            );
         }
     }
 }
