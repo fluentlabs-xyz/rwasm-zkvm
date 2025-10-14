@@ -172,6 +172,9 @@ impl CpuChip {
                 cols.op_res_access.populate(record, &mut Vec::new());
             } else {
                 cols.op_res_access.populate(record, blu_events);
+               if let Opcode::I32Const(_)=instruction{
+                    cols.op_res_addr.populate(event.sp,blu_events);
+               }
             }
         }
         if let Some(MemoryRecordEnum::Read(record)) = event.arg1_record {

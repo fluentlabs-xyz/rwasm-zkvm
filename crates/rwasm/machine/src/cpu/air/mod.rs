@@ -16,7 +16,9 @@ use crate::{
         columns::{CpuCols, NUM_CPU_COLS},
         CpuChip,
     },
+   
 };
+use crate::memory::StackAddressCols;
 use rwasm_executor::UNUSED_PC;
 impl<AB> Air<AB> for CpuChip
 where
@@ -92,6 +94,8 @@ where
         // Check that when `is_real=0` that all flags that send interactions are zero.
         let not_real = AB::Expr::one() - local.is_real;
         builder.when(not_real.clone()).assert_zero(AB::Expr::one() - local.is_syscall);
+
+        StackAddressCols::<AB::F>::range_check(builder,local.op_res_addr);
     }
 }
 
@@ -206,6 +210,8 @@ impl CpuChip {
             AB::Expr::zero(),
             is_comparison,
         );
+
+     
     }
 
     fn eval_memory<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CpuCols<AB::Var>) {

@@ -8,7 +8,7 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 
 use rwasm::{
     is_multi_align,
-    mem_index::{AddressType, UNIT},
+    mem_index::{TypedAddress, UNIT},
 };
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
@@ -107,11 +107,11 @@ impl MemoryInstructionsChip {
 
         // Populate addr_word and addr_aligned columns.
         let memory_addr = event.raw_addr.wrapping_add(offset);
-        let typed_addr = AddressType::GlobalMemory(memory_addr - memory_addr % WORD_SIZE as u32);
+        let typed_addr = TypedAddress::GlobalMemory(memory_addr - memory_addr % WORD_SIZE as u32);
 
         let aligned_addr = typed_addr.to_virtual_addr();
         let aligned_addr_hi = aligned_addr + UNIT;
-        let virtual_addr = AddressType::GlobalMemory(memory_addr).to_virtual_addr();
+        let virtual_addr = TypedAddress::GlobalMemory(memory_addr).to_virtual_addr();
         let is_multi_aligned = is_multi_align(event.opcode, memory_addr);
         if is_multi_aligned {
             cols.memory_access_hi.populate(event.mem_access_hi.unwrap(), blu);

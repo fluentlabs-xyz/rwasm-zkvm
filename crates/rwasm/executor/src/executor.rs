@@ -1946,7 +1946,7 @@ mod tests {
     use hashbrown::HashMap;
 
     use rwasm::{
-        mem_index::{AddressType, SP_START, UNIT},
+        mem_index::{TypedAddress, SP_START, UNIT},
         BranchOffset, Opcode,
     };
     use sp1_stark::SP1CoreOpts;
@@ -3129,7 +3129,7 @@ mod tests {
             runtime
                 .state
                 .memory
-                .get(AddressType::GlobalMemory(addr).to_virtual_addr())
+                .get(TypedAddress::GlobalMemory(addr).to_virtual_addr())
                 .unwrap()
                 .value,
             x_value
@@ -3162,7 +3162,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        let v_addr = AddressType::GlobalMemory(addr).to_virtual_addr();
+        let v_addr = TypedAddress::GlobalMemory(addr).to_virtual_addr();
         println!("v_addr");
         println!("stack val:{:x}", runtime.state.memory.get(v_addr).unwrap().value);
         assert_eq!(
@@ -3201,7 +3201,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        let v_addr = AddressType::GlobalMemory(addr).to_virtual_addr();
+        let v_addr = TypedAddress::GlobalMemory(addr).to_virtual_addr();
         assert_eq!(
             runtime.state.memory.get(v_addr).unwrap().value,
             ((x_value & 0x0000_00FF) +
