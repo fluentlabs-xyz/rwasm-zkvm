@@ -6,14 +6,12 @@ use std::{
 use crate::utils::{next_power_of_two, zeroed_f_vec};
 
 use p3_air::{Air, BaseAir};
-use p3_field::AbstractField;
-use p3_field::PrimeField32;
+use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{
     IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
-use rwasm_executor::events::GlobalInteractionEvent;
-use rwasm_executor::{ExecutionRecord, Program};
+use rwasm_executor::{events::GlobalInteractionEvent, ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{AirInteraction, InteractionScope, MachineAir, SP1AirBuilder},
@@ -109,7 +107,9 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                 is_receive: true,
                 kind: InteractionKind::Memory as u8,
             });
-            println!("memory recieve {:?}",[
+            println!(
+                "memory recieve {:?}",
+                [
                     mem_event.initial_mem_access.shard,
                     mem_event.initial_mem_access.timestamp,
                     mem_event.addr,
@@ -117,8 +117,11 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                     (mem_event.initial_mem_access.value >> 8) & 255,
                     (mem_event.initial_mem_access.value >> 16) & 255,
                     (mem_event.initial_mem_access.value >> 24) & 255,
-                ],);
-            println!("memory send {:?}",[
+                ],
+            );
+            println!(
+                "memory send {:?}",
+                [
                     mem_event.final_mem_access.shard,
                     mem_event.final_mem_access.timestamp,
                     mem_event.addr,
@@ -126,7 +129,8 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                     (mem_event.final_mem_access.value >> 8) & 255,
                     (mem_event.final_mem_access.value >> 16) & 255,
                     (mem_event.final_mem_access.value >> 24) & 255,
-                ],);
+                ],
+            );
             events.push(GlobalInteractionEvent {
                 message: [
                     mem_event.final_mem_access.shard,
@@ -141,7 +145,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                 kind: InteractionKind::Memory as u8,
             });
         });
-         println!("chip: memorylocal: events:{:?}",events);
+        println!("chip: memorylocal: events:{:?}", events);
         output.global_interaction_events.extend(events);
     }
 
@@ -291,9 +295,8 @@ where
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use crate::programs::tests::*;
     use crate::{
-        memory::MemoryLocalChip, rwasm::RwasmAir,
+        memory::MemoryLocalChip, programs::tests::*, rwasm::RwasmAir,
         syscall::precompiles::sha256::extend_tests::sha_extend_program, utils::setup_logger,
     };
     use p3_baby_bear::BabyBear;

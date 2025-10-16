@@ -26,18 +26,19 @@ where
         let local = main.row_slice(0);
         let local: &MemoryInstructionsColumns<AB::Var> = (*local).borrow();
 
-        // SAFETY: All selectors `is_lb`, `is_lbu`, `is_lh`, `is_lhu`, `is_lw`, `is_sb`, `is_sh`, `is_sw` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the eight selectors, is boolean.
-        // Therefore, the `opcode` matches the corresponding opcode.
+        // SAFETY: All selectors `is_lb`, `is_lbu`, `is_lh`, `is_lhu`, `is_lw`, `is_sb`, `is_sh`,
+        // `is_sw` are checked to be boolean. Each "real" row has exactly one selector
+        // turned on, as `is_real`, the sum of the eight selectors, is boolean. Therefore,
+        // the `opcode` matches the corresponding opcode.
 
-        let is_real = local.is_i32load
-            + local.is_i32load16s
-            + local.is_i32load16u
-            + local.is_i32load8s
-            + local.is_i32load8u
-            + local.is_i32store8
-            + local.is_i32store16
-            + local.is_i32store;
+        let is_real = local.is_i32load +
+            local.is_i32load16s +
+            local.is_i32load16u +
+            local.is_i32load8s +
+            local.is_i32load8u +
+            local.is_i32store8 +
+            local.is_i32store16 +
+            local.is_i32store;
 
         builder.assert_bool(local.is_i32load8s);
         builder.assert_bool(local.is_i32load8u);
@@ -66,12 +67,11 @@ where
             .when(local.is_i32store16)
             .assert_one(local.ls_bits_is_three);
         let is_store = local.is_i32store8 + local.is_i32store16 + local.is_i32store;
-        let is_load = local.is_i32load
-            + local.is_i32load16s
-            + local.is_i32load16u
-            + local.is_i32load8s
-            + local.is_i32load8u;
-        
+        let is_load = local.is_i32load +
+            local.is_i32load16s +
+            local.is_i32load16u +
+            local.is_i32load8s +
+            local.is_i32load8u;
 
         self.eval_memory_address_and_access::<AB>(
             builder,
@@ -93,7 +93,8 @@ where
         // - `is_memory = 1`
         // - `is_syscall = 0`
         // - `is_halt = 0`
-        // `op_a_value` when the instruction is load still has to be constrained, as well as memory opcode behavior.
+        // `op_a_value` when the instruction is load still has to be constrained, as well as memory
+        // opcode behavior.
         builder.receive_instruction(
             local.shard,
             local.clk,
@@ -118,14 +119,14 @@ impl MemoryInstructionsChip {
         &self,
         local: &MemoryInstructionsColumns<AB::Var>,
     ) -> AB::Expr {
-        local.is_i32load8s * AB::Expr::from_canonical_u32(Opcode::I32Load8S(0).code())
-            + local.is_i32load8u * AB::Expr::from_canonical_u32(Opcode::I32Load8U(0).code())
-            + local.is_i32load16s * AB::Expr::from_canonical_u32(Opcode::I32Load16S(0).code())
-            + local.is_i32load16u * AB::Expr::from_canonical_u32(Opcode::I32Load16U(0).code())
-            + local.is_i32load * AB::Expr::from_canonical_u32(Opcode::I32Load(0).code())
-            + local.is_i32store8 * AB::Expr::from_canonical_u32(Opcode::I32Store8(0).code())
-            + local.is_i32store16 * AB::Expr::from_canonical_u32(Opcode::I32Store16(0u32).code())
-            + local.is_i32store * AB::Expr::from_canonical_u32(Opcode::I32Store(0).code())
+        local.is_i32load8s * AB::Expr::from_canonical_u32(Opcode::I32Load8S(0).code()) +
+            local.is_i32load8u * AB::Expr::from_canonical_u32(Opcode::I32Load8U(0).code()) +
+            local.is_i32load16s * AB::Expr::from_canonical_u32(Opcode::I32Load16S(0).code()) +
+            local.is_i32load16u * AB::Expr::from_canonical_u32(Opcode::I32Load16U(0).code()) +
+            local.is_i32load * AB::Expr::from_canonical_u32(Opcode::I32Load(0).code()) +
+            local.is_i32store8 * AB::Expr::from_canonical_u32(Opcode::I32Store8(0).code()) +
+            local.is_i32store16 * AB::Expr::from_canonical_u32(Opcode::I32Store16(0u32).code()) +
+            local.is_i32store * AB::Expr::from_canonical_u32(Opcode::I32Store(0).code())
     }
 
     /// Constrains the addr_aligned, addr_offset, and addr_word memory columns.
@@ -177,8 +178,8 @@ impl MemoryInstructionsChip {
             is_real.clone(),
         );
 
-        // Range check the addr_word to be a valid babybear word. Note that this will also implicitly
-        // do a byte range check on the most significant byte.
+        // Range check the addr_word to be a valid babybear word. Note that this will also
+        // implicitly do a byte range check on the most significant byte.
         BabyBearWordRangeChecker::<AB::F>::range_check(
             builder,
             local.addr_word,
@@ -191,7 +192,8 @@ impl MemoryInstructionsChip {
         builder.slice_range_check_u8(&local.addr_word.0[1..3], is_real.clone());
 
         // We check that `addr_word >= 32`, or `addr_word > 31` to avoid registers.
-        // Check that if the most significant bytes are zero, then the least significant byte is at least 32.
+        // Check that if the most significant bytes are zero, then the least significant byte is at
+        // least 32.
         builder.send_byte(
             ByteOpcode::LTU.as_field::<AB::F>(),
             AB::Expr::one(),
@@ -202,12 +204,13 @@ impl MemoryInstructionsChip {
 
         // SAFETY: Check that the above interaction is only sent if one of the opcode flags is set.
         // If `is_real = 0`, then `local.most_sig_bytes_zero.result = 0`, leading to no interaction.
-        // Note that when `is_real = 1`, due to `IsZeroOperation`, `local.most_sig_bytes_zero.result` is boolean.
+        // Note that when `is_real = 1`, due to `IsZeroOperation`,
+        // `local.most_sig_bytes_zero.result` is boolean.
         builder.when(local.most_sig_bytes_zero.result).assert_one(is_real.clone());
 
-        // Check the most_sig_byte_zero flag.  Note that we can simply add up the three most significant bytes
-        // and check if the sum is zero.  Those bytes are going to be byte range checked, so the only way
-        // the sum is zero is if all bytes are 0.
+        // Check the most_sig_byte_zero flag.  Note that we can simply add up the three most
+        // significant bytes and check if the sum is zero.  Those bytes are going to be byte
+        // range checked, so the only way the sum is zero is if all bytes are 0.
         IsZeroOperation::<AB::F>::eval(
             builder,
             local.addr_word[1] + local.addr_word[2] + local.addr_word[3],
@@ -247,9 +250,9 @@ impl MemoryInstructionsChip {
         builder.eval_memory_access(
             local.shard,
             local.clk,
-           local.addr_aligned+AB::Expr::from_canonical_u32(UNIT),
+            local.addr_aligned + AB::Expr::from_canonical_u32(UNIT),
             &local.memory_access_hi,
-            local.is_multi_aligned_load.clone(),
+            local.is_multi_aligned_load,
         );
 
         builder.eval_memory_access(
@@ -263,22 +266,23 @@ impl MemoryInstructionsChip {
         builder.eval_memory_access(
             local.shard,
             local.clk + AB::Expr::one(),
-            local.addr_aligned+AB::Expr::from_canonical_u32(UNIT),
+            local.addr_aligned + AB::Expr::from_canonical_u32(UNIT),
             &local.memory_access_hi,
-            local.is_multi_aligned_store.clone(),
+            local.is_multi_aligned_store,
         );
 
         // On memory load instructions, make sure that the memory value is not changed.
         builder
             .when(
-                local.is_i32load8s
-                    + local.is_i32load8u
-                    + local.is_i32load16u
-                    + local.is_i32load16s
-                    + local.is_i32load,
+                local.is_i32load8s +
+                    local.is_i32load8u +
+                    local.is_i32load16u +
+                    local.is_i32load16s +
+                    local.is_i32load,
             )
             .assert_word_eq(*local.memory_access.value(), *local.memory_access.prev_value());
-        builder.when(local.is_multi_aligned_load)
+        builder
+            .when(local.is_multi_aligned_load)
             .assert_word_eq(*local.memory_access_hi.value(), *local.memory_access_hi.prev_value());
     }
 
@@ -302,12 +306,13 @@ impl MemoryInstructionsChip {
         );
         builder.assert_eq(
             local.most_sig_byte,
-            local.is_i32load8s * local.unsigned_mem_val[0]
-                + local.is_i32load16s * local.unsigned_mem_val[1],
+            local.is_i32load8s * local.unsigned_mem_val[0] +
+                local.is_i32load16s * local.unsigned_mem_val[1],
         );
 
         // These two cases combine for all cases where it's a load instruction and `op_a_0 == 0`.
-        // Since the store instructions have `op_a_immutable = 1`, this completely constrains the `op_a`'s value.
+        // Since the store instructions have `op_a_immutable = 1`, this completely constrains the
+        // `op_a`'s value.
     }
 
     /// Evaluates constraints related to storing to memory.
@@ -332,14 +337,14 @@ impl MemoryInstructionsChip {
         let mem_val_hi = *local.memory_access_hi.value();
         let prev_mem_val_hi = *local.memory_access_hi.prev_value();
         let sb_expected_stored_value = Word([
-            a_val[0] * offset_is_zero.clone()
-                + (one.clone() - offset_is_zero.clone()) * prev_mem_val[0],
-            a_val[0] * local.ls_bits_is_one.clone()
-                + (one.clone() - local.ls_bits_is_one.clone()) * prev_mem_val[1],
-            a_val[0] * local.ls_bits_is_two
-                + (one.clone() - local.ls_bits_is_two) * prev_mem_val[2],
-            a_val[0] * local.ls_bits_is_three
-                + (one.clone() - local.ls_bits_is_three) * prev_mem_val[3],
+            a_val[0] * offset_is_zero.clone() +
+                (one.clone() - offset_is_zero.clone()) * prev_mem_val[0],
+            a_val[0] * local.ls_bits_is_one +
+                (one.clone() - local.ls_bits_is_one) * prev_mem_val[1],
+            a_val[0] * local.ls_bits_is_two +
+                (one.clone() - local.ls_bits_is_two) * prev_mem_val[2],
+            a_val[0] * local.ls_bits_is_three +
+                (one.clone() - local.ls_bits_is_three) * prev_mem_val[3],
         ]);
         builder
             .when(local.is_i32store8)
@@ -354,31 +359,29 @@ impl MemoryInstructionsChip {
         // builder.when(local.is_i32store).assert_one(offset_is_zero.clone());
 
         // Compute the expected stored value for a SH instruction.
-       
+
         let ls_bits_is_two = local.ls_bits_is_two;
         let ls_bits_is_three = local.ls_bits_is_three;
         let ls_bits_is_one = local.ls_bits_is_one;
         let store16_expected_stored_value_lw = Word([
-            a_val[0] * offset_is_zero.clone()
-                + (one.clone() - offset_is_zero.clone()) * prev_mem_val[0],
-            a_val[1] * offset_is_zero.clone()
-                + (ls_bits_is_two.clone() + ls_bits_is_three.clone()) * prev_mem_val[1]
-                + ls_bits_is_one * a_val[0],
-            a_val[0] * ls_bits_is_two.clone()
-                + (ls_bits_is_one.clone()) * a_val[1]
-                + (ls_bits_is_three.clone() + offset_is_zero.clone()) * prev_mem_val[2],
-            a_val[1] * ls_bits_is_two.clone()
-                + a_val[0]
-                    * ls_bits_is_three.clone()+(ls_bits_is_one.clone() + offset_is_zero.clone())
-                    * prev_mem_val[3],
+            a_val[0] * offset_is_zero.clone() +
+                (one.clone() - offset_is_zero.clone()) * prev_mem_val[0],
+            a_val[1] * offset_is_zero.clone() +
+                (ls_bits_is_two + ls_bits_is_three) * prev_mem_val[1] +
+                ls_bits_is_one * a_val[0],
+            a_val[0] * ls_bits_is_two +
+                ls_bits_is_one * a_val[1] +
+                (ls_bits_is_three + offset_is_zero.clone()) * prev_mem_val[2],
+            a_val[1] * ls_bits_is_two +
+                a_val[0] * ls_bits_is_three +
+                (ls_bits_is_one + offset_is_zero.clone()) * prev_mem_val[3],
         ]);
         let store16_expected_stored_value_hi = Word([
-            ls_bits_is_three * a_val[1]
-                + (ls_bits_is_one.clone() + offset_is_zero.clone() + ls_bits_is_two.clone())
-                    * prev_mem_val_hi[0],
-            prev_mem_val_hi[1] *one.clone(),
-            prev_mem_val_hi[2]*one.clone(),
-            prev_mem_val_hi[3]*one.clone(),
+            ls_bits_is_three * a_val[1] +
+                (ls_bits_is_one + offset_is_zero.clone() + ls_bits_is_two) * prev_mem_val_hi[0],
+            prev_mem_val_hi[1] * one.clone(),
+            prev_mem_val_hi[2] * one.clone(),
+            prev_mem_val_hi[3] * one.clone(),
         ]);
         builder
             .when(local.is_i32store16)
@@ -388,30 +391,31 @@ impl MemoryInstructionsChip {
             .assert_word_eq(mem_val_hi.map(|x| x.into()), store16_expected_stored_value_hi);
 
         let store_expected_stored_value_lw = Word([
-            a_val[0] * offset_is_zero.clone() + prev_mem_val[0] * (one.clone() - offset_is_zero.clone()),
-            a_val[0] * ls_bits_is_one.clone()
-                + a_val[1] * offset_is_zero.clone()
-                + prev_mem_val[1] * (ls_bits_is_three.clone() + ls_bits_is_two.clone()),
-            a_val[0] * ls_bits_is_two.clone()
-                + a_val[1] * ls_bits_is_one.clone()
-                + a_val[2] * offset_is_zero.clone()
-                + prev_mem_val[2] * ls_bits_is_three.clone(),
-            a_val[0] * ls_bits_is_three.clone()
-                + a_val[1] * ls_bits_is_two.clone()
-                + a_val[2] * ls_bits_is_one.clone()
-                + a_val[3] * offset_is_zero.clone(),
+            a_val[0] * offset_is_zero.clone() +
+                prev_mem_val[0] * (one.clone() - offset_is_zero.clone()),
+            a_val[0] * ls_bits_is_one +
+                a_val[1] * offset_is_zero.clone() +
+                prev_mem_val[1] * (ls_bits_is_three + ls_bits_is_two),
+            a_val[0] * ls_bits_is_two +
+                a_val[1] * ls_bits_is_one +
+                a_val[2] * offset_is_zero.clone() +
+                prev_mem_val[2] * ls_bits_is_three,
+            a_val[0] * ls_bits_is_three +
+                a_val[1] * ls_bits_is_two +
+                a_val[2] * ls_bits_is_one +
+                a_val[3] * offset_is_zero.clone(),
         ]);
 
         let store_expected_stored_value_hi = Word([
-            prev_mem_val_hi[0] * offset_is_zero.clone()
-                + a_val[3] * ls_bits_is_one.clone()
-                + a_val[2] * ls_bits_is_two.clone()
-                + a_val[1] * ls_bits_is_three.clone(),
-            prev_mem_val_hi[1] * (offset_is_zero.clone() + ls_bits_is_one.clone())
-                + a_val[3] * ls_bits_is_two.clone()
-                + a_val[2] * ls_bits_is_three.clone(),
-            prev_mem_val_hi[2]*(offset_is_zero.clone()+ls_bits_is_one.clone()+ls_bits_is_two.clone())
-            +a_val[3]*ls_bits_is_three,
+            prev_mem_val_hi[0] * offset_is_zero.clone() +
+                a_val[3] * ls_bits_is_one +
+                a_val[2] * ls_bits_is_two +
+                a_val[1] * ls_bits_is_three,
+            prev_mem_val_hi[1] * (offset_is_zero.clone() + ls_bits_is_one) +
+                a_val[3] * ls_bits_is_two +
+                a_val[2] * ls_bits_is_three,
+            prev_mem_val_hi[2] * (offset_is_zero.clone() + ls_bits_is_one + ls_bits_is_two) +
+                a_val[3] * ls_bits_is_three,
             prev_mem_val_hi[3].into(),
         ]);
 
@@ -419,10 +423,9 @@ impl MemoryInstructionsChip {
         builder
             .when(local.is_i32store)
             .assert_word_eq(mem_val.map(|x| x.into()), store_expected_stored_value_lw);
-         builder
+        builder
             .when(local.is_i32store)
             .assert_word_eq(mem_val_hi.map(|x| x.into()), store_expected_stored_value_hi);
-
     }
 
     /// This function is used to evaluate the unsigned memory value for the load memory
@@ -444,10 +447,10 @@ impl MemoryInstructionsChip {
         let ls_bits_is_two = local.ls_bits_is_two;
         let ls_bits_is_three = local.ls_bits_is_three;
         // Compute the byte value.
-        let mem_byte = mem_val[0] * ls_bits_is_zero.clone()
-            + mem_val[1] * local.ls_bits_is_one
-            + mem_val[2] * local.ls_bits_is_two
-            + mem_val[3] * local.ls_bits_is_three;
+        let mem_byte = mem_val[0] * ls_bits_is_zero.clone() +
+            mem_val[1] * local.ls_bits_is_one +
+            mem_val[2] * local.ls_bits_is_two +
+            mem_val[3] * local.ls_bits_is_three;
         let byte_value = Word::extend_expr::<AB>(mem_byte.clone());
 
         // When the instruction is LB or LBU, just use the lower byte.
@@ -455,15 +458,15 @@ impl MemoryInstructionsChip {
             .when(local.is_i32load8s + local.is_i32load8u)
             .assert_word_eq(byte_value, local.unsigned_mem_val.map(|x| x.into()));
 
-        
-
-
-        
         let half_value = Word([
-           ls_bits_is_zero.clone() * mem_val[0] + ls_bits_is_two.clone() * mem_val[2]
-           +ls_bits_is_one.clone()*mem_val[1]+ ls_bits_is_three.clone()*mem_val[3],
-           ls_bits_is_zero.clone() * mem_val[1] + ls_bits_is_two.clone() * mem_val[3]+
-           ls_bits_is_one.clone() *mem_val[2]+ls_bits_is_three.clone()*mem_val_hi[0],
+            ls_bits_is_zero.clone() * mem_val[0] +
+                ls_bits_is_two * mem_val[2] +
+                ls_bits_is_one * mem_val[1] +
+                ls_bits_is_three * mem_val[3],
+            ls_bits_is_zero.clone() * mem_val[1] +
+                ls_bits_is_two * mem_val[3] +
+                ls_bits_is_one * mem_val[2] +
+                ls_bits_is_three * mem_val_hi[0],
             AB::Expr::zero(),
             AB::Expr::zero(),
         ]);
@@ -471,21 +474,25 @@ impl MemoryInstructionsChip {
             .when(local.is_i32load16s + local.is_i32load16u)
             .assert_word_eq(half_value, local.unsigned_mem_val.map(|x| x.into()));
         let val = Word([
-             ls_bits_is_zero.clone() * mem_val[0] + ls_bits_is_two.clone() * mem_val[2]
-           +ls_bits_is_one.clone() * mem_val[1]+ls_bits_is_three.clone()*mem_val[3],
-            
-           ls_bits_is_zero.clone() * mem_val[1] + ls_bits_is_two.clone() * mem_val[3]+
-           ls_bits_is_one.clone() *mem_val[2]+ls_bits_is_three.clone()*mem_val_hi[0],
-           
-          
-        ls_bits_is_zero.clone() *mem_val[2]+ls_bits_is_one.clone() * mem_val[3]+
-        ls_bits_is_two.clone() *mem_val_hi[0]+ls_bits_is_three.clone() *mem_val_hi[1],
-        ls_bits_is_zero.clone() *mem_val[3] +ls_bits_is_one.clone()*mem_val_hi[0]+
-        ls_bits_is_two.clone() *mem_val_hi[1]+ls_bits_is_three.clone()*mem_val_hi[2],
+            ls_bits_is_zero.clone() * mem_val[0] +
+                ls_bits_is_two * mem_val[2] +
+                ls_bits_is_one * mem_val[1] +
+                ls_bits_is_three * mem_val[3],
+            ls_bits_is_zero.clone() * mem_val[1] +
+                ls_bits_is_two * mem_val[3] +
+                ls_bits_is_one * mem_val[2] +
+                ls_bits_is_three * mem_val_hi[0],
+            ls_bits_is_zero.clone() * mem_val[2] +
+                ls_bits_is_one * mem_val[3] +
+                ls_bits_is_two * mem_val_hi[0] +
+                ls_bits_is_three * mem_val_hi[1],
+            ls_bits_is_zero.clone() * mem_val[3] +
+                ls_bits_is_one * mem_val_hi[0] +
+                ls_bits_is_two * mem_val_hi[1] +
+                ls_bits_is_three * mem_val_hi[2],
         ]);
-       
-        builder.when(local.is_i32load).assert_word_eq(val, local.res);
 
+        builder.when(local.is_i32load).assert_word_eq(val, local.res);
     }
 
     /// Evaluates the offset value flags.
@@ -504,15 +511,16 @@ impl MemoryInstructionsChip {
 
         // Assert that only one of the value flags is true
         builder.assert_one(
-            offset_is_zero.clone()
-                + local.ls_bits_is_one
-                + local.ls_bits_is_two
-                + local.ls_bits_is_three,
+            offset_is_zero.clone() +
+                local.ls_bits_is_one +
+                local.ls_bits_is_two +
+                local.ls_bits_is_three,
         );
 
         // Assert that the correct value flag is set
-        // SAFETY: Due to the constraints here, at most one of the four flags can be turned on (non-zero).
-        // As their sum is constrained to be 1, the only possibility is that exactly one flag is on, with value 1.
+        // SAFETY: Due to the constraints here, at most one of the four flags can be turned on
+        // (non-zero). As their sum is constrained to be 1, the only possibility is that
+        // exactly one flag is on, with value 1.
         builder.when(offset_is_zero).assert_zero(local.addr_ls_two_bits);
         builder.when(local.ls_bits_is_one).assert_one(local.addr_ls_two_bits);
         builder.when(local.ls_bits_is_two).assert_eq(local.addr_ls_two_bits, AB::Expr::two());

@@ -19,10 +19,9 @@ use super::{BranchChip, BranchColumns};
 /// It does this in few parts:
 /// 1. It verifies that the next pc is correct based on the branching column.  That column is a
 ///    boolean that indicates whether the branch condition is true.
-/// 2. It verifies the correct value of branching based on the helper bool columns (a_eq_b,
-///    a_gt_b, a_lt_b).
+/// 2. It verifies the correct value of branching based on the helper bool columns (a_eq_b, a_gt_b,
+///    a_lt_b).
 /// 3. It verifier the correct values of the helper bool columns based on op_a and op_b.
-///
 impl<AB> Air<AB> for BranchChip
 where
     AB: SP1AirBuilder,
@@ -34,9 +33,10 @@ where
         let local = main.row_slice(0);
         let local: &BranchColumns<AB::Var> = (*local).borrow();
 
-        // SAFETY: All selectors `is_beq`, `is_bne`, `is_blt`, `is_bge`, `is_bltu`, `is_bgeu` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the six selectors, is boolean.
-        // Therefore, the `opcode` matches the corresponding opcode.
+        // SAFETY: All selectors `is_beq`, `is_bne`, `is_blt`, `is_bge`, `is_bltu`, `is_bgeu` are
+        // checked to be boolean. Each "real" row has exactly one selector turned on, as
+        // `is_real`, the sum of the six selectors, is boolean. Therefore, the `opcode`
+        // matches the corresponding opcode.
         builder.assert_bool(local.is_br);
         builder.assert_bool(local.is_brifeqz);
         builder.assert_bool(local.is_brifnez);
@@ -46,9 +46,9 @@ where
 
         builder.assert_bool(is_real.clone());
 
-        let opcode = local.is_br * AB::Expr::from_canonical_u32(Opcode::Br(0i32.into()).code())
-            + local.is_brifeqz * AB::Expr::from_canonical_u32(Opcode::BrIfEqz(0i32.into()).code())
-            + local.is_brifnez * AB::Expr::from_canonical_u32(Opcode::BrIfNez(0i32.into()).code());
+        let opcode = local.is_br * AB::Expr::from_canonical_u32(Opcode::Br(0i32.into()).code()) +
+            local.is_brifeqz * AB::Expr::from_canonical_u32(Opcode::BrIfEqz(0i32.into()).code()) +
+            local.is_brifnez * AB::Expr::from_canonical_u32(Opcode::BrIfNez(0i32.into()).code());
 
         // SAFETY: This checks the following.
         // - `num_extra_cycles = 0`
@@ -80,7 +80,7 @@ where
             local.pc.reduce::<AB>(),
             local.next_pc.reduce::<AB>(),
             AB::Expr::zero(),
-            local.is_brtable * AB::Expr::from_canonical_u32(Opcode::BrTable(0u32.into()).code()),
+            local.is_brtable * AB::Expr::from_canonical_u32(Opcode::BrTable(0u32).code()),
             Word::zero::<AB>(),
             local.op_arg1_value,
             local.op_arg2_value,
@@ -95,8 +95,9 @@ where
             // Range check branch_cols.pc and branch_cols.next_pc.
             // SAFETY: `is_real` is already checked to be boolean.
             // The `BabyBearWordRangeChecker` assumes that the value is checked to be a valid word.
-            // This is done when the word form is relevant, i.e. when `pc` and `next_pc` are sent to the ADD ALU table.
-            // The ADD ALU table checks the inputs are valid words, when it invokes `AddOperation`.
+            // This is done when the word form is relevant, i.e. when `pc` and `next_pc` are sent to
+            // the ADD ALU table. The ADD ALU table checks the inputs are valid words,
+            // when it invokes `AddOperation`.
             BabyBearWordRangeChecker::<AB::F>::range_check(
                 builder,
                 local.pc,
@@ -155,17 +156,20 @@ where
             // To prevent the ALU send above to be non-zero when the row is a padding row.
             builder.when_not(is_real.clone()).assert_zero(local.is_branching);
             //seprate branching into two cases
-            builder.when(is_real.clone()).assert_bool(local.is_branching_non_table.clone());
-            builder.when(is_real.clone()).assert_bool(local.is_branching_table.clone());
+            builder.when(is_real.clone()).assert_bool(local.is_branching_non_table);
+            builder.when(is_real.clone()).assert_bool(local.is_branching_table);
             builder.when(is_real.clone()).assert_eq(
-                local.is_branching_table.clone() + local.is_branching_non_table.clone(),
-                local.is_branching.clone()
+                local.is_branching_table + local.is_branching_non_table,
+                local.is_branching,
             );
-            builder.when(local.is_branching_table.clone()).assert_one(local.is_brtable);
-            builder.when(local.is_branching_non_table.clone()).assert_one(local.is_br+local.is_brifeqz+local.is_brifnez);
+            builder.when(local.is_branching_table).assert_one(local.is_brtable);
+            builder
+                .when(local.is_branching_non_table)
+                .assert_one(local.is_br + local.is_brifeqz + local.is_brifnez);
             // Assert that either we are branching or not branching when the instruction is a
             // branch.
-            // The `next_pc` is constrained in both branching and not branching cases, so it is fully constrained.
+            // The `next_pc` is constrained in both branching and not branching cases, so it is
+            // fully constrained.
             builder.when(is_real.clone()).assert_one(local.is_branching + local.not_branching);
             builder.when(is_real.clone()).assert_bool(local.is_branching);
             builder.when(is_real.clone()).assert_bool(local.not_branching);
@@ -189,13 +193,13 @@ where
             builder.when(local.is_br + local.is_brtable).assert_one(local.is_branching);
             builder.when(local.is_brtable).when(local.a_lt_target).assert_eq(
                 local.br_table_offset_value.reduce::<AB>(),
-                local.op_arg1_value.reduce::<AB>() * AB::Expr::from_canonical_u32(2u32)
-                    + AB::Expr::one(),
+                local.op_arg1_value.reduce::<AB>() * AB::Expr::from_canonical_u32(2u32) +
+                    AB::Expr::one(),
             );
             builder.when(local.is_brtable).when_not(local.a_lt_target).assert_eq(
                 local.br_table_offset_value.reduce::<AB>(),
-                local.op_arg2_value.reduce::<AB>() * AB::Expr::from_canonical_u32(2u32)
-                    - AB::Expr::one(),
+                local.op_arg2_value.reduce::<AB>() * AB::Expr::from_canonical_u32(2u32) -
+                    AB::Expr::one(),
             );
 
             builder

@@ -28,8 +28,8 @@ pub struct CpuCols<T: Copy> {
     /// The most significant 8 bit limb of clk.
     pub clk_8bit_limb: T,
 
-    /// The shard to send to the opcode specific tables.  This should be 0 for all instructions other   
-    /// than the ecall and memory instructions.
+    /// The shard to send to the opcode specific tables.  This should be 0 for all instructions
+    /// other than the ecall and memory instructions.
     pub shard_to_send: T,
     /// The clk to send to the opcode specific tables.  This should be 0 for all instructions other
     /// than the ecall and memory instructions.
@@ -44,8 +44,6 @@ pub struct CpuCols<T: Copy> {
     pub sp: T,
     pub next_sp: T,
 
-
-
     /// Columns related to the instruction.
     pub instruction: InstructionCols<T>,
 
@@ -57,7 +55,7 @@ pub struct CpuCols<T: Copy> {
 
     /// Whether this is a memory instruction.
     pub is_memory: T,
-    
+
     /// Whether this is a syscall instruction.
     pub is_syscall: T,
 

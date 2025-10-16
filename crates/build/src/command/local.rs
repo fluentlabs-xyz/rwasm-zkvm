@@ -1,5 +1,4 @@
-use std::path::PathBuf;
-use std::{env, process::Command};
+use std::{env, path::PathBuf, process::Command};
 
 use crate::{BuildArgs, HELPER_TARGET_SUBDIR};
 use cargo_metadata::camino::Utf8PathBuf;

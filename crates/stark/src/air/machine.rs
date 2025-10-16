@@ -1,4 +1,3 @@
-
 use hashbrown::HashMap;
 use p3_air::BaseAir;
 use p3_field::Field;
@@ -76,7 +75,7 @@ pub trait MachineAir<F: Field>: BaseAir<F> + 'static + Send + Sync {
         false
     }
     ///show stats
-    fn stats(&self,input: &Self::Record)->HashMap<std::string::String, usize>{
+    fn stats(&self, input: &Self::Record) -> HashMap<std::string::String, usize> {
         input.stats()
     }
 }

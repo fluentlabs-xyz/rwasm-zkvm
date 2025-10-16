@@ -6,17 +6,18 @@ use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
-
 use rwasm_executor::{
-    events::{CallEvent, ByteLookupEvent, ByteRecord},
+    events::{ByteLookupEvent, ByteRecord, CallEvent},
     ExecutionRecord, Opcode, Program,
 };
 use sp1_stark::air::MachineAir;
 
-use crate::{shape::Shapeable, utils::{next_power_of_two, zeroed_f_vec}};
+use crate::{
+    shape::Shapeable,
+    utils::{next_power_of_two, zeroed_f_vec},
+};
 
 use super::{CallChip, CallColumns, NUM_CALL_COLS};
-
 
 impl<F: PrimeField32> MachineAir<F> for CallChip {
     type Record = ExecutionRecord;
@@ -50,7 +51,7 @@ impl<F: PrimeField32> MachineAir<F> for CallChip {
 
                     if idx < input.call_events.len() {
                         let event = &input.call_events[idx];
-                        self.event_to_row(event,cols, input.shard(), &mut blu);
+                        self.event_to_row(event, cols, input.shard(), &mut blu);
                     }
                 });
                 blu
@@ -82,42 +83,46 @@ impl CallChip {
         &self,
         event: &CallEvent,
         cols: &mut CallColumns<F>,
-        shard:u32,
+        shard: u32,
         blu: &mut HashMap<ByteLookupEvent, usize>,
     ) {
-        cols.shard=F::from_canonical_u32(event.shard);
+        cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
         cols.pc = event.pc.into();
-        cols.next_pc =event.next_pc.into();
+        cols.next_pc = event.next_pc.into();
         cols.pc_range_checker.populate(cols.pc, blu);
         cols.next_pc_range_checker.populate(cols.next_pc, blu);
 
         cols.opcode = F::from_canonical_u32(event.opcode.code());
         cols.call_sp = F::from_canonical_u32(event.call_sp);
-        cols.next_call_sp=F::from_canonical_u32(event.next_call_sp);
-        cols.signature_id=F::from_canonical_u32(event.signature_id);
-        cols.func_ref=F::from_canonical_u32(event.func_ref);
+        cols.next_call_sp = F::from_canonical_u32(event.next_call_sp);
+        cols.signature_id = F::from_canonical_u32(event.signature_id);
+        cols.func_ref = F::from_canonical_u32(event.func_ref);
         cols.table_id = F::from_canonical_u32(event.table_id);
-        cols.table_idx=F::from_canonical_u32(event.table_idx);
-        println!("opcode  for call: {}",event.opcode.code());
-        cols.opcode_aux_val=event.opcode.aux_value().into();
-        println!("col.opcode:{:?}",cols.opcode);    
+        cols.table_idx = F::from_canonical_u32(event.table_idx);
+        println!("opcode  for call: {}", event.opcode.code());
+        cols.opcode_aux_val = event.opcode.aux_value().into();
+        println!("col.opcode:{:?}", cols.opcode);
         match event.opcode {
-            Opcode::Call(_)=>{cols.is_call=F::from_bool(true);},
-            Opcode::CallIndirect(_)=>{cols.is_call_indirect=F::from_bool(true);},
-            Opcode::CallInternal(_)=>{cols.is_call_internal=F::from_bool(true);},
-            Opcode::Return=>{cols.is_return=F::from_bool(true);},
-            _=>unreachable!(),
+            Opcode::Call(_) => {
+                cols.is_call = F::from_bool(true);
+            }
+            Opcode::CallIndirect(_) => {
+                cols.is_call_indirect = F::from_bool(true);
+            }
+            Opcode::CallInternal(_) => {
+                cols.is_call_internal = F::from_bool(true);
+            }
+            Opcode::Return => {
+                cols.is_return = F::from_bool(true);
+            }
+            _ => unreachable!(),
         }
-        if !(event.opcode==Opcode::Return&&event.call_sp==0){
-               assert_eq!(event.call_stack_access.is_some(),true);
-                 cols.call_stack_access.populate(event.call_stack_access.unwrap(), blu);
-                 
-        } else{
-            cols.not_real_return=F::from_bool(true);
+        if !(event.opcode == Opcode::Return && event.call_sp == 0) {
+            assert!(event.call_stack_access.is_some());
+            cols.call_stack_access.populate(event.call_stack_access.unwrap(), blu);
+        } else {
+            cols.not_real_return = F::from_bool(true);
         }
-     
-      
-
     }
 }

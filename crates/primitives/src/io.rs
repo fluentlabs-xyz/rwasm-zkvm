@@ -75,6 +75,7 @@ impl SP1PublicValues {
         hash[0] &= 0b00011111;
 
         // Return the masked hash as a BigUint.
+        #[allow(deprecated)]
         BigUint::from_bytes_be(hash.as_slice())
     }
 }

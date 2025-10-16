@@ -10,14 +10,13 @@ use p3_baby_bear::BabyBear;
 use p3_bn254_fr::Bn254Fr;
 use p3_field::{AbstractField, PrimeField32};
 use p3_symmetric::CryptographicHasher;
-use rwasm_executor::{Executor, Program};
-use rwasm_machine::{io::SP1Stdin, reduce::SP1ReduceProof};
+use rwasm_machine::reduce::SP1ReduceProof;
 use sp1_recursion_circuit::machine::RootPublicValues;
 use sp1_recursion_core::{
     air::{RecursionPublicValues, NUM_PV_ELMS_TO_HASH},
     stark::BabyBearPoseidon2Outer,
 };
-use sp1_stark::{baby_bear_poseidon2::MyHash as InnerHash, SP1CoreOpts, Word};
+use sp1_stark::{baby_bear_poseidon2::MyHash as InnerHash, Word};
 
 use crate::{InnerSC, SP1CoreProofData};
 

@@ -1,44 +1,22 @@
-use std::{
-    borrow::{Borrow, BorrowMut},
-    marker::PhantomData,
-    mem::size_of,
-};
+use std::borrow::Borrow;
 
-use crate::{air::MemoryAirBuilder, operations::field::range::FieldLtCols, utils::zeroed_f_vec};
-use generic_array::GenericArray;
-use itertools::Itertools;
-use num::{BigUint, Zero};
+use crate::air::MemoryAirBuilder;
 
-use p3_air::{Air, AirBuilder, BaseAir, PairBuilder};
+use p3_air::{Air, AirBuilder, BaseAir};
 
 use crate::air::WordAirBuilder;
-use p3_field::{AbstractField, PrimeField32};
-use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use rwasm_executor::{
-    events::{ByteLookupEvent, ByteRecord, FieldOperation, PrecompileEvent},
-    syscalls::SyscallCode,
-    ByteOpcode, ExecutionRecord, Program,
-};
-use sp1_curves::{
-    params::{Limbs, NumLimbs},
-    weierstrass::{FieldType, FpOpField},
-};
-use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{BaseAirBuilder, InteractionScope, MachineAir, Polynomial, SP1AirBuilder};
+use p3_field::AbstractField;
+use p3_matrix::Matrix;
+use rwasm_executor::syscalls::SyscallCode;
+use sp1_stark::air::{BaseAirBuilder, InteractionScope, SP1AirBuilder};
 mod column;
 mod trace;
-use crate::{
-    memory::{value_as_limbs, MemoryCols, MemoryReadCols, MemoryWriteCols},
-    operations::field::field_op::FieldOpCols,
-};
+use crate::memory::MemoryCols;
 pub use column::*;
 use rwasm::{
-    mem_index::{
-        AddressType, ELEMENT_SEG_END, ELEMENT_SEG_START, TABLE_ELEM_SIZE, TABLE_SEG_END, UNIT,
-    },
-    N_MAX_ELEM_SEGMENTS_BITS, N_MAX_TABLES, N_MAX_TABLE_SIZE,
+    mem_index::{AddressType, UNIT},
+    N_MAX_TABLE_SIZE,
 };
-pub use trace::*;
 #[derive(Default)]
 pub struct TableChip {}
 impl<AB> Air<AB> for TableChip
@@ -117,7 +95,7 @@ where
             next.dst_offset.reduce::<AB>(),
         );
 
-        // TODO(Aliaksei): add address memory bound check 
+        // TODO(Aliaksei): add address memory bound check
 
         self.eval_memory_access(local, builder);
 

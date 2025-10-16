@@ -408,10 +408,11 @@ where
         builder.when(local.b_sign_extend).assert_eq(local.b_msb, one.clone());
         builder.when(local.c_sign_extend).assert_eq(local.c_msb, one.clone());
 
-        // SAFETY: All selectors `is_mul`, `is_mulh`, `is_mulhu`, `is_mulhsu` are checked to be boolean.
-        // Also, the multiplicity `is_real` is checked to be boolean, and `is_real = 0` leads to no interactions.
-        // Each "real" row has exactly one selector turned on, as constrained below.
-        // Therefore, in "real" rows, the `opcode` matches the corresponding opcode.
+        // SAFETY: All selectors `is_mul`, `is_mulh`, `is_mulhu`, `is_mulhsu` are checked to be
+        // boolean. Also, the multiplicity `is_real` is checked to be boolean, and `is_real
+        // = 0` leads to no interactions. Each "real" row has exactly one selector turned
+        // on, as constrained below. Therefore, in "real" rows, the `opcode` matches the
+        // corresponding opcode.
 
         // Calculate the opcode.
         let opcode = {
@@ -424,10 +425,10 @@ where
             let mulh: AB::Expr = AB::F::from_canonical_u32(I32MULH_CODE).into();
             let mulhu: AB::Expr = AB::F::from_canonical_u32(I32MULHU_CODE).into();
             let mulhsu: AB::Expr = AB::F::from_canonical_u32(I32MULHSU_CODE).into();
-            local.is_mul * mul
-                + local.is_mulh * mulh
-                + local.is_mulhu * mulhu
-                + local.is_mulhsu * mulhsu
+            local.is_mul * mul +
+                local.is_mulh * mulh +
+                local.is_mulhu * mulhu +
+                local.is_mulhsu * mulhsu
         };
 
         // Range check.

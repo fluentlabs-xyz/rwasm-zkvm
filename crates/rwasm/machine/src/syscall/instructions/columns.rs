@@ -25,8 +25,8 @@ pub struct SyscallInstrColumns<T> {
     /// The number of extra cycles to add to the clk for a syscall instruction.
     pub num_extra_cycles: T,
 
-    /// Whether the current instruction is a halt instruction.  This is verified by the is_halt_check
-    /// operation.
+    /// Whether the current instruction is a halt instruction.  This is verified by the
+    /// is_halt_check operation.
     pub is_halt: T,
 
     /// The access columns for the first operand.
@@ -36,9 +36,9 @@ pub struct SyscallInstrColumns<T> {
     /// The value of the third operand.
     pub op_c_value: Word<T>,
 
-    pub syscall_id:T,
-   
-    pub syscall_code:Word<T>,
+    pub syscall_id: T,
+
+    pub syscall_code: Word<T>,
     /// Whether the current ecall is ENTER_UNCONSTRAINED.
     pub is_enter_unconstrained: IsZeroOperation<T>,
 
@@ -70,9 +70,9 @@ pub struct SyscallInstrColumns<T> {
     /// Whether the current instruction is a real instruction.
     pub is_real: T,
     /// Whether the current instruction is a fat op
-    pub is_fat_op:T,
+    pub is_fat_op: T,
 
-    pub is_sys_call:T,
+    pub is_sys_call: T,
 
-    pub fat_opcode:T,
+    pub fat_opcode: T,
 }

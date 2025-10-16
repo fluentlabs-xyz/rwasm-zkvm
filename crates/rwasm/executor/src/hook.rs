@@ -64,7 +64,7 @@ impl<'a> HookRegistry<'a> {
     /// Note: This function should not be called in async contexts, unless you know what you are
     /// doing.
     #[must_use]
-    pub fn get(&self, fd: u32) -> Option<RwLockWriteGuard<dyn Hook + Send + Sync + 'a>> {
+    pub fn get(&self, fd: u32) -> Option<RwLockWriteGuard<'_, dyn Hook + Send + Sync + 'a>> {
         // Calling `.unwrap()` panics on a poisoned lock. Should never happen normally.
         self.table.get(&fd).map(|x| x.write().unwrap())
     }
@@ -110,7 +110,8 @@ pub struct HookEnv<'a, 'b: 'a> {
 
 /// The hook for the `ecrecover` patches.
 ///
-/// The input should be of the form [(`curve_id_u8` | `r_is_y_odd_u8` << 7) || `r` || `alpha`] where:
+/// The input should be of the form [(`curve_id_u8` | `r_is_y_odd_u8` << 7) || `r` || `alpha`]
+/// where:
 /// * `curve_id` is 1 for secp256k1 and 2 for secp256r1
 /// * `r_is_y_odd` is 0 if r is even and 1 if r is is odd
 /// * r is the x-coordinate of the point, which should be 32 bytes,
@@ -146,14 +147,14 @@ mod ecrecover {
     };
 
     pub(super) fn handle_secp256k1(r: [u8; 32], alpha: [u8; 32], r_y_is_odd: bool) -> Vec<Vec<u8>> {
-        use k256::elliptic_curve::ff::PrimeField;
-        use k256::FieldBytes as K256FieldBytes;
-        use k256::FieldElement as K256FieldElement;
-        use k256::Scalar as K256Scalar;
-
+        use k256::{
+            elliptic_curve::ff::PrimeField, FieldBytes as K256FieldBytes,
+            FieldElement as K256FieldElement, Scalar as K256Scalar,
+        };
+        #[allow(deprecated)]
         let r = K256FieldElement::from_bytes(K256FieldBytes::from_slice(&r)).unwrap();
         debug_assert!(!bool::from(r.is_zero()), "r should not be zero");
-
+        #[allow(deprecated)]
         let alpha = K256FieldElement::from_bytes(K256FieldBytes::from_slice(&alpha)).unwrap();
         assert!(!bool::from(alpha.is_zero()), "alpha should not be zero");
 
@@ -169,6 +170,7 @@ mod ecrecover {
 
             vec![vec![1], y_coord.to_bytes().to_vec(), r_inv.to_bytes().to_vec()]
         } else {
+            #[allow(deprecated)]
             let nqr_field = K256FieldElement::from_bytes(K256FieldBytes::from_slice(&NQR)).unwrap();
             let qr = alpha * nqr_field;
             let root = qr.sqrt().expect("if alpha is not a square, then qr should be a square");
@@ -178,14 +180,15 @@ mod ecrecover {
     }
 
     pub(super) fn handle_secp256r1(r: [u8; 32], alpha: [u8; 32], r_y_is_odd: bool) -> Vec<Vec<u8>> {
-        use p256::elliptic_curve::ff::PrimeField;
-        use p256::FieldBytes as P256FieldBytes;
-        use p256::FieldElement as P256FieldElement;
-        use p256::Scalar as P256Scalar;
-
+        use p256::{
+            elliptic_curve::ff::PrimeField, FieldBytes as P256FieldBytes,
+            FieldElement as P256FieldElement, Scalar as P256Scalar,
+        };
+        #[allow(deprecated)]
         let r = P256FieldElement::from_bytes(P256FieldBytes::from_slice(&r)).unwrap();
         debug_assert!(!bool::from(r.is_zero()), "r should not be zero");
 
+        #[allow(deprecated)]
         let alpha = P256FieldElement::from_bytes(P256FieldBytes::from_slice(&alpha)).unwrap();
         debug_assert!(!bool::from(alpha.is_zero()), "alpha should not be zero");
 
@@ -199,6 +202,7 @@ mod ecrecover {
 
             vec![vec![1], y_coord.to_bytes().to_vec(), r_inv.to_bytes().to_vec()]
         } else {
+            #[allow(deprecated)]
             let nqr_field = P256FieldElement::from_bytes(P256FieldBytes::from_slice(&NQR)).unwrap();
             let qr = alpha * nqr_field;
             let root = qr.sqrt().expect("if alpha is not a square, then qr should be a square");
@@ -217,7 +221,8 @@ mod fp_ops {
     /// * `buf` - The buffer containing the data needed to compute the inverse.
     ///     - [ len || Element || Modulus ]
     ///     - len is the u32 length of the element and modulus in big endian.
-    ///     - Element is the field element to compute the inverse of, interpreted as a big endian integer of `len` bytes.
+    ///     - Element is the field element to compute the inverse of, interpreted as a big endian
+    ///       integer of `len` bytes.
     ///
     /// # Returns:
     /// A single 32 byte vector containing the inverse.
@@ -247,9 +252,12 @@ mod fp_ops {
     /// * `buf` - The buffer containing the data needed to compute the square root.
     ///     - [ len || Element || Modulus || NQR ]
     ///     - len is the length of the element, modulus, and nqr in big endian.
-    ///     - Element is the field element to compute the square root of, interpreted as a big endian integer of `len` bytes.
-    ///     - Modulus is the modulus of the field, interpreted as a big endian integer of `len` bytes.
-    ///     - NQR is the non-quadratic residue of the field, interpreted as a big endian integer of `len` bytes.
+    ///     - Element is the field element to compute the square root of, interpreted as a big
+    ///       endian integer of `len` bytes.
+    ///     - Modulus is the modulus of the field, interpreted as a big endian integer of `len`
+    ///       bytes.
+    ///     - NQR is the non-quadratic residue of the field, interpreted as a big endian integer of
+    ///       `len` bytes.
     ///
     /// # Assumptions
     /// - NQR is a non-quadratic residue of the field.
@@ -507,11 +515,8 @@ pub fn hook_ed_decompress(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
 }
 
 mod bls {
-    use super::pad_to_be;
-    use super::{BigUint, HookEnv};
-    use sp1_curves::params::FieldParameters;
-    use sp1_curves::weierstrass::bls12_381::Bls12381BaseField;
-    use sp1_curves::Zero;
+    use super::{pad_to_be, BigUint, HookEnv};
+    use sp1_curves::{params::FieldParameters, weierstrass::bls12_381::Bls12381BaseField, Zero};
 
     /// A non-quadratic residue for the `12_381` base field in big endian.
     pub const NQR_BLS12_381: [u8; 48] = {
@@ -525,9 +530,12 @@ mod bls {
 
     /// Given a field element, in big endian, this function computes the square root.
     ///
-    /// - If the field element is the additive identity, this function returns `vec![vec![1], vec![0; 48]]`.
-    /// - If the field element is a quadratic residue, this function returns `vec![vec![1], vec![sqrt(fe)]  ]`.
-    /// - If the field element (fe) is not a quadratic residue, this function returns `vec![vec![0], vec![sqrt(``NQR_BLS12_381`` * fe)]]`.
+    /// - If the field element is the additive identity, this function returns `vec![vec![1],
+    ///   vec![0; 48]]`.
+    /// - If the field element is a quadratic residue, this function returns `vec![vec![1],
+    ///   vec![sqrt(fe)]  ]`.
+    /// - If the field element (fe) is not a quadratic residue, this function returns `vec![vec![0],
+    ///   vec![sqrt(``NQR_BLS12_381`` * fe)]]`.
     pub fn hook_bls12_381_sqrt(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
         let field_element = BigUint::from_bytes_be(&buf[..48]);
 
@@ -623,9 +631,13 @@ pub fn hook_rsa_mul_mod(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
 
 pub(crate) mod deprecated_hooks {
     use super::HookEnv;
-    use sp1_curves::k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
-    use sp1_curves::k256::elliptic_curve::ops::Invert;
-    use sp1_curves::p256::ecdsa::Signature as p256Signature;
+    use sp1_curves::{
+        k256::{
+            ecdsa::{RecoveryId, Signature, VerifyingKey},
+            elliptic_curve::ops::Invert,
+        },
+        p256::ecdsa::Signature as p256Signature,
+    };
 
     /// Recovers the public key from the signature and message hash using the k256 crate.
     ///
@@ -633,8 +645,8 @@ pub(crate) mod deprecated_hooks {
     ///
     /// * `env` - The environment in which the hook is invoked.
     /// * `buf` - The buffer containing the signature and message hash.
-    ///     - The signature is 65 bytes, the first 64 bytes are the signature and the last byte is the
-    ///       recovery ID.
+    ///     - The signature is 65 bytes, the first 64 bytes are the signature and the last byte is
+    ///       the recovery ID.
     ///     - The message hash is 32 bytes.
     ///
     /// The result is returned as a pair of bytes, where the first 32 bytes are the X coordinate
@@ -694,12 +706,12 @@ pub(crate) mod deprecated_hooks {
     ///
     /// * `env` - The environment in which the hook is invoked.
     /// * `buf` - The buffer containing the signature and message hash.
-    ///     - The signature is 65 bytes, the first 64 bytes are the signature and the last byte is the
-    ///       recovery ID.
+    ///     - The signature is 65 bytes, the first 64 bytes are the signature and the last byte is
+    ///       the recovery ID.
     ///     - The message hash is 32 bytes.
     ///
-    /// The result is returned as a status and a pair of bytes, where the first 32 bytes are the X coordinate
-    /// and the second 32 bytes are the Y coordinate of the decompressed point.
+    /// The result is returned as a status and a pair of bytes, where the first 32 bytes are the X
+    /// coordinate and the second 32 bytes are the Y coordinate of the decompressed point.
     ///
     /// A status of 0 indicates that the public key could not be recovered.
     ///
@@ -750,8 +762,8 @@ pub(crate) mod deprecated_hooks {
     ///
     /// The result is either `0` if the point cannot be decompressed, or `1` if it can.
     ///
-    /// WARNING: This function merely hints at the validity of the compressed point. These values must
-    /// be constrained by the zkVM for correctness.
+    /// WARNING: This function merely hints at the validity of the compressed point. These values
+    /// must be constrained by the zkVM for correctness.
     #[must_use]
     pub fn hook_ed_decompress(_: HookEnv, buf: &[u8]) -> Vec<Vec<u8>> {
         let Ok(point) = sp1_curves::curve25519_dalek::CompressedEdwardsY::from_slice(buf) else {

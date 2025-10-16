@@ -8,7 +8,7 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 
 use rwasm::{
     is_multi_align,
-    mem_index::{AddressType, GLOBAL_MEM_START, UNIT},
+    mem_index::{AddressType, UNIT},
 };
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
@@ -96,7 +96,7 @@ impl MemoryInstructionsChip {
         cols.clk = F::from_canonical_u32(event.clk);
         cols.pc = F::from_canonical_u32(event.pc);
         cols.res = event.res.into();
-        println!("res:{}",event.res);
+        println!("res:{}", event.res);
         cols.raw_addr = event.raw_addr.into();
         let offset: u32 = event.opcode.aux_value();
         cols.instr_offset = offset.into();
@@ -104,7 +104,7 @@ impl MemoryInstructionsChip {
 
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
-        
+
         // Populate addr_word and addr_aligned columns.
         let memory_addr = event.raw_addr.wrapping_add(offset);
         let typed_addr = AddressType::GlobalMemory(memory_addr - memory_addr % WORD_SIZE as u32);
@@ -151,11 +151,11 @@ impl MemoryInstructionsChip {
         let mem_value = event.mem_access.value();
         if matches!(
             event.opcode,
-            Opcode::I32Load(_)
-                | Opcode::I32Load16U(_)
-                | Opcode::I32Load16S(_)
-                | Opcode::I32Load8U(_)
-                | Opcode::I32Load8S(_)
+            Opcode::I32Load(_) |
+                Opcode::I32Load16U(_) |
+                Opcode::I32Load16S(_) |
+                Opcode::I32Load8U(_) |
+                Opcode::I32Load8S(_)
         ) {
             match event.opcode {
                 Opcode::I32Load8U(_) | Opcode::I32Load8S(_) => {

@@ -1,6 +1,5 @@
 //! An implementation of an exucutor for the SP1 RISC-V zkVM.
 
-#![warn(clippy::pedantic)]
 #![allow(clippy::similar_names)]
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::cast_possible_truncation)]
@@ -18,7 +17,6 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::explicit_iter_loop)]
 #![allow(clippy::struct_excessive_bools)]
-#![warn(missing_docs)]
 
 mod air;
 mod context;

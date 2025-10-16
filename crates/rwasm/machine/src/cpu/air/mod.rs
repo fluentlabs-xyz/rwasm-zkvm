@@ -48,18 +48,24 @@ where
         // Assert the shard and clk to send.  Only the memory and syscall instructions need the
         // actual shard and clk values for memory access evals.
         // SAFETY: The usage of `builder.if_else` requires `is_memory + is_syscall` to be boolean.
-        // The correctness of `is_memory` and `is_syscall` will be checked in the opcode specific chips.
-        // In these correct cases, `is_memory + is_syscall` will be always boolean.
-        let expected_shard_to_send =
-            builder.if_else(local.is_memory + local.is_syscall+local.instruction.is_call_ins, local.shard, AB::Expr::zero());
-        let expected_clk_to_send =
-            builder.if_else(local.is_memory + local.is_syscall+local.is_halt+local.instruction.is_call_ins, clk.clone(), AB::Expr::zero());
+        // The correctness of `is_memory` and `is_syscall` will be checked in the opcode specific
+        // chips. In these correct cases, `is_memory + is_syscall` will be always boolean.
+        let expected_shard_to_send = builder.if_else(
+            local.is_memory + local.is_syscall + local.instruction.is_call_ins,
+            local.shard,
+            AB::Expr::zero(),
+        );
+        let expected_clk_to_send = builder.if_else(
+            local.is_memory + local.is_syscall + local.is_halt + local.instruction.is_call_ins,
+            clk.clone(),
+            AB::Expr::zero(),
+        );
         builder.when(local.is_real).assert_eq(local.shard_to_send, expected_shard_to_send);
         builder.when(local.is_real).assert_eq(local.clk_to_send, expected_clk_to_send);
 
         self.eval_alu(builder, local);
         self.eval_branching(builder, local);
-        self.eval_call(builder, local,next);
+        self.eval_call(builder, local, next);
         self.eval_memory(builder, local);
         self.eval_local(builder, local, clk.clone());
         self.eval_ecall(builder, local);
@@ -75,8 +81,8 @@ where
         //check sp consistence
         builder.when(local.is_real).when(next.is_real).assert_eq(local.next_sp, next.sp);
 
-        // Always range check the word value in `op_a`, as JUMP instructions and `HINT_LEN` syscall may witness
-        // an invalid word and write it to memory.
+        // Always range check the word value in `op_a`, as JUMP instructions and `HINT_LEN` syscall
+        // may witness an invalid word and write it to memory.
         // SAFETY: `local.is_real` is checked to be boolean in `eval_is_real`.
         builder.slice_range_check_u8(&local.op_res_access.access.value.0, local.is_real);
 
@@ -95,13 +101,17 @@ impl CpuChip {
         // SAFETY: `local.is_real` is checked to be boolean in `eval_is_real`.
         // The `shard`, `clk`, `pc` are constrained throughout the CpuChip.
         // The `local.instruction.opcode`, `local.instruction.op_a_0` are from the ProgramChip.
-        // The `local.op_b_val()` and `local.op_c_val()` are constrained in `eval_registers` in the CpuChip.
-        // Therefore, opcode specific chips that will receive this instruction need to the following.
-        // - For an instruction with a valid opcode, exactly one opcode specific chip can receive the instruction.
-        // - The `next_pc`, `num_extra_cycles`, `op_a_val`, `op_a_immutable`, `is_memory`, `is_syscall`, `is_halt` are constrained correctly.
-        // Note that in this case, `shard_to_send` and `clk_to_send` will be correctly constrained as well.
-        // If `instruction.op_a_0 == 1`, then `eval_registers` enforces `op_a_val() == 0`.
-        // Therefore, in this case, `op_a_val` doesn't need to be constrained in the opcode specific chips.
+        // The `local.op_b_val()` and `local.op_c_val()` are constrained in `eval_registers` in the
+        // CpuChip. Therefore, opcode specific chips that will receive this instruction need
+        // to the following.
+        // - For an instruction with a valid opcode, exactly one opcode specific chip can receive
+        //   the instruction.
+        // - The `next_pc`, `num_extra_cycles`, `op_a_val`, `op_a_immutable`, `is_memory`,
+        //   `is_syscall`, `is_halt` are constrained correctly.
+        // Note that in this case, `shard_to_send` and `clk_to_send` will be correctly constrained
+        // as well. If `instruction.op_a_0 == 1`, then `eval_registers` enforces `op_a_val()
+        // == 0`. Therefore, in this case, `op_a_val` doesn't need to be constrained in the
+        // opcode specific chips.
         builder.send_instruction(
             local.shard_to_send,
             local.clk_to_send,
@@ -119,38 +129,36 @@ impl CpuChip {
         );
 
         // Calculate a_lt_b <==> a < b (using appropriate signedness).
-        let use_signed_comparison = local.instruction.is_i32ges
-            + local.instruction.is_i32gts
-            + local.instruction.is_i32les
-            + local.instruction.is_i32lts;
+        let use_signed_comparison = local.instruction.is_i32ges +
+            local.instruction.is_i32gts +
+            local.instruction.is_i32les +
+            local.instruction.is_i32lts;
         let comparison_alu = local.alu_cols;
         let is_comparison = local.instruction.is_comparison_alu;
         // assert that all comparison variable are bool
-        builder.when(is_comparison.clone()).assert_bool(comparison_alu.res_bool);
+        builder.when(is_comparison).assert_bool(comparison_alu.res_bool);
         builder
-            .when(is_comparison.clone())
+            .when(is_comparison)
             .assert_eq(comparison_alu.res_bool, local.op_res_val().reduce::<AB>());
-        builder.when(is_comparison.clone()).assert_bool(local.alu_cols.arg1_eq_arg2);
-        builder.when(is_comparison.clone()).assert_bool(local.alu_cols.arg1_lt_arg2);
-        builder.when(is_comparison.clone()).assert_bool(local.alu_cols.arg1_gt_arg2);
-        builder.when(is_comparison.clone()).assert_bool(
-            local.alu_cols.arg1_eq_arg2.clone()
-                + local.alu_cols.arg1_gt_arg2.clone()
-                + local.alu_cols.arg1_lt_arg2.clone(),
+        builder.when(is_comparison).assert_bool(local.alu_cols.arg1_eq_arg2);
+        builder.when(is_comparison).assert_bool(local.alu_cols.arg1_lt_arg2);
+        builder.when(is_comparison).assert_bool(local.alu_cols.arg1_gt_arg2);
+        builder.when(is_comparison).assert_bool(
+            local.alu_cols.arg1_eq_arg2 + local.alu_cols.arg1_gt_arg2 + local.alu_cols.arg1_lt_arg2,
         );
         builder
             .when(comparison_alu.arg1_eq_arg2)
             .assert_word_eq(local.op_arg1_val(), local.op_arg2_val());
         builder
             .when(local.instruction.is_i32lts + local.instruction.is_i32ltu)
-            .assert_eq(local.alu_cols.res_bool.clone(), local.alu_cols.arg1_lt_arg2);
+            .assert_eq(local.alu_cols.res_bool, local.alu_cols.arg1_lt_arg2);
         builder.when(local.instruction.is_i32les + local.instruction.is_i32leu).assert_eq(
             local.alu_cols.res_bool,
             local.alu_cols.arg1_eq_arg2 + local.alu_cols.arg1_lt_arg2,
         );
         builder
             .when(local.instruction.is_i32gts + local.instruction.is_i32gtu)
-            .assert_eq(local.alu_cols.res_bool.clone(), local.alu_cols.arg1_gt_arg2);
+            .assert_eq(local.alu_cols.res_bool, local.alu_cols.arg1_gt_arg2);
         builder.when(local.instruction.is_i32ges + local.instruction.is_i32geu).assert_eq(
             local.alu_cols.res_bool,
             local.alu_cols.arg1_eq_arg2 + local.alu_cols.arg1_gt_arg2,
@@ -169,16 +177,16 @@ impl CpuChip {
             AB::Expr::from_canonical_u32(UNUSED_PC),
             AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
             AB::Expr::zero(),
-            use_signed_comparison.clone() * AB::Expr::from_canonical_u32(Opcode::I32LtS.code())
-                + (AB::Expr::one() - use_signed_comparison.clone())
-                    * AB::Expr::from_canonical_u32(Opcode::I32LtU.code()),
+            use_signed_comparison.clone() * AB::Expr::from_canonical_u32(Opcode::I32LtS.code()) +
+                (AB::Expr::one() - use_signed_comparison.clone()) *
+                    AB::Expr::from_canonical_u32(Opcode::I32LtU.code()),
             Word::extend_var::<AB>(comparison_alu.arg1_lt_arg2),
             local.op_arg1_val(),
             local.op_arg2_val(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
-            is_comparison.clone(),
+            is_comparison,
         );
 
         builder.send_instruction(
@@ -187,16 +195,16 @@ impl CpuChip {
             AB::Expr::from_canonical_u32(UNUSED_PC),
             AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
             AB::Expr::zero(),
-            use_signed_comparison.clone() * AB::Expr::from_canonical_u32(Opcode::I32LtS.code())
-                + (AB::Expr::one() - use_signed_comparison.clone())
-                    * AB::Expr::from_canonical_u32(Opcode::I32LtU.code()),
+            use_signed_comparison.clone() * AB::Expr::from_canonical_u32(Opcode::I32LtS.code()) +
+                (AB::Expr::one() - use_signed_comparison.clone()) *
+                    AB::Expr::from_canonical_u32(Opcode::I32LtU.code()),
             Word::extend_var::<AB>(comparison_alu.arg1_gt_arg2),
             local.op_arg2_val(),
             local.op_arg1_val(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
-            is_comparison.clone(),
+            is_comparison,
         );
     }
 
@@ -227,9 +235,9 @@ impl CpuChip {
         builder.eval_memory_access(
             local.shard,
             clk.clone(),
-            local.sp
-                + local.instruction.aux_val.reduce::<AB>() * AB::Expr::from_canonical_u32(UNIT)
-                - AB::Expr::from_canonical_u32(UNIT),
+            local.sp +
+                local.instruction.aux_val.reduce::<AB>() * AB::Expr::from_canonical_u32(UNIT) -
+                AB::Expr::from_canonical_u32(UNIT),
             &local.op_arg1_access,
             local.instruction.is_localget,
         );
@@ -245,9 +253,9 @@ impl CpuChip {
         builder.eval_memory_access(
             local.shard,
             clk.clone() + AB::Expr::one(),
-            local.next_sp
-                + local.instruction.aux_val.reduce::<AB>() * AB::Expr::from_canonical_u32(UNIT)
-                - AB::Expr::from_canonical_u32(UNIT),
+            local.next_sp +
+                local.instruction.aux_val.reduce::<AB>() * AB::Expr::from_canonical_u32(UNIT) -
+                AB::Expr::from_canonical_u32(UNIT),
             &local.op_res_access,
             local.instruction.is_localset + local.instruction.is_localtee,
         );
@@ -301,19 +309,15 @@ impl CpuChip {
         //op_a_val is always the offset when branch
         builder
             .when(
-                local.instruction.is_br
-                    + local.instruction.is_brifeqz
-                    + local.instruction.is_brifnez,
+                local.instruction.is_br +
+                    local.instruction.is_brifeqz +
+                    local.instruction.is_brifnez,
             )
             .assert_word_eq(local.instruction.aux_val, local.op_res_val());
     }
 
-      pub(crate) fn eval_ecall<AB: SP1AirBuilder>(
-        &self,
-        builder: &mut AB,
-        local: &CpuCols<AB::Var>,
-    ){
-           builder.send_instruction(
+    pub(crate) fn eval_ecall<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CpuCols<AB::Var>) {
+        builder.send_instruction(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,
@@ -326,7 +330,7 @@ impl CpuChip {
             local.is_memory,
             local.is_syscall,
             local.is_halt,
-            local.instruction.is_ecall
+            local.instruction.is_ecall,
         );
     }
 
@@ -459,8 +463,7 @@ impl CpuChip {
             clk + AB::Expr::from_canonical_u8(1),
             local.sp - AB::Expr::from_canonical_u8(4),
             &local.op_res_access,
-            local.instruction.is_localget
-             + local.instruction.is_i32const,
+            local.instruction.is_localget + local.instruction.is_i32const,
         );
 
         builder
@@ -479,16 +482,16 @@ impl CpuChip {
             clk,
             local.sp,
             &local.op_arg1_access,
-            local.instruction.is_brifeqz
-                + local.instruction.is_brifnez
-                + local.instruction.is_brtable,
+            local.instruction.is_brifeqz +
+                local.instruction.is_brifnez +
+                local.instruction.is_brtable,
         );
 
         builder
             .when(
-                local.instruction.is_brifeqz
-                    + local.instruction.is_brifnez
-                    + local.instruction.is_brtable,
+                local.instruction.is_brifeqz +
+                    local.instruction.is_brifnez +
+                    local.instruction.is_brtable,
             )
             .assert_eq(local.sp + AB::Expr::from_canonical_u32(UNIT), local.next_sp);
     }
@@ -504,12 +507,12 @@ impl CpuChip {
             clk.clone() + AB::Expr::from_canonical_u8(1),
             local.sp,
             &local.op_res_access,
-            local.instruction.is_unary
-                + local.instruction.is_i32load
-                + local.instruction.is_i32load16s
-                + local.instruction.is_i32load16u
-                + local.instruction.is_i32load8s
-                + local.instruction.is_i32load8u,
+            local.instruction.is_unary +
+                local.instruction.is_i32load +
+                local.instruction.is_i32load16s +
+                local.instruction.is_i32load16u +
+                local.instruction.is_i32load8s +
+                local.instruction.is_i32load8u,
         );
 
         builder.eval_memory_access(
@@ -517,21 +520,21 @@ impl CpuChip {
             clk.clone(),
             local.sp,
             &local.op_arg1_access,
-            local.instruction.is_unary
-                + local.instruction.is_i32load
-                + local.instruction.is_i32load16s
-                + local.instruction.is_i32load16u
-                + local.instruction.is_i32load8s
-                + local.instruction.is_i32load8u,
+            local.instruction.is_unary +
+                local.instruction.is_i32load +
+                local.instruction.is_i32load16s +
+                local.instruction.is_i32load16u +
+                local.instruction.is_i32load8s +
+                local.instruction.is_i32load8u,
         );
         builder
             .when(
-                local.instruction.is_unary
-                    + local.instruction.is_i32load
-                    + local.instruction.is_i32load16s
-                    + local.instruction.is_i32load16u
-                    + local.instruction.is_i32load8s
-                    + local.instruction.is_i32load8u,
+                local.instruction.is_unary +
+                    local.instruction.is_i32load +
+                    local.instruction.is_i32load16s +
+                    local.instruction.is_i32load16u +
+                    local.instruction.is_i32load8s +
+                    local.instruction.is_i32load8u,
             )
             .assert_eq(local.sp, local.next_sp);
     }
@@ -547,22 +550,18 @@ impl CpuChip {
             clk.clone() + AB::Expr::from_canonical_u8(1),
             local.sp + AB::Expr::from_canonical_u8(4),
             &local.op_res_access,
-            local.instruction.is_binary
-            // +local.instruction.is_table_grow,
+            local.instruction.is_binary, // +local.instruction.is_table_grow,
         );
-
-       
 
         builder.eval_memory_access(
             local.shard,
             clk.clone(),
             local.sp,
             &local.op_arg2_access,
-            local.instruction.is_binary
-                + local.instruction.is_i32store
-                + local.instruction.is_i32store16
-                + local.instruction.is_i32store8
-                // + local.instruction.is_table_grow,
+            local.instruction.is_binary +
+                local.instruction.is_i32store +
+                local.instruction.is_i32store16 +
+                local.instruction.is_i32store8, // + local.instruction.is_table_grow,
         );
 
         builder.eval_memory_access(
@@ -570,27 +569,31 @@ impl CpuChip {
             clk.clone(),
             local.sp + AB::Expr::from_canonical_u8(4),
             &local.op_arg1_access,
-            local.instruction.is_binary
-                + local.instruction.is_i32store
-                + local.instruction.is_i32store16
-                + local.instruction.is_i32store8
-                // + local.instruction.is_table_grow,
+            local.instruction.is_binary +
+                local.instruction.is_i32store +
+                local.instruction.is_i32store16 +
+                local.instruction.is_i32store8, // + local.instruction.is_table_grow,
         );
         builder
             .when(local.instruction.is_binary)
             .assert_eq(local.sp + AB::Expr::from_canonical_u32(UNIT), local.next_sp);
         builder
             .when(
-                local.instruction.is_i32store
-                    + local.instruction.is_i32store16
-                    + local.instruction.is_i32store8,
+                local.instruction.is_i32store +
+                    local.instruction.is_i32store16 +
+                    local.instruction.is_i32store8,
             )
             .assert_eq(
                 local.sp + AB::Expr::from_canonical_u32(UNIT) + AB::Expr::from_canonical_u32(UNIT),
                 local.next_sp,
             );
     }
-    pub(crate) fn eval_call<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CpuCols<AB::Var>,next: &CpuCols<AB::Var>) {
+    pub(crate) fn eval_call<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &CpuCols<AB::Var>,
+        next: &CpuCols<AB::Var>,
+    ) {
         builder.send_call(
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -600,11 +603,10 @@ impl CpuChip {
             local.call_data.func_ref,
             local.call_data.table_id,
             local.call_data.table_idx,
-            local.instruction.is_call
-                + local.instruction.is_callinternal
-                + local.instruction.is_callindirect
-                + local.instruction.is_return
-
+            local.instruction.is_call +
+                local.instruction.is_callinternal +
+                local.instruction.is_callindirect +
+                local.instruction.is_return,
         );
 
         builder.send_instruction(
@@ -620,26 +622,33 @@ impl CpuChip {
             local.is_memory,
             local.is_syscall,
             local.is_halt,
-            local.instruction.is_call
-                + local.instruction.is_callinternal
-                + local.instruction.is_callindirect
-                + local.instruction.is_return,
+            local.instruction.is_call +
+                local.instruction.is_callinternal +
+                local.instruction.is_callindirect +
+                local.instruction.is_return,
         );
         builder
             .when(
-                AB::Expr::one()
-                    - local.instruction.is_call
-                    - local.instruction.is_callinternal
-                    - local.instruction.is_callindirect
-                    - local.instruction.is_return,
+                AB::Expr::one() -
+                    local.instruction.is_call -
+                    local.instruction.is_callinternal -
+                    local.instruction.is_callindirect -
+                    local.instruction.is_return,
             )
             .assert_eq(local.call_data.call_sp, local.call_data.next_call_sp);
-        builder.when(local.is_real).when(next.is_real).assert_eq(local.call_data.next_call_sp, next.call_data.call_sp);
-        builder.when(local.instruction.is_return).when(local.call_data.call_sp_is_zero).assert_zero(next.is_real);
-        builder.when(local.instruction.is_return).when(local.call_data.call_sp_is_zero).assert_zero(local.call_data.call_sp);
+        builder
+            .when(local.is_real)
+            .when(next.is_real)
+            .assert_eq(local.call_data.next_call_sp, next.call_data.call_sp);
+        builder
+            .when(local.instruction.is_return)
+            .when(local.call_data.call_sp_is_zero)
+            .assert_zero(next.is_real);
+        builder
+            .when(local.instruction.is_return)
+            .when(local.call_data.call_sp_is_zero)
+            .assert_zero(local.call_data.call_sp);
     }
-
-   
 }
 
 impl<F> BaseAir<F> for CpuChip {

@@ -5,13 +5,13 @@ use itertools::Itertools;
 use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
+use rwasm::Opcode;
 use rwasm_executor::{
-    events::{ByteLookupEvent, ByteRecord, MemoryRecordEnum, SyscallEvent},
+    events::{ByteLookupEvent, ByteRecord, SyscallEvent},
     syscalls::SyscallCode,
     ExecutionRecord, Program,
 };
 use sp1_stark::air::MachineAir;
-use rwasm::Opcode;
 
 use crate::utils::{next_power_of_two, zeroed_f_vec};
 
@@ -82,34 +82,34 @@ impl SyscallInstrsChip {
         cols: &mut SyscallInstrColumns<F>,
         blu: &mut impl ByteRecord,
     ) {
-        println!("sys instr event:{:?}",event);
+        println!("sys instr event:{:?}", event);
         cols.is_real = F::one();
         cols.pc = F::from_canonical_u32(event.pc);
         cols.next_pc = F::from_canonical_u32(event.next_pc);
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
-        let is_fat_op = match event.syscall_code{
-            SyscallCode::TABLE_INIT=>true,
-            _=>false
+        #[allow(clippy::match_like_matches_macro)]
+        let is_fat_op = match event.syscall_code {
+            SyscallCode::TABLE_INIT => true,
+            _ => false,
         };
         cols.is_fat_op = F::from_bool(is_fat_op);
-        let fat_opcode =  match event.syscall_code{
-            SyscallCode::TABLE_INIT=>Opcode::TableInit(0u32).code(),
-            _=>Opcode::Unreachable.code(),
+        let fat_opcode = match event.syscall_code {
+            SyscallCode::TABLE_INIT => Opcode::TableInit(0u32).code(),
+            _ => Opcode::Unreachable.code(),
         };
         cols.fat_opcode = F::from_canonical_u32(fat_opcode);
-        cols.is_sys_call= F::from_bool(!is_fat_op);
+        cols.is_sys_call = F::from_bool(!is_fat_op);
         // cols.op_a_access.populate(MemoryRecordEnum::Write(event.a_record), blu);
         cols.op_b_value = event.arg1.into();
         cols.op_c_value = event.arg2.into();
         cols.syscall_code = (event.syscall_code as u32).into();
         let syscall_id = F::from_canonical_u32(event.syscall_id);
-         println!("code :{}should send:{}",event.syscall_code,event.syscall_code.should_send());
-        cols.syscall_id =syscall_id;
+        println!("code :{}should send:{}", event.syscall_code, event.syscall_code.should_send());
+        cols.syscall_id = syscall_id;
         let num_cycles = event.syscall_code.num_cycles();
-      
-        
-        cols.num_extra_cycles =   F::from_canonical_u32(num_cycles);
+
+        cols.num_extra_cycles = F::from_canonical_u32(num_cycles);
         cols.is_halt =
             F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
 
@@ -140,8 +140,8 @@ impl SyscallInstrsChip {
 
         // If the syscall is `COMMIT` or `COMMIT_DEFERRED_PROOFS`, set the index bitmap and
         // digest word.
-        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id())
-            || syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
+        if syscall_id == F::from_canonical_u32(SyscallCode::COMMIT.syscall_id()) ||
+            syscall_id == F::from_canonical_u32(SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id())
         {
             let digest_idx = cols.op_b_value.to_u32() as usize;
             cols.index_bitmap[digest_idx] = F::one();

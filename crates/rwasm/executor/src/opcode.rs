@@ -1,9 +1,5 @@
 //! Opcodes for the SP1 zkVM.
 
-use std::fmt::Display;
-
-use enum_map::Enum;
-use p3_field::Field;
 use serde::{Deserialize, Serialize};
 
 /// Byte Opcode.

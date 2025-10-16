@@ -1,13 +1,15 @@
 use p3_field::PrimeField;
 
+use p3_util::indices_arr;
 use sp1_derive::AlignedBorrow;
 use sp1_stark::Word;
-use std::{iter::once, mem::size_of, vec::IntoIter};
-use std::mem::{transmute};
-use p3_util::indices_arr;
+use std::{
+    mem::{size_of, transmute},
+    vec::IntoIter,
+};
 pub const NUM_INSTRUCTION_COLS: usize = size_of::<InstructionCols<u8>>();
 pub const INSTRUCTION_COL_MAP: InstructionCols<usize> = make_col_map();
-use rwasm::{Opcode};
+use rwasm::Opcode;
 /// The column layout for instructions.
 #[derive(AlignedBorrow, Clone, Copy, Default, Debug)]
 #[repr(C)]
@@ -39,8 +41,8 @@ pub struct InstructionCols<T> {
     pub is_i32geu: T,
     pub is_i32eq: T,
     pub is_i32ne: T,
-    pub is_i32lts:T,
-    pub is_i32ltu:T,
+    pub is_i32lts: T,
+    pub is_i32ltu: T,
     pub is_i32eqz: T,
 
     pub is_i32load: T,
@@ -65,14 +67,14 @@ pub struct InstructionCols<T> {
 
     pub is_callinternal: T,
     pub is_callindirect: T,
-    pub is_call:T,
+    pub is_call: T,
     pub is_return: T,
 }
 
 impl<F: PrimeField> InstructionCols<F> {
     pub fn populate(&mut self, opcode: Opcode) {
-        self.opcode=F::from_canonical_u32(opcode.code());
-        self.aux_val=Word::from(opcode.aux_value());
+        self.opcode = F::from_canonical_u32(opcode.code());
+        self.aux_val = Word::from(opcode.aux_value());
         self.is_nullary = F::from_bool(opcode.is_nullary());
         self.is_unary = F::from_bool(opcode.is_unary_instruction());
         self.is_binary = F::from_bool(opcode.is_binary_instruction());
@@ -81,13 +83,12 @@ impl<F: PrimeField> InstructionCols<F> {
         self.is_call_ins = F::from_bool(opcode.is_call_instruction());
         match opcode {
             Opcode::LocalGet(_) | Opcode::LocalSet(_) | Opcode::LocalTee(_) => {
-
-                self.is_local=F::one();
+                self.is_local = F::one();
                 match opcode {
-                    Opcode::LocalGet(_)=>self.is_localget=F::one(),
-                    Opcode::LocalSet(_)=>self.is_localset=F::one(),
-                    Opcode::LocalTee(_)=>self.is_localtee=F::one(),
-                    _=>(),
+                    Opcode::LocalGet(_) => self.is_localget = F::one(),
+                    Opcode::LocalSet(_) => self.is_localset = F::one(),
+                    Opcode::LocalTee(_) => self.is_localtee = F::one(),
+                    _ => (),
                 }
             }
             _ => (),
@@ -96,17 +97,17 @@ impl<F: PrimeField> InstructionCols<F> {
 
         if opcode.is_alu_instruction() {
             match opcode {
-                 Opcode::I32LtS
-                | Opcode::I32LtU
-                | Opcode::I32GtS
-                | Opcode::I32GtU
-                | Opcode::I32GeS
-                | Opcode::I32GeU
-                | Opcode::I32LeS
-                | Opcode::I32LeU
-                | Opcode::I32Eqz
-                | Opcode::I32Eq
-                | Opcode::I32Ne => {
+                Opcode::I32LtS |
+                Opcode::I32LtU |
+                Opcode::I32GtS |
+                Opcode::I32GtU |
+                Opcode::I32GeS |
+                Opcode::I32GeU |
+                Opcode::I32LeS |
+                Opcode::I32LeU |
+                Opcode::I32Eqz |
+                Opcode::I32Eq |
+                Opcode::I32Ne => {
                     self.is_comparison_alu = F::one();
                 }
                 _ => {
@@ -119,22 +120,17 @@ impl<F: PrimeField> InstructionCols<F> {
             self.is_ecall = F::one();
         }
         match opcode {
-            Opcode::I32Eqz => {
-                self.is_i32eqz = F::one();
-            }
+            Opcode::I32Eqz => self.is_i32eqz = F::one(),
             Opcode::I32Eq => self.is_i32eq = F::one(),
             Opcode::I32Ne => self.is_i32ne = F::one(),
-            Opcode::I32LtU => self.is_i32ltu =F::one(),
-            Opcode::I32LtS => self.is_i32lts =F::one(),
+            Opcode::I32LtU => self.is_i32ltu = F::one(),
+            Opcode::I32LtS => self.is_i32lts = F::one(),
             Opcode::I32GtS => self.is_i32gts = F::one(),
             Opcode::I32GtU => self.is_i32gtu = F::one(),
             Opcode::I32LeS => self.is_i32les = F::one(),
             Opcode::I32LeU => self.is_i32leu = F::one(),
             Opcode::I32GeS => self.is_i32ges = F::one(),
             Opcode::I32GeU => self.is_i32geu = F::one(),
-            Opcode::I32Eqz => self.is_i32eqz = F::one(),
-            Opcode::I32Eq => self.is_i32eq = F::one(),
-            Opcode::I32Ne => self.is_i32ne = F::one(),
             Opcode::I32Load(_) => self.is_i32load = F::one(),
             Opcode::I32Load16S(_) => self.is_i32load16s = F::one(),
             Opcode::I32Load16U(_) => self.is_i32load16u = F::one(),
@@ -152,13 +148,13 @@ impl<F: PrimeField> InstructionCols<F> {
             Opcode::LocalTee(_) => self.is_localtee = F::one(),
             Opcode::I32Const(_) => self.is_i32const = F::one(),
             Opcode::CallInternal(_) => self.is_callinternal = F::one(),
-            Opcode::CallIndirect(_)=>self.is_callindirect=F::one(),
-            Opcode::Call(_)=>self.is_call=F::one(),
-            Opcode::Return => (self.is_return = F::one()),
+            Opcode::CallIndirect(_) => self.is_callindirect = F::one(),
+            Opcode::Call(_) => self.is_call = F::one(),
+            Opcode::Return => self.is_return = F::one(),
             Opcode::ConsumeFuel(_) => self.is_skipped = F::one(),
             Opcode::SignatureCheck(_) => self.is_skipped = F::one(),
             Opcode::Drop => self.is_skipped = F::one(),
-            Opcode::TableGrow(_)=>self.is_table_grow = F::one(),
+            Opcode::TableGrow(_) => self.is_table_grow = F::one(),
 
             _ => {}
         }

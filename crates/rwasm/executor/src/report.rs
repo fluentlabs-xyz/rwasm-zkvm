@@ -28,7 +28,8 @@ pub struct ExecutionReport {
 }
 
 impl ExecutionReport {
-    /// Compute the total number of opcodes run during the execution.// TODO: implement this correctly
+    /// Compute the total number of opcodes run during the execution.// TODO: implement this
+    /// correctly
     #[must_use]
     pub fn total_opcode_count(&self) -> u64 {
         self.cycles

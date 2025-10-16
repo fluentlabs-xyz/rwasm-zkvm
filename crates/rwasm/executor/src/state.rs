@@ -5,7 +5,7 @@ use std::{
 };
 
 use hashbrown::HashMap;
-use rwasm::{RwasmStore, Store};
+use rwasm::RwasmStore;
 use serde::{Deserialize, Serialize};
 use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, StarkVerifyingKey};
 

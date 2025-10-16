@@ -1,27 +1,22 @@
 //! Programs that can be executed by the SP1 zkVM.
 
-use std::hash::Hash;
-use std::{fs::File, io::Read, str::FromStr};
+use std::str::FromStr;
 
 use crate::RwasmAirId;
 
 use hashbrown::HashMap;
-use itertools::Itertools;
-use p3_field::Field;
-use p3_field::{AbstractExtensionField, PrimeField32};
-use p3_maybe_rayon::prelude::IntoParallelIterator;
-use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
+use p3_field::{AbstractExtensionField, Field, PrimeField32};
+use p3_maybe_rayon::prelude::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 
-use rwasm::mem_index::AddressType;
-use rwasm::{InstructionSet, Opcode, RwasmModule, RwasmModuleInner};
+use rwasm::{mem_index::AddressType, InstructionSet, Opcode, RwasmModule, RwasmModuleInner};
 use serde::{Deserialize, Serialize};
-use sp1_stark::septic_curve::{SepticCurve, SepticCurveComplete};
-use sp1_stark::septic_digest::SepticDigest;
-use sp1_stark::septic_extension::SepticExtension;
-use sp1_stark::InteractionKind;
 use sp1_stark::{
     air::{MachineAir, MachineProgram},
+    septic_curve::{SepticCurve, SepticCurveComplete},
+    septic_digest::SepticDigest,
+    septic_extension::SepticExtension,
     shape::Shape,
+    InteractionKind,
 };
 
 /// A program that can be executed by the SP1 zkVM.
@@ -63,13 +58,13 @@ impl Program {
     #[must_use]
     pub fn with_elements(mut self, elements: Vec<u32>) -> Self {
         let module = RwasmModule::from(RwasmModuleInner {
-                code_section: self.module.code_section.clone(),
-                data_section: vec![],
-                elem_section: elements,
-                hint_section: vec![],
-            });
-        self.module=module;
-        self.memory_image=Program::memory_image(&self.module);
+            code_section: self.module.code_section.clone(),
+            data_section: vec![],
+            elem_section: elements,
+            hint_section: vec![],
+        });
+        self.module = module;
+        self.memory_image = Program::memory_image(&self.module);
         self
     }
 
@@ -84,17 +79,6 @@ impl Program {
         Ok(Program { module, memory_image, preprocessed_shape: None })
     }
 
-    /// Disassemble a RV32IM ELF to a program that be executed by the VM from a file path.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if the file cannot be opened or read.
-    // pub fn from_elf(path: &str) -> eyre::Result<Self> {
-    //     let mut elf_code = Vec::new();
-    //     File::open(path)?.read_to_end(&mut elf_code)?;
-    //     Program::from(&elf_code)
-    // }
-
     /// Custom logic for padding the trace to a power of two according to the proof shape.
     pub fn fixed_log2_rows<F: Field, A: MachineAir<F>>(&self, air: &A) -> Option<usize> {
         let id = RwasmAirId::from_str(&air.name()).unwrap();
@@ -107,7 +91,7 @@ impl Program {
 
     #[must_use]
     pub fn memory_image(module: &RwasmModule) -> HashMap<u32, u32> {
-       let mut v_data: HashMap<_,_> = module
+        let mut v_data: HashMap<_, _> = module
             .data_section
             .windows(4)
             .enumerate()
@@ -129,8 +113,6 @@ impl Program {
     pub fn fetch(&self, pc: u32) -> Opcode {
         self.module.code_section[pc as usize]
     }
-
-   
 }
 
 impl<F: PrimeField32> MachineProgram<F> for Program {
@@ -139,8 +121,7 @@ impl<F: PrimeField32> MachineProgram<F> for Program {
     }
 
     fn initial_global_cumulative_sum(&self) -> SepticDigest<F> {
-        let mut digests: Vec<SepticCurveComplete<F>> = 
-            Program::memory_image(&self.module)
+        let mut digests: Vec<SepticCurveComplete<F>> = Program::memory_image(&self.module)
             .iter()
             .par_bridge()
             .map(|(addr, word)| {
@@ -149,8 +130,8 @@ impl<F: PrimeField32> MachineProgram<F> for Program {
                 let values = [
                     (InteractionKind::Memory as u32) << 16,
                     0,
-                    addr as u32,
-                    word as u32 & 255,
+                    addr,
+                    word & 255,
                     (word >> 8) & 255,
                     (word >> 16) & 255,
                     (word >> 24) & 255,

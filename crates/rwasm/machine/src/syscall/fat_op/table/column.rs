@@ -1,11 +1,7 @@
 use sp1_derive::AlignedBorrow;
 use sp1_stark::Word;
 
-use crate::memory::{value_as_limbs, MemoryReadCols, MemoryWriteCols};
-use rwasm::{
-    mem_index::{AddressType, TABLE_ELEM_SIZE, UNIT},
-    N_MAX_TABLE_SIZE,
-};
+use crate::memory::{MemoryReadCols, MemoryWriteCols};
 
 pub const NUM_TABLE_INIT_SIZE: usize = num_table_cols();
 pub const fn num_table_cols() -> usize {

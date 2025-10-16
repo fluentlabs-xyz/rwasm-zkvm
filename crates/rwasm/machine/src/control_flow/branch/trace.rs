@@ -6,7 +6,6 @@ use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
-
 use rwasm_executor::{
     events::{BranchEvent, ByteLookupEvent, ByteRecord},
     ExecutionRecord, Opcode, Program,
@@ -87,21 +86,17 @@ impl BranchChip {
         cols.op_arg1_value = event.arg1.into();
         cols.op_arg2_value = event.arg2.into();
         cols.target = match event.opcode {
-            Opcode::BrTable(_)=>{
-                
-               (event.opcode.aux_value() - 1).into()
-            },
-            _=>0.into(),
+            Opcode::BrTable(_) => (event.opcode.aux_value() - 1).into(),
+            _ => 0.into(),
         };
-        cols.br_table_offset_value= match event.opcode{
-             Opcode::BrTable(_)=>{
-                
+        cols.br_table_offset_value = match event.opcode {
+            Opcode::BrTable(_) => {
                 let max_index = event.opcode.aux_value() - 1;
                 let index = event.arg1;
                 let normalized_index = std::cmp::min(index, max_index);
-                (2*normalized_index+1).into()
-            },
-            _=>0.into(),
+                (2 * normalized_index + 1).into()
+            }
+            _ => 0.into(),
         };
         let a_eq_zero = event.arg1 == 0;
         let a_gt_zero = event.arg1 > 0;
@@ -119,11 +114,11 @@ impl BranchChip {
             _ => unreachable!(),
         };
         match event.opcode {
-            Opcode::Br(_) => cols.is_br=F::from_bool(true),
-            Opcode::BrTable(_) => cols.is_brtable=F::from_bool(true),
-            Opcode::BrIfEqz(_) =>cols.is_brifeqz=F::from_bool(true),
-            Opcode::BrIfNez(_) => cols.is_brifnez=F::from_bool(true),
-            _=>unreachable!(),
+            Opcode::Br(_) => cols.is_br = F::from_bool(true),
+            Opcode::BrTable(_) => cols.is_brtable = F::from_bool(true),
+            Opcode::BrIfEqz(_) => cols.is_brifeqz = F::from_bool(true),
+            Opcode::BrIfNez(_) => cols.is_brifnez = F::from_bool(true),
+            _ => unreachable!(),
         }
 
         cols.pc = event.pc.into();
@@ -133,11 +128,10 @@ impl BranchChip {
 
         if branching {
             cols.is_branching = F::one();
-            if let Opcode::BrTable(_)=event.opcode{
-                cols.is_branching_table=F::from_bool(true);
-                
-            }else{
-                 cols.is_branching_non_table=F::from_bool(true);
+            if let Opcode::BrTable(_) = event.opcode {
+                cols.is_branching_table = F::from_bool(true);
+            } else {
+                cols.is_branching_non_table = F::from_bool(true);
             }
         } else {
             cols.not_branching = F::one();

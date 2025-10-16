@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-
 /// The number of local memory entries per row of the memory local chip.
 pub const NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC: usize = 4;
 pub type MemoryRecord = rwasm::mem::MemoryRecord;

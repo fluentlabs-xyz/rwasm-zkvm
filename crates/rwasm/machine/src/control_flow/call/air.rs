@@ -3,17 +3,16 @@ use std::borrow::Borrow;
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use rwasm::mem_index::{AddressType, FUNC_FRAME_START, UNIT};
-use rwasm_executor::{Opcode, DEFAULT_PC_INC, UNUSED_PC};
+use rwasm::mem_index::{FUNC_FRAME_START, UNIT};
+use rwasm_executor::Opcode;
 
-use sp1_stark::{
-    air::{BaseAirBuilder, SP1AirBuilder},
-    Word,
+use sp1_stark::{air::SP1AirBuilder, Word};
+
+use crate::{
+    air::{SP1CoreAirBuilder, WordAirBuilder},
+    memory::MemoryCols,
+    operations::BabyBearWordRangeChecker,
 };
-
-use crate::{air::MemoryAirBuilder, memory::MemoryCols};
-use crate::air::SP1CoreAirBuilder;
-use crate::{air::WordAirBuilder, operations::BabyBearWordRangeChecker};
 const CALL_SP_STACK_SHIFT: u32 = FUNC_FRAME_START;
 use super::{CallChip, CallColumns};
 
@@ -32,19 +31,15 @@ where
         builder.assert_bool(local.is_call_internal);
         builder.assert_bool(local.is_return);
 
-        let opcode = local.is_call * AB::Expr::from_canonical_u32(Opcode::Call(0).code())
-            + local.is_call_internal * AB::Expr::from_canonical_u32(Opcode::CallInternal(0).code())
-            + local.is_call_indirect * AB::Expr::from_canonical_u32(Opcode::CallIndirect(0).code())
-            + local.is_return * AB::Expr::from_canonical_u32(Opcode::Return.code());
+        let opcode = local.is_call * AB::Expr::from_canonical_u32(Opcode::Call(0).code()) +
+            local.is_call_internal * AB::Expr::from_canonical_u32(Opcode::CallInternal(0).code()) +
+            local.is_call_indirect * AB::Expr::from_canonical_u32(Opcode::CallIndirect(0).code()) +
+            local.is_return * AB::Expr::from_canonical_u32(Opcode::Return.code());
 
-        let is_real = local.is_call.clone()
-            + local.is_call_indirect.clone()
-            + local.is_call_internal
-            + local.is_return.clone();
-        let is_call_ins = local.is_call.clone()
-            + local.is_call_indirect.clone()
-            + local.is_call_internal.clone()
-            + local.is_return;
+        let is_real =
+            local.is_call + local.is_call_indirect + local.is_call_internal + local.is_return;
+        let is_call_ins =
+            local.is_call + local.is_call_indirect + local.is_call_internal + local.is_return;
         builder.receive_instruction(
             local.shard,
             local.clk,
@@ -86,18 +81,18 @@ where
         );
         builder.eval_memory_access(
             local.shard,
-            local.clk.clone() + AB::Expr::from_canonical_u8(1),
-            local.next_call_sp * AB::Expr::from_canonical_u32(UNIT)
-                + AB::Expr::from_canonical_u32(CALL_SP_STACK_SHIFT),
+            local.clk + AB::Expr::from_canonical_u8(1),
+            local.next_call_sp * AB::Expr::from_canonical_u32(UNIT) +
+                AB::Expr::from_canonical_u32(CALL_SP_STACK_SHIFT),
             &local.call_stack_access,
             local.is_call + local.is_call_indirect + local.is_call_internal,
         );
 
         builder.eval_memory_access(
             local.shard,
-            local.clk.clone(),
-            local.call_sp * AB::Expr::from_canonical_u32(UNIT)
-                + AB::Expr::from_canonical_u32(CALL_SP_STACK_SHIFT),
+            local.clk,
+            local.call_sp * AB::Expr::from_canonical_u32(UNIT) +
+                AB::Expr::from_canonical_u32(CALL_SP_STACK_SHIFT),
             &local.call_stack_access,
             local.is_return - local.not_real_return,
         );
@@ -105,9 +100,10 @@ where
         builder.when(local.not_real_return).assert_zero(local.call_sp);
         builder.when(local.not_real_return).assert_one(local.is_return);
 
-        builder.when(local.is_call_internal).assert_eq(local.func_ref, local.opcode_aux_val.reduce::<AB>());
+        builder
+            .when(local.is_call_internal)
+            .assert_eq(local.func_ref, local.opcode_aux_val.reduce::<AB>());
         self.eval_call_sp(builder, local);
-        
     }
 }
 
@@ -117,12 +113,15 @@ impl CallChip {
             .when(local.is_call_internal)
             .assert_eq(local.call_sp + AB::Expr::one(), local.next_call_sp);
         builder
-            .when(local.is_return-local.not_real_return)
+            .when(local.is_return - local.not_real_return)
             .assert_eq(local.call_sp - AB::Expr::one(), local.next_call_sp);
 
-        builder.when(local.is_call_internal).assert_eq(AB::Expr::one()+local.pc.reduce::<AB>(), (*local.call_stack_access.value()).reduce::<AB>());
-        builder.when(local.is_return-local.not_real_return).assert_word_eq(local.next_pc, *local.call_stack_access.value());
+        builder.when(local.is_call_internal).assert_eq(
+            AB::Expr::one() + local.pc.reduce::<AB>(),
+            (*local.call_stack_access.value()).reduce::<AB>(),
+        );
+        builder
+            .when(local.is_return - local.not_real_return)
+            .assert_word_eq(local.next_pc, *local.call_stack_access.value());
     }
-
-    
 }

@@ -1,6 +1,5 @@
 //! STARK-based primitives for proof generation and verification over AIRs.
 
-#![warn(clippy::pedantic)]
 #![allow(clippy::similar_names)]
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::cast_possible_truncation)]

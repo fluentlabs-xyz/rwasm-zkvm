@@ -218,10 +218,10 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
         let divrem_events = input.divrem_events.clone();
         for event in divrem_events.iter() {
             assert!(
-                event.opcode == Opcode::I32DivU
-                    || event.opcode == Opcode::I32RemU
-                    || event.opcode == Opcode::I32RemS
-                    || event.opcode == Opcode::I32DivS
+                event.opcode == Opcode::I32DivU ||
+                    event.opcode == Opcode::I32RemU ||
+                    event.opcode == Opcode::I32RemS ||
+                    event.opcode == Opcode::I32DivS
             );
             let mut row = [F::zero(); NUM_DIVREM_COLS];
             let cols: &mut DivRemCols<F> = row.as_mut_slice().borrow_mut();
@@ -434,7 +434,7 @@ where
                 AB::Expr::from_canonical_u32(UNUSED_PC),
                 AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
                 AB::Expr::zero(),
-                AB::Expr::from_canonical_u32((Opcode::I32Mul.code())),
+                AB::Expr::from_canonical_u32(Opcode::I32Mul.code()),
                 Word(lower_half),
                 local.quotient,
                 local.c,
@@ -498,9 +498,9 @@ where
 
             builder.assert_eq(
                 local.is_overflow,
-                local.is_overflow_b.is_diff_zero.result
-                    * local.is_overflow_c.is_diff_zero.result
-                    * is_signed,
+                local.is_overflow_b.is_diff_zero.result *
+                    local.is_overflow_c.is_diff_zero.result *
+                    is_signed,
             );
         }
 
@@ -666,8 +666,8 @@ where
                 let mut v = vec![zero.clone(); WORD_SIZE];
 
                 // Set the least significant byte to 1 if is_c_0 is true.
-                v[0] = local.is_c_0.result * one.clone()
-                    + (one.clone() - local.is_c_0.result) * local.abs_c[0];
+                v[0] = local.is_c_0.result * one.clone() +
+                    (one.clone() - local.is_c_0.result) * local.abs_c[0];
 
                 // Set the remaining bytes to 0 if is_c_0 is true.
                 for i in 1..WORD_SIZE {
@@ -769,24 +769,25 @@ where
         // Receive the arguments.
         {
             // Exactly one of the opcode flags must be on.
-            // SAFETY: All selectors `is_divu`, `is_remu`, `is_div`, `is_rem` are checked to be boolean.
-            // Each row has exactly one selector turned on, as their sum is checked to be one.
-            // Therefore, the `opcode` matches the corresponding opcode of the instruction.
+            // SAFETY: All selectors `is_divu`, `is_remu`, `is_div`, `is_rem` are checked to be
+            // boolean. Each row has exactly one selector turned on, as their sum is
+            // checked to be one. Therefore, the `opcode` matches the corresponding
+            // opcode of the instruction.
             builder.assert_eq(
                 one.clone(),
                 local.is_divu + local.is_remu + local.is_div + local.is_rem,
             );
 
             let opcode = {
-                let divu: AB::Expr = AB::F::from_canonical_u32((Opcode::I32DivU.code())).into();
+                let divu: AB::Expr = AB::F::from_canonical_u32(Opcode::I32DivU.code()).into();
                 let remu: AB::Expr = AB::F::from_canonical_u32(Opcode::I32RemU.code()).into();
                 let div: AB::Expr = AB::F::from_canonical_u32(Opcode::I32DivS.code()).into();
                 let rem: AB::Expr = AB::F::from_canonical_u32(Opcode::I32RemS.code()).into();
 
-                local.is_divu * divu
-                    + local.is_remu * remu
-                    + local.is_div * div
-                    + local.is_rem * rem
+                local.is_divu * divu +
+                    local.is_remu * remu +
+                    local.is_div * div +
+                    local.is_rem * rem
             };
 
             // SAFETY: This checks the following.
@@ -920,9 +921,9 @@ mod tests {
     //             };
 
     //             let result =
-    //                 run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-    //             let divrem_chip_name = chip_name!(DivRemChip, BabyBear);
-    //             assert!(
+    //                 run_malicious_test::<P>(program, stdin,
+    // Box::new(malicious_trace_pv_generator));             let divrem_chip_name =
+    // chip_name!(DivRemChip, BabyBear);             assert!(
     //                 result.is_err()
     //                     && result.unwrap_err().is_constraints_failing(&divrem_chip_name)
     //             );

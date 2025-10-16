@@ -123,7 +123,7 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
             .iter()
             .enumerate()
             .map(|(i, _)| {
-                let pc = (i as u32); //TODO: do we have pc base?
+                let pc = i as u32; //TODO: do we have pc base?
                 let mut row = [F::zero(); NUM_PROGRAM_MULT_COLS];
                 let cols: &mut ProgramMultiplicityCols<F> = row.as_mut_slice().borrow_mut();
                 cols.multiplicity =

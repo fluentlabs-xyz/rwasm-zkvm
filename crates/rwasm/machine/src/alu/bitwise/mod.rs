@@ -168,9 +168,9 @@ where
         let local: &BitwiseCols<AB::Var> = (*local).borrow();
 
         // Get the opcode for the operation.
-        let opcode = local.is_xor * ByteOpcode::XOR.as_field::<AB::F>()
-            + local.is_or * ByteOpcode::OR.as_field::<AB::F>()
-            + local.is_and * ByteOpcode::AND.as_field::<AB::F>();
+        let opcode = local.is_xor * ByteOpcode::XOR.as_field::<AB::F>() +
+            local.is_or * ByteOpcode::OR.as_field::<AB::F>() +
+            local.is_and * ByteOpcode::AND.as_field::<AB::F>();
 
         // Get a multiplicity of `1` only for a true row.
         let mult = local.is_xor + local.is_or + local.is_and;
@@ -178,13 +178,14 @@ where
             builder.send_byte(opcode.clone(), a, b, c, local.op_a_not_0);
         }
 
-        // SAFETY: We check that a padding row has `op_a_not_0 == 0`, to prevent a padding row sending byte lookups.
+        // SAFETY: We check that a padding row has `op_a_not_0 == 0`, to prevent a padding row
+        // sending byte lookups.
         builder.when(local.op_a_not_0).assert_one(mult.clone());
 
         // Get the cpu opcode, which corresponds to the opcode being sent in the CPU table.
-        let cpu_opcode = local.is_xor * AB::Expr::from_canonical_u32(Opcode::I32Xor.code())
-            + local.is_or * AB::Expr::from_canonical_u32(Opcode::I32Or.code())
-            + local.is_and * AB::Expr::from_canonical_u32(Opcode::I32And.code());
+        let cpu_opcode = local.is_xor * AB::Expr::from_canonical_u32(Opcode::I32Xor.code()) +
+            local.is_or * AB::Expr::from_canonical_u32(Opcode::I32Or.code()) +
+            local.is_and * AB::Expr::from_canonical_u32(Opcode::I32And.code());
 
         // Receive the arguments.
         // SAFETY: This checks the following.
@@ -214,8 +215,9 @@ where
         );
 
         // SAFETY: All selectors `is_xor`, `is_or`, `is_and` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the three selectors, is boolean.
-        // Therefore, the `opcode` and `cpu_opcode` matches the corresponding opcode.
+        // Each "real" row has exactly one selector turned on, as `is_real`, the sum of the three
+        // selectors, is boolean. Therefore, the `opcode` and `cpu_opcode` matches the
+        // corresponding opcode.
         let is_real = local.is_xor + local.is_or + local.is_and;
         builder.assert_bool(local.is_xor);
         builder.assert_bool(local.is_or);
@@ -327,9 +329,9 @@ mod tests {
     //             };
 
     //             let result =
-    //                 run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-    //             assert!(result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing());
-    //         }
+    //                 run_malicious_test::<P>(program, stdin,
+    // Box::new(malicious_trace_pv_generator));             assert!(result.is_err() &&
+    // result.unwrap_err().is_local_cumulative_sum_failing());         }
     //     }
     // }
 }

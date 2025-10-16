@@ -143,19 +143,19 @@ impl CpuChip {
         *cols.op_arg1_access.value_mut() = event.arg1.into();
         *cols.op_arg2_access.value_mut() = event.arg2.into();
 
-        cols.shard_to_send = if instruction.is_memory_load_instruction()
-            || instruction.is_memory_store_instruction()
-            || instruction.is_ecall_instruction()
-            || instruction.is_call_instruction()
+        cols.shard_to_send = if instruction.is_memory_load_instruction() ||
+            instruction.is_memory_store_instruction() ||
+            instruction.is_ecall_instruction() ||
+            instruction.is_call_instruction()
         {
             cols.shard
         } else {
             F::zero()
         };
-        cols.clk_to_send = if instruction.is_memory_load_instruction()
-            || instruction.is_memory_store_instruction()
-            || instruction.is_ecall_instruction()
-            || instruction.is_call_instruction()
+        cols.clk_to_send = if instruction.is_memory_load_instruction() ||
+            instruction.is_memory_store_instruction() ||
+            instruction.is_ecall_instruction() ||
+            instruction.is_call_instruction()
         {
             F::from_canonical_u32(event.clk)
         } else {
@@ -165,9 +165,10 @@ impl CpuChip {
         // Populate memory accesses for a, b, and c.
         if let Some(record) = event.res_record {
             if instruction.is_ecall_instruction() {
-                // For ecall instructions, pass in a dummy byte lookup vector.  This syscall instruction
-                // chip also has a op_a_access field that will be populated and that will contribute
-                // to the byte lookup dependencies.
+                // For ecall instructions, pass in a dummy byte lookup vector.  This syscall
+                // instruction chip also has a op_a_access field that will be
+                // populated and that will contribute to the byte lookup
+                // dependencies.
                 cols.op_res_access.populate(record, &mut Vec::new());
             } else {
                 cols.op_res_access.populate(record, blu_events);
@@ -181,28 +182,25 @@ impl CpuChip {
         }
 
         if instruction.is_ecall_instruction() {
-            let syscall_id =match instruction {
-                Opcode::Call(_)=>instruction.aux_value(),
-                Opcode::TableInit(_)=>SyscallCode::TABLE_INIT.syscall_id(),
-                _=>unimplemented!(),
+            let syscall_id = match instruction {
+                Opcode::Call(_) => instruction.aux_value(),
+                Opcode::TableInit(_) => SyscallCode::TABLE_INIT.syscall_id(),
+                _ => unimplemented!(),
             };
-            let syscall_id=F::from_canonical_u32(syscall_id);
+            let syscall_id = F::from_canonical_u32(syscall_id);
             let num_extra_cycles = cols.op_res_access.prev_value[2];
             cols.is_halt =
                 F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
             cols.num_extra_cycles = num_extra_cycles;
         }
 
-        match event.call_data {
-            Some(call_data) => {
-                println!("event.opcode:{},call_data:{:?}", instruction, event.call_data);
-                cols.call_data.signature_id = F::from_canonical_u32(call_data.signature_id);
-                cols.call_data.func_ref = F::from_canonical_u32(call_data.func_ref);
-                cols.call_data.table_id = F::from_canonical_u32(call_data.table_id);
-                cols.call_data.table_idx = F::from_canonical_u32(call_data.table_idx);
-                cols.call_data.call_sp_is_zero = F::from_bool(event.call_sp == 0);
-            }
-            None => (),
+        if let Some(call_data) = event.call_data {
+            println!("event.opcode:{},call_data:{:?}", instruction, event.call_data);
+            cols.call_data.signature_id = F::from_canonical_u32(call_data.signature_id);
+            cols.call_data.func_ref = F::from_canonical_u32(call_data.func_ref);
+            cols.call_data.table_id = F::from_canonical_u32(call_data.table_id);
+            cols.call_data.table_idx = F::from_canonical_u32(call_data.table_idx);
+            cols.call_data.call_sp_is_zero = F::from_bool(event.call_sp == 0);
         }
 
         // Populate range checks for a.
@@ -261,26 +259,24 @@ impl CpuChip {
 
     fn populate_alu<F: PrimeField>(&self, cols: &mut CpuCols<F>, event: &CpuEvent, opcode: Opcode) {
         match opcode {
-            Opcode::I32LtS
-            | Opcode::I32LtU
-            | Opcode::I32GtS
-            | Opcode::I32GtU
-            | Opcode::I32GeS
-            | Opcode::I32GeU
-            | Opcode::I32LeS
-            | Opcode::I32LeU
-            | Opcode::I32Eqz
-            | Opcode::I32Eq
-            | Opcode::I32Ne => {
+            Opcode::I32LtS |
+            Opcode::I32LtU |
+            Opcode::I32GtS |
+            Opcode::I32GtU |
+            Opcode::I32GeS |
+            Opcode::I32GeU |
+            Opcode::I32LeS |
+            Opcode::I32LeU |
+            Opcode::I32Eqz |
+            Opcode::I32Eq |
+            Opcode::I32Ne => {
                 let alu = &mut cols.alu_cols;
                 alu.arg1_eq_arg2 = F::from_bool(event.arg1 == event.arg2);
                 alu.arg1_gt_arg2 = F::from_bool(event.arg1 > event.arg2);
                 alu.arg1_lt_arg2 = F::from_bool(event.arg1 < event.arg2);
                 alu.res_bool = F::from_canonical_u32(event.res);
             }
-            _ => {
-                return;
-            }
+            _ => {}
         }
     }
 }

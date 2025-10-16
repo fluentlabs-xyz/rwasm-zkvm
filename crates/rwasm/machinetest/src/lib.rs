@@ -14,10 +14,8 @@
 )]
 #![warn(unused_extern_crates)]
 
-mod memory;
 mod cpu;
-
-
+mod memory;
 
 // Re-export the `SP1ReduceProof` struct from rwasm_machine.
 //
@@ -29,9 +27,7 @@ pub mod reduce {
 
 #[cfg(test)]
 pub mod test {
-    
-   #[test]
-   fn simple(){
 
-   }
+    #[test]
+    fn simple() {}
 }

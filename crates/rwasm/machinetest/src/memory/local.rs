@@ -1,17 +1,16 @@
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use rwasm_machine::programs::tests::*;
-    use rwasm_machine::programs::tests::build_elf;
-    use rwasm_machine::{
-        memory::MemoryLocalChip, rwasm::RwasmAir,
-         utils::setup_logger,
-    };
     use p3_baby_bear::BabyBear;
     use p3_matrix::dense::RowMajorMatrix;
     use rwasm_executor::{ExecutionRecord, Executor};
+    use rwasm_machine::{
+        memory::MemoryLocalChip,
+        programs::tests::{build_elf, *},
+        rwasm::RwasmAir,
+        utils::setup_logger,
+    };
     use sp1_stark::{
         air::{InteractionScope, MachineAir},
         baby_bear_poseidon2::BabyBearPoseidon2,
@@ -39,7 +38,7 @@ mod tests {
     #[test]
     fn test_memory_lookup_interactions() {
         setup_logger();
-        let program =build_elf();
+        let program = build_elf();
         let program_clone = program.clone();
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();

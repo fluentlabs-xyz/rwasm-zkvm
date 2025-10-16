@@ -5,7 +5,6 @@ use crate::{
     subproof::SubproofVerifier,
 };
 use hashbrown::HashMap;
-use rwasm::{ExecutionEngine, RwasmExecutor, Store};
 use std::io::Write;
 
 use sp1_primitives::consts::fd::LOWEST_ALLOWED_FD;

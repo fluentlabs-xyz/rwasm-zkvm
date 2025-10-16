@@ -12,12 +12,13 @@ use std::{
 };
 use web_time::Instant;
 
-use crate::shape::CoreShapeConfig;
-use crate::utils::test::MaliciousTracePVGeneratorType;
-use crate::{rwasm::RwasmAir, shape::Shapeable};
+use crate::{
+    rwasm::RwasmAir,
+    shape::{CoreShapeConfig, Shapeable},
+    utils::test::MaliciousTracePVGeneratorType,
+};
 use p3_maybe_rayon::prelude::*;
-use sp1_stark::MachineProvingKey;
-use sp1_stark::StarkVerifyingKey;
+use sp1_stark::{MachineProvingKey, StarkVerifyingKey};
 use thiserror::Error;
 
 use p3_field::PrimeField32;
@@ -95,7 +96,7 @@ pub fn prove_core_stream<SC: StarkGenericConfig, P: MachineProver<SC, RwasmAir<S
     shape_config: Option<&CoreShapeConfig<SC::Val>>,
     proof_tx: Sender<ShardProof<SC>>,
     shape_and_done_tx: Sender<(OrderedShape, bool)>,
-    malicious_trace_pv_generator: Option<MaliciousTracePVGeneratorType<SC::Val, P>>, // This is used for failure test cases that generate malicious traces and public values.
+    malicious_trace_pv_generator: Option<MaliciousTracePVGeneratorType<SC::Val, P>>, /* This is used for failure test cases that generate malicious traces and public values. */
     gas_calculator: Option<Box<dyn FnOnce(&RecordEstimator) -> Result<u64, Box<dyn Error>> + '_>>,
 ) -> Result<(Vec<u8>, u64), SP1CoreProverError>
 where
@@ -225,11 +226,11 @@ where
                                         shape_config,
                                     )
                                 });
-                            println!("after trace record len:{}",records.len());
-                            for record in records.clone().iter(){
-                                println!("records stat:{:?}",record.stats());
+                            println!("after trace record len:{}", records.len());
+                            for record in records.clone().iter() {
+                                println!("records stat:{:?}", record.stats());
                             }
-                            println!("after traces records{:?} done? {}",records,done);
+                            println!("after traces records{:?} done? {}", records, done);
                             // Trace the checkpoint and reconstruct the execution records.
                             *report_aggregate.lock().unwrap() += report;
                             checkpoint
@@ -262,25 +263,26 @@ where
 
                             // We combine the memory init/finalize events if they are "small"
                             // and would affect performance.
-                            let mut shape_fixed_records = if done
-                                && num_cycles < 1 << 21
-                                && deferred.global_memory_initialize_events.len()
-                                    < opts.split_opts.combine_memory_threshold
-                                && deferred.global_memory_finalize_events.len()
-                                    < opts.split_opts.combine_memory_threshold
+                            let mut shape_fixed_records = if done &&
+                                num_cycles < 1 << 21 &&
+                                deferred.global_memory_initialize_events.len() <
+                                    opts.split_opts.combine_memory_threshold &&
+                                deferred.global_memory_finalize_events.len() <
+                                    opts.split_opts.combine_memory_threshold
                             {
-                                println!("records len here :{}",records.len());
+                                println!("records len here :{}", records.len());
                                 let mut records_clone = records.clone();
 
                                 let last_record = records_clone.last_mut();
                                 // See if any deferred shards are ready to be committed to.
                                 let mut deferred =
                                     deferred.split(done, last_record, opts.split_opts);
-                                    // vec![deferred.clone()];
+                                // vec![deferred.clone()];
                                 tracing::debug!("deferred {} records", deferred.len());
 
-                                // Update the public values & prover state for the shards which do not
-                                // contain "cpu events" before committing to them.
+                                // Update the public values & prover state for the shards which do
+                                // not contain "cpu events" before
+                                // committing to them.
                                 if !done {
                                     state.execution_shard += 1;
                                 }
@@ -299,11 +301,12 @@ where
                                 }
 
                                 records_clone.append(&mut deferred);
-                                println!("records clone len:{:?}",records_clone.len());
-                                println!("records clone:{:?}",records_clone);
+                                println!("records clone len:{:?}", records_clone.len());
+                                println!("records clone:{:?}", records_clone);
                                 // Generate the dependencies.
                                 tracing::debug_span!("generate dependencies", index).in_scope(
-                                    || {println!("deps records{:?}",records_clone);
+                                    || {
+                                        println!("deps records{:?}", records_clone);
                                         prover.machine().generate_dependencies(
                                             &mut records_clone,
                                             &opts,
@@ -314,7 +317,7 @@ where
 
                                 // Let another worker update the state.
                                 record_gen_sync.advance_turn();
-                                
+
                                 // Fix the shape of the records.
                                 let mut fixed_shape = true;
                                 if let Some(shape_config) = shape_config {
@@ -322,7 +325,10 @@ where
                                         let fix_shape_res = shape_config.fix_shape(record);
 
                                         if fix_shape_res.is_err() {
-                                            println!("records shape res:{}",fix_shape_res.err().unwrap());
+                                            println!(
+                                                "records shape res:{}",
+                                                fix_shape_res.err().unwrap()
+                                            );
                                             fixed_shape = false;
                                         }
                                     }
@@ -331,14 +337,15 @@ where
                             } else {
                                 None
                             };
-                           
+
                             if shape_fixed_records.is_none() {
                                 // See if any deferred shards are ready to be committed to.
                                 let mut deferred = deferred.split(done, None, opts.split_opts);
                                 tracing::debug!("deferred {} records", deferred.len());
 
-                                // Update the public values & prover state for the shards which do not
-                                // contain "cpu events" before committing to them.
+                                // Update the public values & prover state for the shards which do
+                                // not contain "cpu events" before
+                                // committing to them.
                                 if !done {
                                     state.execution_shard += 1;
                                 }
@@ -388,7 +395,7 @@ where
                                 let chips = prover.shard_chips(record).collect::<Vec<_>>();
                                 if let Some(shape) = record.shape.as_ref() {
                                     for chip in chips.iter() {
-                                        println!("chipname for shape:{}",&chip.name());
+                                        println!("chipname for shape:{}", &chip.name());
                                         let id = RwasmAirId::from_str(&chip.name()).unwrap();
                                         let height = shape.log2_height(&id).unwrap();
                                         heights.push((chip.name().clone(), height));
@@ -414,7 +421,7 @@ where
                                         .collect::<Vec<_>>();
                                 });
                             } else {
-                                println!("main trace records{:?}",records);
+                                println!("main trace records{:?}", records);
                                 tracing::info_span!("generate main traces", index).in_scope(|| {
                                     main_traces = records
                                         .par_iter()
@@ -589,7 +596,7 @@ where
         #[cfg(feature = "debug")]
         {
             let all_records = all_records_rx.iter().flatten().collect::<Vec<_>>();
-            println!("all records:{:?}",all_records);
+            println!("all records:{:?}", all_records);
             let mut challenger = prover.machine().config().challenger();
             let pk_host = prover.pk_to_host(pk);
             prover.machine().debug_constraints(&pk_host, all_records, &mut challenger);

@@ -13,14 +13,13 @@ pub struct AluEvent {
     pub pc: u32,
     /// riscv opcode
     pub opcode: Opcode,
-
     /// The first operand value.
     pub a: u32,
     /// The second operand value.
     pub b: u32,
     /// The third operand value.
     pub c: u32,
-    ///
+    /// u32 representation of Opcode
     pub code: u32,
 }
 

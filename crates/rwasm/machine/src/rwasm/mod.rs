@@ -13,13 +13,11 @@ use sp1_stark::{
 use strum_macros::{EnumDiscriminants, EnumIter};
 
 use crate::{
-    bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS, shape::Shapeable, syscall::fat_op::table,
-};
-use crate::{
-    control_flow::BranchChip,
-    control_flow::CallChip,
+    bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
+    control_flow::{BranchChip, CallChip},
     global::GlobalChip,
     memory::{MemoryChipType, MemoryInstructionsChip, MemoryLocalChip},
+    shape::Shapeable,
     syscall::{
         fat_op::TableChip,
         instructions::SyscallInstrsChip,
@@ -461,7 +459,8 @@ impl<F: PrimeField32> RwasmAir<F> {
         ]
     }
 
-    /// Returns the upper bound of the number of memory events per row of each precompile. Used in shape-fitting.
+    /// Returns the upper bound of the number of memory events per row of each precompile. Used in
+    /// shape-fitting.
     pub(crate) fn precompile_airs_with_memory_events_per_row(
     ) -> impl Iterator<Item = (RwasmAirId, usize)> {
         let mut airs: HashSet<_> = Self::get_airs_and_costs().0.into_iter().collect();
@@ -488,8 +487,8 @@ impl<F: PrimeField32> RwasmAir<F> {
                 .iter()
                 .chain(chip.receives())
                 .filter(|interaction| {
-                    interaction.kind == InteractionKind::Memory
-                        && interaction.scope == InteractionScope::Local
+                    interaction.kind == InteractionKind::Memory &&
+                        interaction.scope == InteractionScope::Local
                 })
                 .count();
 
@@ -586,10 +585,9 @@ pub mod tests {
     use itertools::Itertools;
     use p3_baby_bear::BabyBear;
     use rwasm_executor::{Opcode, Program, RwasmAirId, SP1Context};
-    use sp1_stark::air::MachineAir;
     use sp1_stark::{
-        baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver, SP1CoreOpts,
-        StarkProvingKey, StarkVerifyingKey,
+        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver,
+        SP1CoreOpts, StarkProvingKey, StarkVerifyingKey,
     };
     use strum::IntoEnumIterator;
     #[test]
@@ -638,8 +636,8 @@ pub mod tests {
     //     utils::setup_logger();
     //     let shift_ops = [Opcode::SRL, Opcode::SRA, Opcode::SLL];
     //     let operands =
-    //         [(1, 1), (1234, 5678), (0xffff, 0xffff - 1), (u32::MAX - 1, u32::MAX), (u32::MAX, 0)];
-    //     for shift_op in shift_ops.iter() {
+    //         [(1, 1), (1234, 5678), (0xffff, 0xffff - 1), (u32::MAX - 1, u32::MAX), (u32::MAX,
+    // 0)];     for shift_op in shift_ops.iter() {
     //         for op in operands.iter() {
     //             let instructions = vec![
     //                 Opcode::new(Opcode::ADD, 29, 0, op.0, false, true),

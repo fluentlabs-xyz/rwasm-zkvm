@@ -5,7 +5,7 @@ use core::{
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_air::{Air, AirBuilder, BaseAir};
+use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
@@ -178,7 +178,7 @@ impl AddSubChip {
             .0
             .iter()
             .enumerate()
-            .map(|(i, x)| F::from_canonical_u32(base[i].clone()) * *x)
+            .map(|(i, x)| F::from_canonical_u32(base[i]) * *x)
             .sum();
         println!("result:{}", value);
     }
@@ -200,15 +200,16 @@ where
         let local: &AddSubCols<AB::Var> = (*local).borrow();
 
         // SAFETY: All selectors `is_add` and `is_sub` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real = is_add + is_sub` is boolean.
-        // Therefore, the `opcode` matches the corresponding opcode of the instruction.
+        // Each "real" row has exactly one selector turned on, as `is_real = is_add + is_sub` is
+        // boolean. Therefore, the `opcode` matches the corresponding opcode of the
+        // instruction.
         let is_real = local.is_add + local.is_sub;
         builder.assert_bool(local.is_add);
         builder.assert_bool(local.is_sub);
         builder.assert_bool(is_real.clone());
 
-        let opcode = AB::Expr::from_canonical_u32(Opcode::I32Add.code()) * local.is_add
-            + AB::Expr::from_canonical_u32(Opcode::I32Sub.code()) * local.is_sub;
+        let opcode = AB::Expr::from_canonical_u32(Opcode::I32Add.code()) * local.is_add +
+            AB::Expr::from_canonical_u32(Opcode::I32Sub.code()) * local.is_sub;
 
         // Evaluate the addition operation.
         // This is enforced only when `op_a_not_0 == 1`.
