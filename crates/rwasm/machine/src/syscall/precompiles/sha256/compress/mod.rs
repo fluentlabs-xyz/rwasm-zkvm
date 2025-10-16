@@ -32,14 +32,6 @@ impl ShaCompressChip {
 #[cfg(test)]
 pub mod compress_tests {
 
-    use rwasm_executor::{syscalls::SyscallCode, Opcode, Program};
-    use sp1_stark::CpuProver;
-
-    use crate::{
-        io::SP1Stdin,
-        utils::{run_test, setup_logger},
-    };
-
     /*pub fn sha_compress_program() -> Program {
         let w_ptr = 100;
         let h_ptr = 1000;

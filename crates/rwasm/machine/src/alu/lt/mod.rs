@@ -469,10 +469,8 @@ where
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use std::borrow::BorrowMut;
-
     use super::LtChip;
-    use crate::alu::BitwiseCols;
+
     use crate::{
         alu::LtCols,
         io::SP1Stdin,
@@ -489,7 +487,7 @@ mod tests {
     };
     use sp1_stark::{
         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
-        MachineProver, StarkGenericConfig, Val,
+        MachineProver, StarkGenericConfig,
     };
 
     #[test]
@@ -608,12 +606,12 @@ mod tests {
                 let mut malicious_record = record.clone();
                 // The ALU op is the 3rd instruction (index 2)
                 if malicious_record.cpu_events.len() > 2 {
-                    malicious_record.cpu_events[2].res = (op_a as u32).into();
+                    malicious_record.cpu_events[2].res = op_a as u32;
                     // keep memory write consistent
                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
                         &mut malicious_record.cpu_events[2].res_record
                     {
-                        write_record.value = (op_a as u32).into();
+                        write_record.value = op_a as u32;
                     }
                 }
                 let mut traces = prover.generate_traces(&malicious_record);
@@ -633,9 +631,8 @@ mod tests {
             let lt_chip_name = chip_name!(LtChip, BabyBear);
             assert!(result.is_err());
             println!("mytest op_a={} op_b={}, op_b={}", op_a, op_b, op_c);
-            assert!(
-                result.unwrap_err().is_constraints_failing(&lt_chip_name)
-            );
+            println!("{:?}", result);
+            assert!(result.unwrap_err().is_constraints_failing(&lt_chip_name));
         }
     }
 }

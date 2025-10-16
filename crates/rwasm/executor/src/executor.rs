@@ -1940,6 +1940,9 @@ pub const fn align(addr: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::vec_init_then_push)]
+    
+
     use crate::{align, ExecutionError, Executor, Program};
     use hashbrown::HashMap;
 
@@ -3101,11 +3104,7 @@ mod tests {
         assert_eq!(sp_value, runtime.state.sp + UNIT);
     }
 
-    fn simple_memory_load_opcode_test(
-        mut mem: HashMap<u32, u32>,
-        opcodes: Vec<Opcode>,
-        expected: u32,
-    ) {
+    fn simple_memory_load_opcode_test(mem: HashMap<u32, u32>, opcodes: Vec<Opcode>, expected: u32) {
         let program = Program::from_instrs(opcodes);
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -3118,11 +3117,11 @@ mod tests {
         let sp_value: u32 = SP_START;
         let x_value: u32 = 0xFFF1_0005;
         let y_value: u32 = 0xFFF2_0008;
-        let z_value: u32 = 0xFFF3_000a;
-        let t_value: u32 = 0xFFF4_000b;
+        let z_value: u32 = 0xFFF3_000A;
+        let t_value: u32 = 0xFFF4_000B;
         let addr: u32 = 0xDD_0000;
 
-        let memOpcodes = vec![
+        let mem_opcodes = [
             Opcode::I32Const(addr.into()),
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(addr.into()),
@@ -3134,65 +3133,65 @@ mod tests {
         ];
 
         // simple_memory_store_opcode_test(
-        //     memOpcodes.clone(),
+        //     mem_opcodes.clone(),
         //     vec![Opcode::I32Store(0.into())],
         //     addr + 0,
         //     t_value,
         // );
         // simple_memory_store_opcode_test(
-        //     memOpcodes.clone(),
+        //     mem_opcodes.clone(),
         //     vec![Opcode::I32Store(16.into())],
         //     addr + 16,
         //     t_value,
         // );
 
         // simple_memory_store_opcode_test(
-        //     memOpcodes.clone(),
+        //     mem_opcodes.clone(),
         //     vec![Opcode::I32Store16(0.into())],
         //     addr,
         //     (t_value & 0x0000_FFFF),
         // );
         // simple_memory_store_opcode_test(
-        //     memOpcodes.clone(),
+        //     mem_opcodes.clone(),
         //     vec![Opcode::I32Store16(2.into())],
         //     addr,
         //     (t_value & 0x0000_FFFF) << 16,
         // );
 
         // simple_memory_store_opcode_test(
-        //     memOpcodes.clone(),
+        //     mem_opcodes.clone(),
         //     vec![Opcode::I32Store8(0.into())],
         //     addr,
         //     (t_value & 0x0000_00FF),
         // );
         // simple_memory_store_opcode_test(
-        //     memOpcodes.clone(),
+        //     mem_opcodes.clone(),
         //     vec![Opcode::I32Store8(1.into())],
         //     addr,
         //     (t_value & 0x0000_00FF) << 8,
         // );
         // simple_memory_store_opcode_test(
-        //     memOpcodes.clone(),
+        //     mem_opcodes.clone(),
         //     vec![Opcode::I32Store8(2.into())],
         //     addr,
         //     (t_value & 0x0000_00FF) << 16,
         // );
         // simple_memory_store_opcode_test(
-        //     memOpcodes.clone(),
+        //     mem_opcodes.clone(),
         //     vec![Opcode::I32Store8(3.into())],
         //     addr,
         //     (t_value & 0x0000_00FF) << 24,
         // );
 
         /*simple_memory_store_opcode_test(
-            memOpcodes.clone(),
+            mem_opcodes.clone(),
             vec![Opcode::I32Store16(0.into()), Opcode::I32Store16(1.into())],
             addr,
             (z_value & 0x0000_FFFF) + ((t_value & 0x0000_FFFF) << 16),
         );
 
           simple_memory_store_opcode_test(
-              memOpcodes.clone(),
+              mem_opcodes.clone(),
               vec![
                   Opcode::I32Store8(0.into()),
                   Opcode::I32Store8(1.into()),
@@ -3491,7 +3490,7 @@ mod tests {
     #[test]
     fn test_load8s() {
         let sp_value: u32 = SP_START;
-        let x_value: u32 = 0xdFFF_00FF;
+        let x_value: u32 = 0xDFFF_00FF;
         let addr: u32 = 0x10000;
 
         let opcodes = vec![
@@ -3692,13 +3691,13 @@ mod tests {
         let x_value: u32 = 0x7;
         let y_value: u32 = 0x2;
         let z_value: u32 = 0x1;
-        let mut functions = vec![0, 24];
+        let functions = [0, 24];
 
         let opcodes = vec![
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32Const(z_value.into()),
-            Opcode::CallInternal(6u32.into()),
+            Opcode::CallInternal(6u32),
             Opcode::I32Sub,
             Opcode::Return,
             Opcode::I32Add,
@@ -3715,7 +3714,7 @@ mod tests {
         );
     }
     #[test]
-    fn test_i32constwithAdd() {
+    fn test_i32constwith_add() {
         let sp_value: u32 = SP_START;
         let x_value: u32 = 0x12345;
         let y_value: u32 = 0x54321;
@@ -3743,7 +3742,7 @@ mod tests {
 
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.execute();
+        runtime.execute().unwrap();
         println!("record:{:?}", runtime.record);
         println!("records:{:?}", runtime.records);
         assert_eq!(runtime.state.sp, sp_value - 4);
@@ -3770,8 +3769,8 @@ mod tests {
 
         let mut ops = Vec::new();
         ops.push(Opcode::I32Const(x.into()));
-        ops.push(Opcode::CallInternal(inc_pos.into())); // x+1
-        ops.push(Opcode::CallInternal(inc_pos.into())); // (x+1)+1
+        ops.push(Opcode::CallInternal(inc_pos)); // x+1
+        ops.push(Opcode::CallInternal(inc_pos)); // (x+1)+1
         ops.push(Opcode::I32Const(expected.into()));
         ops.push(Opcode::I32Eq); // 1 if equal
         ops.push(Opcode::Return); // <-- prevent fall-through into inc_fn
@@ -3811,7 +3810,7 @@ mod tests {
         ops.push(Opcode::I32Const(addr.into()));
         ops.push(Opcode::I32Const(val.into()));
 
-        ops.push(Opcode::CallInternal(fun_pos.into()));
+        ops.push(Opcode::CallInternal(fun_pos));
 
         // compare with expected
         ops.push(Opcode::I32Const(val.into()));
@@ -3862,12 +3861,12 @@ mod tests {
         // (a ^ b) via xor_fn
         ops.push(Opcode::I32Const(a.into()));
         ops.push(Opcode::I32Const(b.into()));
-        ops.push(Opcode::CallInternal(xor_pos.into()));
+        ops.push(Opcode::CallInternal(xor_pos));
 
         // (c & d) via and_fn
         ops.push(Opcode::I32Const(c.into()));
         ops.push(Opcode::I32Const(d.into()));
-        ops.push(Opcode::CallInternal(and_pos.into()));
+        ops.push(Opcode::CallInternal(and_pos));
 
         // sum them
         ops.push(Opcode::I32Add);
@@ -3907,7 +3906,7 @@ mod tests {
         let inc_pos = f_pos + f_body_len as u32;
 
         // build f with the correct inc_pos
-        let f = vec![Opcode::I32Add, Opcode::CallInternal(inc_pos.into()), Opcode::Return];
+        let f = vec![Opcode::I32Add, Opcode::CallInternal(inc_pos), Opcode::Return];
 
         let x = 10u32;
         let y = 31u32;
@@ -3917,7 +3916,7 @@ mod tests {
         let mut ops = Vec::new();
         ops.push(Opcode::I32Const(x.into()));
         ops.push(Opcode::I32Const(y.into()));
-        ops.push(Opcode::CallInternal(f_pos.into()));
+        ops.push(Opcode::CallInternal(f_pos));
         ops.push(Opcode::I32Const(expected.into()));
         ops.push(Opcode::I32Eq);
         ops.push(Opcode::Return); // <-- prevent fall-through into f
@@ -3981,7 +3980,7 @@ mod tests {
         ops.push(Opcode::I32Const(b0.into()));
 
         // Call the function
-        ops.push(Opcode::CallInternal(fun_pos.into()));
+        ops.push(Opcode::CallInternal(fun_pos));
 
         // Compare with expected, then return to avoid fall-through into function body
         ops.push(Opcode::I32Const(expected.into()));
@@ -4016,9 +4015,9 @@ mod tests {
 
         let mut ops = Vec::new();
         ops.push(Opcode::I32Const(x.into())); // x
-        ops.push(Opcode::CallInternal(inc1_pos.into())); // x+1
-        ops.push(Opcode::CallInternal(inc2_pos.into())); // x+2
-        ops.push(Opcode::CallInternal(times2_pos.into())); // (x+2)*2
+        ops.push(Opcode::CallInternal(inc1_pos)); // x+1
+        ops.push(Opcode::CallInternal(inc2_pos)); // x+2
+        ops.push(Opcode::CallInternal(times2_pos)); // (x+2)*2
         ops.push(Opcode::I32Const(1u32.into())); // shift by 1
         ops.push(Opcode::I32ShrU); // ((x+2)*2) >> 1 == x+2
         ops.push(Opcode::I32Const(expected.into()));
@@ -4059,7 +4058,7 @@ mod tests {
         let mut ops = Vec::new();
         ops.push(Opcode::I32Const(x.into()));
         ops.push(Opcode::I32Const(y.into()));
-        ops.push(Opcode::CallInternal(f_pos.into()));
+        ops.push(Opcode::CallInternal(f_pos));
         ops.push(Opcode::I32Const(expected.into()));
         ops.push(Opcode::I32Eq);
         ops.push(Opcode::Return); // prevent fall-through
@@ -4111,15 +4110,15 @@ mod tests {
         // v1 = (2+3)
         ops.push(Opcode::I32Const(2u32.into()));
         ops.push(Opcode::I32Const(3u32.into()));
-        ops.push(Opcode::CallInternal(add_pos.into()));
+        ops.push(Opcode::CallInternal(add_pos));
 
         // v2 = (4+5)
         ops.push(Opcode::I32Const(4u32.into()));
         ops.push(Opcode::I32Const(5u32.into()));
-        ops.push(Opcode::CallInternal(add_pos.into()));
+        ops.push(Opcode::CallInternal(add_pos));
 
         // v3 = v1 * v2  (stack: [addrL, addrS, v3])
-        ops.push(Opcode::CallInternal(mul_pos.into()));
+        ops.push(Opcode::CallInternal(mul_pos));
 
         // store: needs [ ..., addr, value ] with value on top -> OK: top is v3, below is addrS
         ops.push(Opcode::I32Store(0u32)); // pops v3, addrS; stack now [addrL]
@@ -4128,7 +4127,7 @@ mod tests {
         ops.push(Opcode::I32Load(0u32)); // pops addrL, pushes v3
 
         // << 1 via helper
-        ops.push(Opcode::CallInternal(shl_pos.into()));
+        ops.push(Opcode::CallInternal(shl_pos));
 
         // check > 0 (unsigned)
         ops.push(Opcode::I32Const(0u32.into()));
@@ -4170,7 +4169,7 @@ mod tests {
     #[test]
     fn test_fibonacci_n9_callinternal() {
         let base: u32 = 0x10000;
-        let addr_tmp = base + 0;
+        let addr_tmp = base;
         let addr_a = base + 4; // will hold F(n)
         let addr_b = base + 8; // will hold F(n+1)
         let addr_n = base + 12;
@@ -4230,7 +4229,7 @@ mod tests {
         let mut call_sites = Vec::<usize>::new();
         for _ in 0..9 {
             call_sites.push(ops.len());
-            ops.push(Opcode::CallInternal(0u32.into())); // patched later
+            ops.push(Opcode::CallInternal(0u32)); // patched later
             ops.push(Opcode::Drop);
         }
 
@@ -4244,7 +4243,7 @@ mod tests {
         // patch function position
         let step_pos = ops.len() as u32;
         for idx in call_sites {
-            ops[idx] = Opcode::CallInternal(step_pos.into());
+            ops[idx] = Opcode::CallInternal(step_pos);
         }
         ops.extend(step_fn);
 
@@ -4261,14 +4260,14 @@ mod tests {
 
         // f2(x,y): return f3(x) + y
         let f2 = vec![
-            Opcode::CallInternal(0u32.into()), // patched to f3_pos
+            Opcode::CallInternal(0u32), // patched to f3_pos
             Opcode::I32Add,
             Opcode::Return,
         ]; // len 3
 
         // f1(x,y,z): return f2(x,y) + z
         let f1 = vec![
-            Opcode::CallInternal(0u32.into()), // patched to f2_pos
+            Opcode::CallInternal(0u32), // patched to f2_pos
             Opcode::I32Add,
             Opcode::Return,
         ]; // len 3
@@ -4283,7 +4282,7 @@ mod tests {
         ops.push(Opcode::I32Const(z.into()));
         ops.push(Opcode::I32Const(y.into()));
         ops.push(Opcode::I32Const(x.into()));
-        ops.push(Opcode::CallInternal(0u32.into())); // patch to f1_pos
+        ops.push(Opcode::CallInternal(0u32)); // patch to f1_pos
         ops.push(Opcode::I32Const(expected.into()));
         ops.push(Opcode::I32Eq);
         ops.push(Opcode::Return);
@@ -4296,9 +4295,9 @@ mod tests {
         let f3_pos = f2_pos + f2.len() as u32; // after f2
 
         // patch call targets
-        f1_patched[0] = Opcode::CallInternal(f2_pos.into());
-        f2_patched[0] = Opcode::CallInternal(f3_pos.into());
-        ops[3] = Opcode::CallInternal(f1_pos.into());
+        f1_patched[0] = Opcode::CallInternal(f2_pos);
+        f2_patched[0] = Opcode::CallInternal(f3_pos);
+        ops[3] = Opcode::CallInternal(f1_pos);
 
         // append functions
         ops.extend(f1_patched);
@@ -4329,7 +4328,7 @@ mod tests {
         ops.push(Opcode::I32Const(x.into()));
         ops.push(Opcode::I32Const(y.into()));
         // If your runtime expects a function index instead of a byte position,
-        ops.push(Opcode::CallInternal(f_add_pos.into()));
+        ops.push(Opcode::CallInternal(f_add_pos));
         ops.push(Opcode::I32Const(expected.into()));
         ops.push(Opcode::I32Eq);
         ops.push(Opcode::Return); // prevent fall-through
@@ -4347,7 +4346,7 @@ mod tests {
     #[test]
     fn test_fibonacci_n25_callinternal() {
         let base: u32 = 0x10000;
-        let addr_tmp = base + 0;
+        let addr_tmp = base;
         let addr_a = base + 4; // F(n)
         let addr_b = base + 8; // F(n+1)
         let addr_n = base + 12;
@@ -4407,7 +4406,7 @@ mod tests {
         let mut call_sites = Vec::<usize>::new();
         for _ in 0..25 {
             call_sites.push(ops.len());
-            ops.push(Opcode::CallInternal(0u32.into())); // patched later
+            ops.push(Opcode::CallInternal(0u32)); // patched later
             ops.push(Opcode::Drop);
         }
 
@@ -4421,7 +4420,7 @@ mod tests {
         // patch function position and append
         let step_pos = ops.len() as u32;
         for idx in call_sites {
-            ops[idx] = Opcode::CallInternal(step_pos.into());
+            ops[idx] = Opcode::CallInternal(step_pos);
         }
         ops.extend(step_fn);
 
@@ -4457,11 +4456,11 @@ mod tests {
         ops.push(Opcode::I32Const(a.into()));
         ops.push(Opcode::I32Const(b.into()));
         let call_add_idx = ops.len();
-        ops.push(Opcode::CallInternal(0u32.into())); // patch later
+        ops.push(Opcode::CallInternal(0u32)); // patch later
 
         // then <<2 via shl2
         let call_shl_idx = ops.len();
-        ops.push(Opcode::CallInternal(0u32.into())); // patch later
+        ops.push(Opcode::CallInternal(0u32)); // patch later
 
         // store unaligned at base+3 (store pops value, then addr)
         ops.push(Opcode::I32Store(3u32));
@@ -4479,8 +4478,8 @@ mod tests {
         let shl2_pos = ops.len() as u32;
         ops.extend(shl2);
 
-        ops[call_add_idx] = Opcode::CallInternal(add_pos.into());
-        ops[call_shl_idx] = Opcode::CallInternal(shl2_pos.into());
+        ops[call_add_idx] = Opcode::CallInternal(add_pos);
+        ops[call_shl_idx] = Opcode::CallInternal(shl2_pos);
 
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
@@ -4493,7 +4492,7 @@ mod tests {
     fn test_dot_product_len8_via_step_function() {
         // memory layout
         let base: u32 = 0x20000;
-        let pa = base + 0; // ptr A
+        let pa = base; // ptr A
         let pb = base + 4; // ptr B
         let acc = base + 8; // accumulator
         let rem = base + 12; // remaining
@@ -4593,7 +4592,7 @@ mod tests {
         let mut call_sites = Vec::<usize>::new();
         for _ in 0..8 {
             call_sites.push(ops.len());
-            ops.push(Opcode::CallInternal(0u32.into()));
+            ops.push(Opcode::CallInternal(0u32));
             ops.push(Opcode::Drop);
         }
 
@@ -4607,7 +4606,7 @@ mod tests {
         // patch function position
         let step_pos = ops.len() as u32;
         for idx in call_sites {
-            ops[idx] = Opcode::CallInternal(step_pos.into());
+            ops[idx] = Opcode::CallInternal(step_pos);
         }
         ops.extend(step);
 

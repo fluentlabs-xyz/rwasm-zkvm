@@ -288,14 +288,16 @@ mod tests {
     use rwasm_executor::{events::AluEvent, ExecutionRecord, DEFAULT_PC_INC};
     use sp1_stark::{
         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
-        MachineProver, StarkGenericConfig, Val,
+        MachineProver, StarkGenericConfig,
     };
     use std::sync::LazyLock;
 
     use super::*;
-    use crate::io::SP1Stdin;
-    use crate::rwasm::RwasmAir;
-    use crate::utils::{run_malicious_test, uni_stark_prove as prove, uni_stark_verify as verify};
+    use crate::{
+        io::SP1Stdin,
+        rwasm::RwasmAir,
+        utils::{run_malicious_test, uni_stark_prove as prove, uni_stark_verify as verify},
+    };
     use core::borrow::Borrow;
     use rwasm_executor::events::MemoryRecordEnum;
 
@@ -394,10 +396,10 @@ mod tests {
     // Helper: convert a 4-byte little-endian Word<F> back to u32.
     fn word_to_u32<F: PrimeField32>(w: &Word<F>) -> u32 {
         let limbs = &w.0;
-        limbs[0].as_canonical_u32()
-            | (limbs[1].as_canonical_u32() << 8)
-            | (limbs[2].as_canonical_u32() << 16)
-            | (limbs[3].as_canonical_u32() << 24)
+        limbs[0].as_canonical_u32() |
+            (limbs[1].as_canonical_u32() << 8) |
+            (limbs[2].as_canonical_u32() << 16) |
+            (limbs[3].as_canonical_u32() << 24)
     }
 
     #[test]

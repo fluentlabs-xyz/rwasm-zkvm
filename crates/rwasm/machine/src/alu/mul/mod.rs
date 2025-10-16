@@ -593,10 +593,10 @@ mod tests {
 
                 let malicious_trace_pv_generator = move |prover: &P,
                                                          record: &mut ExecutionRecord|
-                                                         -> Vec<(
-                                                             String,
-                                                             RowMajorMatrix<Val<BabyBearPoseidon2>>,
-                                                         )> {
+                      -> Vec<(
+                    String,
+                    RowMajorMatrix<Val<BabyBearPoseidon2>>,
+                )> {
                     let mut malicious_record = record.clone();
                     // The ALU op of interest is the 5th instruction (index 4)
                     if malicious_record.cpu_events.len() > 4 {
@@ -607,7 +607,7 @@ mod tests {
                             write_record.value = op_a as u32;
                         }
                     }
-                    if malicious_record.mul_events.len() > 0 {
+                    if !malicious_record.mul_events.is_empty() {
                         malicious_record.mul_events[0].a = op_a;
                     }
                     prover.generate_traces(&malicious_record)

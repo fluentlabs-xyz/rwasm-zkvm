@@ -430,8 +430,7 @@ mod tests {
     };
     use p3_baby_bear::BabyBear;
     use p3_field::AbstractField;
-    use p3_matrix::dense::RowMajorMatrix;
-    use p3_matrix::Matrix;
+    use p3_matrix::{dense::RowMajorMatrix, Matrix};
     use rand::{thread_rng, Rng};
     use rwasm_executor::{
         events::{AluEvent, MemoryRecordEnum},
@@ -447,7 +446,8 @@ mod tests {
     #[test]
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
-        shard.shift_left_events = vec![AluEvent::new(0, Opcode::I32Shl, 16, 8, 1, Opcode::I32Shl.code())];
+        shard.shift_left_events =
+            vec![AluEvent::new(0, Opcode::I32Shl, 16, 8, 1, Opcode::I32Shl.code())];
         let chip = ShiftLeft::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
@@ -504,8 +504,8 @@ mod tests {
     #[test]
     fn sll_splits_bit_and_byte_shift() {
         use core::borrow::Borrow;
-        use sp1_primitives::consts::WORD_SIZE;
         use p3_baby_bear::BabyBear;
+        use sp1_primitives::consts::WORD_SIZE;
 
         let mut shard = ExecutionRecord::default();
         // b = 1, c = 9 -> a = 1 << 9 = 0x0000_0200 (1 byte + 1 bit)
@@ -525,7 +525,8 @@ mod tests {
         let row = trace.row_slice(0);
         let cols: &ShiftLeftCols<BabyBear> = (*row).borrow();
 
-        // 9 % 8 = 1 -> multiplier 2, `shift_by_n_bits[1] = 1`; 9 / 8 = 1 -> `shift_by_n_bytes[1] = 1`.
+        // 9 % 8 = 1 -> multiplier 2, `shift_by_n_bits[1] = 1`; 9 / 8 = 1 -> `shift_by_n_bytes[1] =
+        // 1`.
         assert_eq!(cols.bit_shift_multiplier, BabyBear::from_canonical_u32(2));
         assert_eq!(cols.shift_by_n_bits[1], BabyBear::one());
         assert_eq!(cols.shift_by_n_bytes[1], BabyBear::one());
@@ -539,8 +540,8 @@ mod tests {
     #[test]
     fn sll_masks_to_low_five_bits() {
         use core::borrow::Borrow;
-        use sp1_primitives::consts::WORD_SIZE;
         use p3_baby_bear::BabyBear;
+        use sp1_primitives::consts::WORD_SIZE;
 
         let mut shard = ExecutionRecord::default();
         // Use a value of `c` with high bits set. Low 5 bits are 16, so shift is by 16.
@@ -549,14 +550,8 @@ mod tests {
         let a = b.wrapping_shl((c & 0x1f) as u32);
         debug_assert_eq!(a, 0x0001_0000);
 
-        shard.shift_left_events = vec![AluEvent::new(
-            0,
-            Opcode::I32Shl,
-            a,
-            b,
-            c,
-            Opcode::I32Shl.code(),
-        )];
+        shard.shift_left_events =
+            vec![AluEvent::new(0, Opcode::I32Shl, a, b, c, Opcode::I32Shl.code())];
 
         let chip = ShiftLeft::default();
         let trace: RowMajorMatrix<BabyBear> =
@@ -565,7 +560,8 @@ mod tests {
         let row = trace.row_slice(0);
         let cols: &ShiftLeftCols<BabyBear> = (*row).borrow();
 
-        // 16 % 8 = 0 -> multiplier 1 and `shift_by_n_bits[0] = 1`; 16 / 8 = 2 -> `shift_by_n_bytes[2] = 1`.
+        // 16 % 8 = 0 -> multiplier 1 and `shift_by_n_bits[0] = 1`; 16 / 8 = 2 ->
+        // `shift_by_n_bytes[2] = 1`.
         assert_eq!(cols.bit_shift_multiplier, BabyBear::from_canonical_u32(1));
         assert_eq!(cols.shift_by_n_bits[0], BabyBear::one());
         assert_eq!(cols.shift_by_n_bytes[2], BabyBear::one());
@@ -632,10 +628,9 @@ mod tests {
                 run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
             let shift_left_chip_name = chip_name!(ShiftLeft, BabyBear);
             assert!(
-                result.is_err()
-                    && result.unwrap_err().is_constraints_failing(&shift_left_chip_name)
+                result.is_err() &&
+                    result.unwrap_err().is_constraints_failing(&shift_left_chip_name)
             );
         }
     }
 }
-

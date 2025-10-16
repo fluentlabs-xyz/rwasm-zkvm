@@ -31,21 +31,7 @@ pub fn sha_extend(w: &mut [u32]) {
 pub mod extend_tests {
     #![allow(clippy::print_stdout)]
 
-    use p3_baby_bear::BabyBear;
-
-    use p3_matrix::dense::RowMajorMatrix;
-    use rwasm_executor::{
-        events::AluEvent, syscalls::SyscallCode, ExecutionRecord, Opcode, Program,
-    };
-    use sp1_stark::{air::MachineAir, CpuProver};
-
-    use crate::{
-        io::SP1Stdin,
-        utils::{self, run_test},
-    };
-
-    use super::ShaExtendChip;
-/*
+    /*
     pub fn sha_extend_program() -> Program {
         let w_ptr = 100;
         let mut instructions = vec![Opcode::new(Opcode::ADD, 29, 0, 5, false, true)];

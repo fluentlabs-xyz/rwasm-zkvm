@@ -243,23 +243,21 @@ mod tests {
     #![allow(clippy::print_stdout)]
 
     use p3_baby_bear::BabyBear;
-    use p3_field::AbstractField;
-    use p3_matrix::dense::RowMajorMatrix;
-    use p3_matrix::Matrix;
+    use p3_matrix::{dense::RowMajorMatrix, Matrix};
     use rand::{thread_rng, Rng};
-    use rwasm::{Opcode, UntypedValue};
+    use rwasm::Opcode;
     use rwasm_executor::{
         events::{AluEvent, MemoryRecordEnum},
         ExecutionRecord, Program,
     };
     use sp1_stark::{
         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
-        MachineProver, StarkGenericConfig, Val,
+        MachineProver, StarkGenericConfig,
     };
 
     use super::BitwiseChip;
-    use crate::alu::{BitwiseCols, DivRemCols};
     use crate::{
+        alu::BitwiseCols,
         io::SP1Stdin,
         rwasm::RwasmAir,
         utils::{run_malicious_test, uni_stark_prove, uni_stark_verify},

@@ -3,24 +3,17 @@ pub mod test {
 
     #![allow(clippy::print_stdout)]
 
-    use hashbrown::HashMap;
     use p3_baby_bear::BabyBear;
     use p3_matrix::dense::RowMajorMatrix;
-    use rand::{thread_rng, Rng};
-    use rwasm_executor::{
-        events::AluEvent, ExecutionRecord, Executor, Opcode, Program, DEFAULT_PC_INC,
-    };
+
+    use rwasm_executor::{ExecutionRecord, Executor, Opcode, Program};
     use rwasm_machine::{
         cpu::CpuChip,
-        programs,
-        rwasm::AddSubChip,
         utils::{uni_stark_prove, uni_stark_verify},
     };
     use sp1_stark::{
-        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, MachineProver, SP1CoreOpts,
-        StarkGenericConfig,
+        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, SP1CoreOpts, StarkGenericConfig,
     };
-    use std::sync::LazyLock;
 
     fn build_elf() -> Program {
         // let x_value: u32 = 0x11;
@@ -48,10 +41,9 @@ pub mod test {
             // Instruction::I32DivU,
         ];
 
-        let program = Program::from_instrs(instructions);
         //  memory_image: BTreeMap::new() };
 
-        program
+        Program::from_instrs(instructions)
     }
 
     #[test]
@@ -62,7 +54,7 @@ pub mod test {
 
         let program = build_elf();
         let mut runtime = Executor::new(program, opts);
-        runtime.run();
+        runtime.run().unwrap();
         println!("runtimerecordcpu:{:?}", runtime.record.cpu_events);
         let chip = CpuChip::default();
         let trace: RowMajorMatrix<BabyBear> =
@@ -71,7 +63,7 @@ pub mod test {
         let proof = uni_stark_prove::<BabyBearPoseidon2, _>(&config, &chip, &mut challenger, trace);
 
         let mut challenger = config.challenger();
-        let result = uni_stark_verify(&config, &chip, &mut challenger, &proof).unwrap();
-        println!("{:?}", result);
+        uni_stark_verify(&config, &chip, &mut challenger, &proof).unwrap();
+        println!("{:?}", ());
     }
 }

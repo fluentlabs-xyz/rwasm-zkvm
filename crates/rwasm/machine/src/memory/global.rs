@@ -425,7 +425,7 @@ where
 
 #[cfg(test)]
 mod tests {
-   /* #![allow(clippy::print_stdout)]
+    /* #![allow(clippy::print_stdout)]
 
     use super::*;
     use crate::{

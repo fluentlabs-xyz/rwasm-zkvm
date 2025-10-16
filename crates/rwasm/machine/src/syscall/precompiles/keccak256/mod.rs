@@ -21,13 +21,6 @@ impl KeccakPermuteChip {
 
 #[cfg(test)]
 pub mod permute_tests {
-    use rwasm_executor::{syscalls::SyscallCode, Executor, Opcode, Program};
-    use sp1_stark::{CpuProver, SP1CoreOpts};
-
-    use crate::{
-        io::SP1Stdin,
-        utils::{self},
-    };
 
     /*pub fn keccak_permute_program() -> Program {
         let digest_ptr = 100;

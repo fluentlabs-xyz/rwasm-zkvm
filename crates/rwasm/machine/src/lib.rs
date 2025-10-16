@@ -40,7 +40,7 @@ pub mod utils;
 pub mod reduce {
     pub use rwasm_executor::SP1ReduceProof;
 }
-/*
+
 pub mod programs {
     #[allow(dead_code)]
     #[allow(missing_docs)]
@@ -48,7 +48,6 @@ pub mod programs {
 
         use rwasm::Opcode;
         use rwasm_executor::Program;
-        use sp1_stark::InteractionKind::Instruction;
 
         #[must_use]
         pub fn build_elf() -> Program {
@@ -97,10 +96,9 @@ pub mod programs {
                 Opcode::I32Add,
             ];
 
-            let program = Program::from_instrs(instructions);
             //  memory_image: BTreeMap::new() };
 
-            program
+            Program::from_instrs(instructions)
         }
 
         // /// Get the fibonacci program.
@@ -208,4 +206,3 @@ pub mod programs {
         }
     }
 }
-*/

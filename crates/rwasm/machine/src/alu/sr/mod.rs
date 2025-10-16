@@ -561,7 +561,6 @@ mod tests {
         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
         MachineProver, StarkGenericConfig, Val,
     };
-    use typenum::op;
 
     use super::ShiftRightChip;
 
@@ -698,8 +697,8 @@ mod tests {
                     run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
                 let shift_right_chip_name = chip_name!(ShiftRightChip, BabyBear);
                 assert!(
-                    result.is_err()
-                        && result.unwrap_err().is_constraints_failing(&shift_right_chip_name)
+                    result.is_err() &&
+                        result.unwrap_err().is_constraints_failing(&shift_right_chip_name)
                 );
             }
         }

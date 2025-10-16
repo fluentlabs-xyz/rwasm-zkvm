@@ -577,18 +577,15 @@ pub mod tests {
     use crate::{
         io::SP1Stdin,
         rwasm::RwasmAir,
-        utils::{self, prove_core, run_test, setup_logger},
+        utils::{self, run_test},
     };
 
     use crate::programs::tests::*;
     use hashbrown::HashMap;
     use itertools::Itertools;
     use p3_baby_bear::BabyBear;
-    use rwasm_executor::{Opcode, Program, RwasmAirId, SP1Context};
-    use sp1_stark::{
-        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver,
-        SP1CoreOpts, StarkProvingKey, StarkVerifyingKey,
-    };
+    use rwasm_executor::RwasmAirId;
+    use sp1_stark::{air::MachineAir, CpuProver, MachineProver};
     use strum::IntoEnumIterator;
     #[test]
     fn test_primitives_and_machine_air_names_match() {

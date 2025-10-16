@@ -6,10 +6,7 @@ mod tests {
     use p3_matrix::dense::RowMajorMatrix;
     use rwasm_executor::{ExecutionRecord, Executor};
     use rwasm_machine::{
-        memory::MemoryLocalChip,
-        programs::tests::{build_elf, *},
-        rwasm::RwasmAir,
-        utils::setup_logger,
+        memory::MemoryLocalChip, programs::tests::build_elf, rwasm::RwasmAir, utils::setup_logger,
     };
     use sp1_stark::{
         air::{InteractionScope, MachineAir},

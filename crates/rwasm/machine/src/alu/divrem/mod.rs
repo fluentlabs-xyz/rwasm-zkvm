@@ -826,19 +826,19 @@ mod tests {
     #![allow(clippy::print_stdout)]
 
     use super::DivRemChip;
-    use crate::io::SP1Stdin;
-    use crate::rwasm::RwasmAir;
+    use crate::{io::SP1Stdin, rwasm::RwasmAir};
     use p3_baby_bear::BabyBear;
-    use p3_field::AbstractField;
     use p3_matrix::dense::RowMajorMatrix;
-    use rand::{thread_rng, Rng};
-    use rwasm_executor::events::MemoryRecordEnum;
-    use rwasm_executor::{events::AluEvent, ExecutionRecord, Opcode, Program};
-    use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
-    use sp1_stark::{air::MachineAir, chip_name, CpuProver, MachineProver};
+    use rwasm_executor::{
+        events::{AluEvent, MemoryRecordEnum},
+        ExecutionRecord, Opcode, Program,
+    };
+    use sp1_stark::{
+        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
+        MachineProver,
+    };
 
     use crate::utils::run_malicious_test;
-    use sp1_stark::StarkGenericConfig;
 
     #[test]
     fn generate_trace() {
@@ -1012,7 +1012,7 @@ mod tests {
                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
                         malicious_record.cpu_events[2].res_record
                     {
-                        write_record.value = op_a.into();
+                        write_record.value = op_a;
                     }
                     malicious_record.divrem_events[0].a = op_a;
                 }
