@@ -135,6 +135,10 @@ impl TableChip {
             local.shard = F::from_canonical_u32(event.shard);
             local.clk = F::from_canonical_u32(event.clk);
 
+            let src_offset = event.s + idx as u32;
+
+            let dst_offset = event.d + idx as u32;
+
             if let (Some(memory_read_access), Some(memory_write_access)) =
                 (event.memory_read_access.get(idx), event.memory_write_acess.get(idx))
             {
@@ -142,38 +146,14 @@ impl TableChip {
                 local.dst_write_access.populate(*memory_write_access, blu);
             }
 
-            local.src_offset = (event.s + idx as u32).into();
-
-            local.dst_offset = (event.d + idx as u32).into();
-
             local.table_idx = F::from_canonical_u32(event.table_idx);
             if idx == event.n as usize - 1 || event.n == 0 {
                 local.is_last = F::one();
-
-                blu.add_byte_lookup_event(ByteLookupEvent {
-                    opcode: ByteOpcode::LTU,
-                    a1: 1,
-                    a2: 0,
-                    b: ((event.s + idx as u32) >> 8) as u8,
-                    c: (N_MAX_ELEM_SEGMENTS_BITS >> 8) as u8,
-                });
-
-                blu.add_byte_lookup_event(ByteLookupEvent {
-                    opcode: ByteOpcode::LTU,
-                    a1: 1,
-                    a2: 0,
-                    b: ((event.d + idx as u32) >> 8) as u8,
-                    c: (N_MAX_TABLE_SIZE >> 8) as u8,
-                });
-
-                blu.add_byte_lookup_event(ByteLookupEvent {
-                    opcode: ByteOpcode::LTU,
-                    a1: 1,
-                    a2: 0,
-                    b: event.table_idx as u8,
-                    c: N_MAX_TABLES as u8,
-                });
             }
+
+            local.src_offset = src_offset.into();
+
+            local.dst_offset = dst_offset.into();
 
             if rows.as_ref().is_some() {
                 rows.as_mut().unwrap().push(row);

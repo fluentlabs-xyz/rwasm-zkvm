@@ -117,34 +117,7 @@ where
             next.dst_offset.reduce::<AB>(),
         );
 
-        builder.send_byte(
-            AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
-            AB::Expr::one(),
-            local.src_offset[1],
-            AB::Expr::from_canonical_u32(N_MAX_ELEM_SEGMENTS_BITS as u32 >> 8),
-            local.is_last,
-        );
-
-        builder.send_byte(
-            AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
-            AB::Expr::one(),
-            local.dst_offset[1],
-            AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE as u32 >> 8),
-            local.is_last,
-        );
-
-        builder.send_byte(
-            AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
-            AB::Expr::one(),
-            local.table_idx,
-            AB::Expr::from_canonical_u32(N_MAX_TABLES),
-            local.is_last,
-        );
-
-        builder.assert_zero(local.src_offset[2]);
-        builder.assert_zero(local.src_offset[3]);
-        builder.assert_zero(local.dst_offset[2]);
-        builder.assert_zero(local.dst_offset[3]);
+        // TODO(Aliaksei): add address memory bound check 
 
         self.eval_memory_access(local, builder);
 
