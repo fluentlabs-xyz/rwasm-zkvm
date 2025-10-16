@@ -39,7 +39,7 @@ jobs:
 
       - name: Run rwasm-prover tests
         run: |
-          cargo test --release --package rwasm-prover --lib rwasmtest::tests
+          cargo test --release --package rwasm-prover --lib rwasmtest
 
   lint:
     name: Lint
@@ -50,11 +50,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly
+          toolchain: stable
           components: rustfmt, clippy
 
       - name: Check formatting
-        run: cargo +nightly fmt --all -- --check
+        run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo +nightly clippy -p rwasm-machine -p rwasm-executor -p rwasm-machine-test -- -D warnings
+        run: cargo clippy -p rwasm-machine -p rwasm-executor -p rwasm-machine-test -- -D warnings
