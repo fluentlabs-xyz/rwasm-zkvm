@@ -58,5 +58,5 @@ jobs:
         continue-on-error: true
 
       - name: Run clippy
-        run: cargo +nightly clippy -p rwasm-machine -p rwasm-executor -p rwasm-machine-test
+        run: cargo +nightly clippy -p rwasm-machine -p rwasm-executor -p rwasm-machine-test -- -D warnings
         continue-on-error: true

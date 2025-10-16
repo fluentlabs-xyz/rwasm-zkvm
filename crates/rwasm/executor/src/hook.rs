@@ -151,10 +151,10 @@ mod ecrecover {
             elliptic_curve::ff::PrimeField, FieldBytes as K256FieldBytes,
             FieldElement as K256FieldElement, Scalar as K256Scalar,
         };
-
+        #[allow(deprecated)]
         let r = K256FieldElement::from_bytes(K256FieldBytes::from_slice(&r)).unwrap();
         debug_assert!(!bool::from(r.is_zero()), "r should not be zero");
-
+        #[allow(deprecated)]
         let alpha = K256FieldElement::from_bytes(K256FieldBytes::from_slice(&alpha)).unwrap();
         assert!(!bool::from(alpha.is_zero()), "alpha should not be zero");
 
@@ -170,6 +170,7 @@ mod ecrecover {
 
             vec![vec![1], y_coord.to_bytes().to_vec(), r_inv.to_bytes().to_vec()]
         } else {
+            #[allow(deprecated)]
             let nqr_field = K256FieldElement::from_bytes(K256FieldBytes::from_slice(&NQR)).unwrap();
             let qr = alpha * nqr_field;
             let root = qr.sqrt().expect("if alpha is not a square, then qr should be a square");
@@ -183,10 +184,11 @@ mod ecrecover {
             elliptic_curve::ff::PrimeField, FieldBytes as P256FieldBytes,
             FieldElement as P256FieldElement, Scalar as P256Scalar,
         };
-
+        #[allow(deprecated)]
         let r = P256FieldElement::from_bytes(P256FieldBytes::from_slice(&r)).unwrap();
         debug_assert!(!bool::from(r.is_zero()), "r should not be zero");
 
+        #[allow(deprecated)]
         let alpha = P256FieldElement::from_bytes(P256FieldBytes::from_slice(&alpha)).unwrap();
         debug_assert!(!bool::from(alpha.is_zero()), "alpha should not be zero");
 
@@ -200,6 +202,7 @@ mod ecrecover {
 
             vec![vec![1], y_coord.to_bytes().to_vec(), r_inv.to_bytes().to_vec()]
         } else {
+            #[allow(deprecated)]
             let nqr_field = P256FieldElement::from_bytes(P256FieldBytes::from_slice(&NQR)).unwrap();
             let qr = alpha * nqr_field;
             let root = qr.sqrt().expect("if alpha is not a square, then qr should be a square");
