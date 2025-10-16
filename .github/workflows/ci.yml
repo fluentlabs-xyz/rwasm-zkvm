@@ -50,11 +50,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: stable
+          toolchain: nightly
           components: rustfmt, clippy
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: cargo +nightly fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy -p rwasm-machine -p rwasm-executor -p rwasm-machine-test -- -D warnings
+        run: cargo +nightly clippy -p rwasm-machine -p rwasm-executor -p rwasm-machine-test -- -D warnings

@@ -504,6 +504,7 @@ mod tests {
         program
     }
 
+    #[warn(dead_code)]
     fn build_elf_skipped_ins() -> Program {
         let sp_value: u32 = SP_START;
         let x_value: u32 = 0x1234;
