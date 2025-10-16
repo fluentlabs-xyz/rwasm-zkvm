@@ -6043,7 +6043,7 @@ dependencies = [
 [[package]]
 name = "rwasm"
 version = "0.0.0"
-source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing#e792a1ca6139bebc2208b4b6daab110812eaff54"
+source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Faddr-rangecheck#dfca4323c3a4f4b84d19100743d86cfc33e6eb86"
 dependencies = [
  "anyhow",
  "bincode 2.0.1",
@@ -6093,7 +6093,7 @@ dependencies = [
  "range-set-blaze",
  "rrs-succinct",
  "rustc-demangle",
- "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing)",
+ "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Faddr-rangecheck)",
  "serde",
  "serde_json",
  "sp1-curves",
@@ -6145,7 +6145,7 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "rayon-scan",
- "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing)",
+ "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Faddr-rangecheck)",
  "rwasm-executor",
  "serde",
  "serde_json",
@@ -6202,7 +6202,7 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "rayon-scan",
- "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing)",
+ "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Faddr-rangecheck)",
  "rwasm-executor",
  "rwasm-machine",
  "serde",
@@ -6251,7 +6251,7 @@ dependencies = [
  "p3-symmetric",
  "p3-util",
  "rayon",
- "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing)",
+ "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Faddr-rangecheck)",
  "rwasm-executor",
  "rwasm-machine",
  "serde",

@@ -53,6 +53,7 @@ rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/ad
     "tracing",
 ] }
 
+
 [build-dependencies]
 downloader = { version = "0.2", default-features = false, features = [
   "rustls-tls",

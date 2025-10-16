@@ -1,4 +1,4 @@
-use rwasm::TraceCallData;
+use rwasm::{mem_index::TypedAddress, TraceCallData};
 use serde::{Deserialize, Serialize};
 
 use super::memory::MemoryRecordEnum;
@@ -24,14 +24,20 @@ pub struct CpuEvent {
     pub res: u32,
     /// The first operand memory record.
     pub res_record: Option<MemoryRecordEnum>,
+    /// addr for operand result
+    pub res_addr: Option<TypedAddress>,
     /// The second operand.
     pub arg1: u32,
     /// The second operand memory record.
     pub arg1_record: Option<MemoryRecordEnum>,
+    /// addr for operand result
+    pub arg1_addr: Option<TypedAddress>,
     /// The third operand.
     pub arg2: u32,
     /// The third operand memory record.
     pub arg2_record: Option<MemoryRecordEnum>,
+    /// addr for operand result
+    pub arg2_addr: Option<TypedAddress>,
     /// The exit code.
     pub exit_code: u32,
     pub call_sp: u32,

@@ -54,7 +54,6 @@ rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/ad
     "tracing",
 ] }
 
-
 wat = "1.0.80"
 # profiling
 goblin = { version = "0.9", optional = true }

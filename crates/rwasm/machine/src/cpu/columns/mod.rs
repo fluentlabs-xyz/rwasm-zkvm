@@ -10,7 +10,7 @@ use sp1_derive::AlignedBorrow;
 use sp1_stark::Word;
 use std::mem::{size_of, transmute};
 
-use crate::memory::{MemoryCols, MemoryReadCols, MemoryReadWriteCols,StackAddressCols};
+use crate::memory::{MemoryCols, MemoryReadCols, MemoryReadWriteCols, StackAddressCols};
 
 pub const NUM_CPU_COLS: usize = size_of::<CpuCols<u8>>();
 
@@ -71,6 +71,8 @@ pub struct CpuCols<T: Copy> {
     pub op_arg2_access: MemoryReadCols<T>,
 
     ///Operand Address RangeChecker
+    pub op_arg1_addr: StackAddressCols<T>,
+    pub op_arg2_addr: StackAddressCols<T>,
     pub op_res_addr: StackAddressCols<T>,
 
     /// Selector to label whether this row is a non padded row.

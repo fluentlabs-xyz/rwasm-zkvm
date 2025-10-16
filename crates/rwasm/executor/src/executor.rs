@@ -853,10 +853,13 @@ impl<'a> Executor<'a> {
             next_call_sp,
             res,
             res_record: record.res_record,
+            res_addr: record.res_addr,
             arg1,
             arg1_record: record.arg1_record,
+            arg1_addr: record.arg1_addr,
             arg2,
             arg2_record: record.arg2_record,
+            arg2_addr: record.arg2_addr,
             exit_code,
             call_data,
         });
