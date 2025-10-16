@@ -101,6 +101,8 @@ pub mod programs {
             Program::from_instrs(instructions)
         }
 
+        /*
+
         // /// Get the fibonacci program.
         // ///
         // /// # Panics
@@ -159,6 +161,8 @@ pub mod programs {
         // pub fn panic_program() -> Program {
         //     Program::from(PANIC_ELF).unwrap()
         // }
+
+        */
 
         #[must_use]
         #[allow(clippy::unreadable_literal)]
