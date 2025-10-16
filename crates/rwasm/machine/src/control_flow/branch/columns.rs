@@ -25,9 +25,9 @@ pub struct BranchColumns<T> {
     /// The value of the third operand.
     pub op_arg2_value: Word<T>,
 
-    pub target:Word<T>,
+    pub target: Word<T>,
 
-    pub br_table_offset_value:Word<T>,
+    pub br_table_offset_value: Word<T>,
 
     /// Branch Instructions.
     pub is_br: T,
@@ -43,9 +43,9 @@ pub struct BranchColumns<T> {
     /// > (is_bge | is_bgeu) & (a_eq_b | a_gt_b)
     pub is_branching: T,
 
-    pub is_branching_table :T,
+    pub is_branching_table: T,
 
-    pub is_branching_non_table :T,
+    pub is_branching_non_table: T,
     /// The not branching column is equal to:
     ///
     /// > is_beq & !a_eq_b ||

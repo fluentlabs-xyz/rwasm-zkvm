@@ -8,12 +8,15 @@ use core::{
     mem::size_of,
 };
 
+use crate::memory::global;
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
-use rwasm_executor::events::GlobalInteractionEvent;
-use rwasm_executor::{events::MemoryInitializeFinalizeEvent, ExecutionRecord, Program};
+use rwasm_executor::{
+    events::{GlobalInteractionEvent, MemoryInitializeFinalizeEvent},
+    ExecutionRecord, Program,
+};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{
@@ -23,7 +26,6 @@ use sp1_stark::{
     InteractionKind, Word,
 };
 use std::array;
-use crate::memory::global;
 /// A memory chip that can initialize or finalize values in memory.
 pub struct MemoryGlobalChip {
     pub kind: MemoryChipType,
@@ -70,25 +72,24 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
         let events = memory_events.into_iter().map(|event| {
             let interaction_shard = if is_receive { event.shard } else { 0 };
             let interaction_clk = if is_receive { event.timestamp } else { 0 };
-            let message =[
-                    interaction_shard,
-                    interaction_clk,
-                    event.addr,
-                    (event.value & 255) as u32,
-                    ((event.value >> 8) & 255) as u32,
-                    ((event.value >> 16) & 255) as u32,
-                    ((event.value >> 24) & 255) as u32,
-                ];
-            println!("name:{},message:{:?}",name,message);
-            GlobalInteractionEvent {
-                message,
-                is_receive,
-                kind: InteractionKind::Memory as u8,
-            }
+            let message = [
+                interaction_shard,
+                interaction_clk,
+                event.addr,
+                (event.value & 255) as u32,
+                ((event.value >> 8) & 255) as u32,
+                ((event.value >> 16) & 255) as u32,
+                ((event.value >> 24) & 255) as u32,
+            ];
+            println!("name:{},message:{:?}", name, message);
+            GlobalInteractionEvent { message, is_receive, kind: InteractionKind::Memory as u8 }
         });
-        
 
-        println!("chip: memory{} events:{:?}",<global::MemoryGlobalChip as MachineAir<F>>::name(self),events);
+        println!(
+            "chip: memory{} events:{:?}",
+            <global::MemoryGlobalChip as MachineAir<F>>::name(self),
+            events
+        );
         output.global_interaction_events.extend(events);
     }
 
@@ -427,17 +428,15 @@ mod tests {
     #![allow(clippy::print_stdout)]
 
     use super::*;
-    use crate::programs::tests::*;
     use crate::{
-        rwasm::RwasmAir, syscall::precompiles::sha256::extend_tests::sha_extend_program,
-        utils::setup_logger,
+        programs::tests::*, rwasm::RwasmAir,
+        syscall::precompiles::sha256::extend_tests::sha_extend_program, utils::setup_logger,
     };
     use p3_baby_bear::BabyBear;
     use rwasm_executor::Executor;
-    use sp1_stark::InteractionKind;
     use sp1_stark::{
-        baby_bear_poseidon2::BabyBearPoseidon2, debug_interactions_with_all_chips, SP1CoreOpts,
-        StarkMachine,
+        baby_bear_poseidon2::BabyBearPoseidon2, debug_interactions_with_all_chips, InteractionKind,
+        SP1CoreOpts, StarkMachine,
     };
 
     #[test]

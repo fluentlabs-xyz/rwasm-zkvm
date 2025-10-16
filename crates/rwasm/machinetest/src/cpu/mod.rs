@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 pub mod test {
 
@@ -9,12 +7,20 @@ pub mod test {
     use p3_baby_bear::BabyBear;
     use p3_matrix::dense::RowMajorMatrix;
     use rand::{thread_rng, Rng};
-    use rwasm_executor::{events::AluEvent, ExecutionRecord, Executor, Opcode, Program, DEFAULT_PC_INC};
-    use rwasm_machine::{cpu::CpuChip, programs, rwasm::AddSubChip};
-    use sp1_stark::{air::MachineAir, MachineProver, SP1CoreOpts, StarkGenericConfig};
+    use rwasm_executor::{
+        events::AluEvent, ExecutionRecord, Executor, Opcode, Program, DEFAULT_PC_INC,
+    };
+    use rwasm_machine::{
+        cpu::CpuChip,
+        programs,
+        rwasm::AddSubChip,
+        utils::{uni_stark_prove, uni_stark_verify},
+    };
+    use sp1_stark::{
+        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, MachineProver, SP1CoreOpts,
+        StarkGenericConfig,
+    };
     use std::sync::LazyLock;
-    use rwasm_machine::utils::{uni_stark_prove, uni_stark_verify};
-    use sp1_stark::baby_bear_poseidon2::BabyBearPoseidon2;
 
     fn build_elf() -> Program {
         // let x_value: u32 = 0x11;
@@ -48,27 +54,24 @@ pub mod test {
         program
     }
 
-    
     #[test]
     fn prove_babybear() {
         let config = BabyBearPoseidon2::new();
         let mut challenger = config.challenger();
         let opts = SP1CoreOpts::default();
-        
-            
+
         let program = build_elf();
-        let mut runtime =Executor::new(program, opts);
+        let mut runtime = Executor::new(program, opts);
         runtime.run();
-        println!("runtimerecordcpu:{:?}",runtime.record.cpu_events);
+        println!("runtimerecordcpu:{:?}", runtime.record.cpu_events);
         let chip = CpuChip::default();
         let trace: RowMajorMatrix<BabyBear> =
-            chip.generate_trace(&(runtime.record).defer(),&mut ExecutionRecord::default());
-        
+            chip.generate_trace(&(runtime.record).defer(), &mut ExecutionRecord::default());
+
         let proof = uni_stark_prove::<BabyBearPoseidon2, _>(&config, &chip, &mut challenger, trace);
 
         let mut challenger = config.challenger();
         let result = uni_stark_verify(&config, &chip, &mut challenger, &proof).unwrap();
         println!("{:?}", result);
     }
-
 }

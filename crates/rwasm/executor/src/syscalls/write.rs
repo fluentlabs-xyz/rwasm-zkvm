@@ -1,5 +1,7 @@
-use sp1_primitives::consts::fd::{FD_HINT, FD_PUBLIC_VALUES, LOWEST_ALLOWED_FD};
-use sp1_primitives::consts::num_to_comma_separated;
+use sp1_primitives::consts::{
+    fd::{FD_HINT, FD_PUBLIC_VALUES, LOWEST_ALLOWED_FD},
+    num_to_comma_separated,
+};
 
 use crate::Executor;
 
@@ -28,6 +30,7 @@ impl Syscall for WriteSyscall {
     ///
     /// Else, log a warning.
     #[allow(clippy::pedantic)]
+    #[allow(unreachable_code)]
     fn execute(
         &self,
         ctx: &mut SyscallContext,
@@ -35,7 +38,7 @@ impl Syscall for WriteSyscall {
         arg1: u32,
         arg2: u32,
     ) -> Option<u32> {
-        let a2 = todo!();
+        todo!();
         let rt = &mut ctx.rt;
         let fd = arg1;
         let write_buf = arg2;

@@ -4,7 +4,6 @@ use hashbrown::HashMap;
 
 use rwasm::Opcode;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use sp1_curves::p256::elliptic_curve::generic_array::arr::Inc;
 
 use crate::RwasmAirId;
 

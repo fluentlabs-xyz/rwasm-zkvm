@@ -158,7 +158,7 @@ pub enum SyscallCode {
     SECP256R1_DECOMPRESS = 0x00_00_01_2E,
 
     /// Executes the `TableInit` FatOp.
-    TABLE_INIT = 0x00_00_01_2F 
+    TABLE_INIT = 0x00_00_01_2F,
 }
 
 impl SyscallCode {
@@ -262,9 +262,9 @@ impl SyscallCode {
             SyscallCode::U256XU2048_MUL => RwasmAirId::U256XU2048Mul,
             SyscallCode::BLS12381_ADD => RwasmAirId::Bls12381AddAssign,
             SyscallCode::BLS12381_DOUBLE => RwasmAirId::Bls12381DoubleAssign,
-            SyscallCode::BLS12381_FP_ADD
-            | SyscallCode::BLS12381_FP_SUB
-            | SyscallCode::BLS12381_FP_MUL => RwasmAirId::Bls12381FpOpAssign,
+            SyscallCode::BLS12381_FP_ADD |
+            SyscallCode::BLS12381_FP_SUB |
+            SyscallCode::BLS12381_FP_MUL => RwasmAirId::Bls12381FpOpAssign,
             SyscallCode::BLS12381_FP2_ADD | SyscallCode::BLS12381_FP2_SUB => {
                 RwasmAirId::Bls12381Fp2AddSubAssign
             }
@@ -279,16 +279,16 @@ impl SyscallCode {
             SyscallCode::SECP256R1_ADD => RwasmAirId::Secp256r1AddAssign,
             SyscallCode::SECP256R1_DOUBLE => RwasmAirId::Secp256r1DoubleAssign,
             SyscallCode::SECP256R1_DECOMPRESS => RwasmAirId::Secp256r1Decompress,
-            SyscallCode::TABLE_INIT=> RwasmAirId::Table,
-            SyscallCode::HALT
-            | SyscallCode::WRITE
-            | SyscallCode::ENTER_UNCONSTRAINED
-            | SyscallCode::EXIT_UNCONSTRAINED
-            | SyscallCode::COMMIT
-            | SyscallCode::COMMIT_DEFERRED_PROOFS
-            | SyscallCode::VERIFY_SP1_PROOF
-            | SyscallCode::HINT_LEN
-            | SyscallCode::HINT_READ => return None,
+            SyscallCode::TABLE_INIT => RwasmAirId::Table,
+            SyscallCode::HALT |
+            SyscallCode::WRITE |
+            SyscallCode::ENTER_UNCONSTRAINED |
+            SyscallCode::EXIT_UNCONSTRAINED |
+            SyscallCode::COMMIT |
+            SyscallCode::COMMIT_DEFERRED_PROOFS |
+            SyscallCode::VERIFY_SP1_PROOF |
+            SyscallCode::HINT_LEN |
+            SyscallCode::HINT_READ => return None,
         })
     }
 }

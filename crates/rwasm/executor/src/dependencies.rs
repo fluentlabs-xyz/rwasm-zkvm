@@ -1,9 +1,9 @@
 use std::cmp;
 
-use rwasm::{is_multi_align, mem_index::UNIT, Opcode};
+use rwasm::{is_multi_align, Opcode};
 
 use crate::{
-    events::{AluEvent, BranchEvent, MemInstrEvent, MemoryRecord},
+    events::{AluEvent, BranchEvent, MemInstrEvent},
     utils::{get_msb, get_quotient_and_remainder, is_signed_operation},
     Executor, I32MULHU_CODE, I32MULH_CODE, UNUSED_PC,
 };
@@ -108,14 +108,14 @@ pub fn emit_divrem_dependencies(executor: &mut Executor, event: AluEvent) {
 pub fn emit_memory_dependencies(executor: &mut Executor, event: MemInstrEvent) {
     if matches!(
         event.opcode,
-        Opcode::I32Load(_)
-            | Opcode::I32Load16S(_)
-            | Opcode::I32Load16U(_)
-            | Opcode::I32Load8S(_)
-            | Opcode::I32Load8U(_)
-            | Opcode::I32Store(_)
-            | Opcode::I32Store16(_)
-            | Opcode::I32Store8(_)
+        Opcode::I32Load(_) |
+            Opcode::I32Load16S(_) |
+            Opcode::I32Load16U(_) |
+            Opcode::I32Load8S(_) |
+            Opcode::I32Load8U(_) |
+            Opcode::I32Store(_) |
+            Opcode::I32Store16(_) |
+            Opcode::I32Store8(_)
     ) {
         let offset = event.opcode.aux_value();
         let memory_addr = event.raw_addr.wrapping_add(offset);

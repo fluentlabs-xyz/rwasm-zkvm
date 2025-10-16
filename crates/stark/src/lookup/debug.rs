@@ -126,7 +126,7 @@ pub fn debug_interactions<SC: StarkGenericConfig, A: MachineAir<Val<SC>>>(
             }
         }
     }
-   
+
     (key_to_vec_data, key_to_count)
 }
 
@@ -153,18 +153,15 @@ where
     let mut total = SC::Val::zero();
 
     let chips = machine.chips();
-    
+
     for chip in chips.iter() {
-        
-       
         let mut total_events = 0;
-       
-        
+
         for shard in shards {
             if !chip.included(shard) {
                 continue;
             }
-           
+
             let (_, count) =
                 debug_interactions::<SC, A>(chip, pkey, shard, interaction_kinds.clone(), scope);
             total_events += count.len();
@@ -176,7 +173,12 @@ where
                 *entry.1.entry(chip.name()).or_insert(SC::Val::zero()) += *value;
             }
         }
-        tracing::info!(" scope:{},{} chip has {} distinct events", scope,chip.name(), total_events);
+        tracing::info!(
+            " scope:{},{} chip has {} distinct events",
+            scope,
+            chip.name(),
+            total_events
+        );
     }
 
     tracing::info!("Final counts below.");

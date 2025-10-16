@@ -4,7 +4,6 @@ use crate::{
     dependencies::{emit_branch_dependencies, emit_divrem_dependencies, emit_memory_dependencies},
     estimator::RecordEstimator,
     events::{CallEvent, ConstEvent, PrecompileEvent, SysStateEvent, SyscallEvent},
-    syscalls, SP_START,
 };
 #[cfg(feature = "profiling")]
 use std::{fs::File, io::BufWriter};
@@ -18,10 +17,10 @@ use rwasm::{
     always_failing_syscall_handler,
     event::FatOpEvent,
     mem::{MemoryLocalEvent, MemoryRecordEnum},
-    CallStack, ExecutionEngine, ImportLinker, InstructionPtr, Opcode, RwasmExecutor, RwasmModule,
-    RwasmStore, Store, TraceCallData, Tracer, TrapCode, ValueStack, ValueStackPtr,
+    CallStack, ExecutionEngine, ImportLinker, InstructionPtr, Opcode, RwasmExecutor, RwasmStore,
+    TraceCallData, TrapCode, ValueStack, ValueStackPtr,
 };
-use serde::{de::value, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
 use sp1_stark::{air::PublicValues, SP1CoreOpts};
 use strum::IntoEnumIterator;
@@ -36,7 +35,7 @@ use crate::{
     estimate_riscv_lde_size,
     events::{
         AluEvent, BranchEvent, CpuEvent, MemInstrEvent, MemoryInitializeFinalizeEvent,
-        MemoryReadRecord, MemoryRecord, MemoryWriteRecord, NUM_LOCAL_MEMORY_ENTRIES_PER_ROW_EXEC,
+        MemoryReadRecord, MemoryRecord, MemoryWriteRecord,
     },
     hook::{HookEnv, HookRegistry},
     memory::{Entry, Memory},
@@ -84,7 +83,7 @@ impl From<bool> for DeferredProofVerification {
     }
 }
 
-struct RwasmExecutorState {
+pub struct RwasmExecutorState {
     pub sp: ValueStackPtr,
     pub ip: InstructionPtr,
 }
@@ -218,9 +217,10 @@ pub struct Executor<'a> {
 }
 
 /// The different modes the executor can run in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum, Default)]
 pub enum ExecutorMode {
     /// Run the execution with no tracing or checkpointing.
+    #[default]
     Simple,
     /// Run the execution with checkpoints for memory.
     Checkpoint,
@@ -1146,6 +1146,7 @@ impl<'a> Executor<'a> {
 
     // Emit a branch event.
     #[inline]
+    #[allow(dead_code)]
     fn emit_sys_state_event(
         &mut self,
         opcode: Opcode,
@@ -1160,12 +1161,14 @@ impl<'a> Executor<'a> {
 
     /// Execute an ecall opcode.
     #[allow(clippy::type_complexity)]
+    #[allow(unreachable_code)]
+    #[allow(dead_code)]
     fn execute_ecall(
         &mut self,
     ) -> Result<(u32, u32, u32, u32, u32, SyscallCode, u32), ExecutionError> {
         // We peek at register x5 to get the syscall id. The reason we don't `self.rr` this
         // register is that we write to it later.
-        let t0 = todo!();
+        todo!();
         let syscall_id = todo!();
         let c = todo!();
         let b = todo!();
@@ -1286,7 +1289,7 @@ impl<'a> Executor<'a> {
             op_state.arg2,
             op_state.res,
             op_state.memory_access,
-            op_state.call_state.clone(),
+            op_state.call_state,
             op_state.fat_op.clone(),
         );
         // if op_state.opcode.is_state_instrucition() {
@@ -1329,7 +1332,11 @@ impl<'a> Executor<'a> {
                 // Check if we're too "close" to a maximal shape.
                 else if let Some(maximal_shapes) = &self.maximal_shapes {
                     let distance = |threshold: usize, count: usize| {
-                        (count != 0).then(|| threshold - count).unwrap_or(usize::MAX)
+                        if count != 0 {
+                            threshold - count
+                        } else {
+                            usize::MAX
+                        }
                     };
 
                     shape_match_found = false;
@@ -1523,6 +1530,7 @@ impl<'a> Executor<'a> {
         Ok((checkpoint, public_values, done))
     }
 
+    #[allow(dead_code)]
     fn initialize(&mut self) {
         self.state.clk = 0;
 
@@ -1909,6 +1917,7 @@ impl<'a> Executor<'a> {
     // }
 
     #[inline]
+    #[allow(dead_code)]
     fn log(&mut self, _: &Opcode) {
         #[cfg(feature = "profiling")]
         if let Some((ref mut profiler, _)) = self.profiler {
@@ -1923,37 +1932,6 @@ impl<'a> Executor<'a> {
     }
 }
 
-impl Default for ExecutorMode {
-    fn default() -> Self {
-        Self::Simple
-    }
-}
-fn peek_stack(rt: &Executor) {
-    let start = SP_START;
-    for idx in (1..16) {
-        let rec = rt.state.memory.get(SP_START - 4 * idx);
-        match rec {
-            Some(rec) => {
-                println!("addr: {}, pos:{},val:{}", SP_START - 4 * idx, idx, rec.value);
-            }
-            None => {
-                println!("pos:{},empty", idx);
-            }
-        }
-    }
-    for idx in (1..16) {
-        let rec = rt.state.memory.get(SP_START + 4 * idx);
-        match rec {
-            Some(rec) => {
-                println!("Error ! addr: {},pos:-{},val:{}", SP_START + 4 * idx, idx, rec.value);
-            }
-            None => {
-                println!("pos:-{},empty", idx);
-            }
-        }
-    }
-}
-
 /// Aligns an address to the nearest word below or equal to it.
 #[must_use]
 pub const fn align(addr: u32) -> u32 {
@@ -1962,7 +1940,6 @@ pub const fn align(addr: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::peek_stack;
     use crate::{align, ExecutionError, Executor, Program};
     use hashbrown::HashMap;
 
@@ -1971,6 +1948,32 @@ mod tests {
         BranchOffset, Opcode,
     };
     use sp1_stark::SP1CoreOpts;
+
+    fn peek_stack(rt: &Executor) {
+        let start = SP_START;
+        for idx in 1..16 {
+            let rec = rt.state.memory.get(SP_START - 4 * idx);
+            match rec {
+                Some(rec) => {
+                    println!("addr: {}, pos:{},val:{}", SP_START - 4 * idx, idx, rec.value);
+                }
+                None => {
+                    println!("pos:{},empty", idx);
+                }
+            }
+        }
+        for idx in 1..16 {
+            let rec = rt.state.memory.get(SP_START + 4 * idx);
+            match rec {
+                Some(rec) => {
+                    println!("Error ! addr: {},pos:-{},val:{}", SP_START + 4 * idx, idx, rec.value);
+                }
+                None => {
+                    println!("pos:-{},empty", idx);
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_align_various() {
@@ -4817,7 +4820,7 @@ mod tests {
     /// must panic in the current rwasm backend (it does not return Err).
     /// This test documents that behavior explicitly.
     #[test]
-    #[should_panic(expected = "capacity overflow")]
+    #[should_panic(expected = "stack underflow")]
     fn test_stack_underflow_add_traps() {
         let ops = vec![
             // No pushes

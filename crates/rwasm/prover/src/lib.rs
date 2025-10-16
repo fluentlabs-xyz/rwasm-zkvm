@@ -10,10 +10,12 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::new_without_default)]
 #![allow(clippy::collapsible_else_if)]
+#![allow(unused_variables)]
 
 pub mod build;
 pub mod components;
 pub mod gas;
+#[cfg(test)]
 mod rwasmtest;
 pub mod shapes;
 pub mod types;
@@ -83,10 +85,11 @@ use sp1_recursion_core::{
 pub use sp1_recursion_gnark_ffi::proof::{Groth16Bn254Proof, PlonkBn254Proof};
 use sp1_recursion_gnark_ffi::{groth16_bn254::Groth16Bn254Prover, plonk_bn254::PlonkBn254Prover};
 use sp1_stark::{
-    baby_bear_poseidon2::BabyBearPoseidon2, shape::Shape, Challenge, MachineProver, SP1ProverOpts,
-    ShardProof, SplitOpts, StarkGenericConfig, StarkVerifyingKey, Val, Word, DIGEST_SIZE,
+    baby_bear_poseidon2::BabyBearPoseidon2,
+    shape::{OrderedShape, Shape},
+    Challenge, MachineProver, MachineProvingKey, SP1ProverOpts, ShardProof, SplitOpts,
+    StarkGenericConfig, StarkVerifyingKey, Val, Word, DIGEST_SIZE,
 };
-use sp1_stark::{shape::OrderedShape, MachineProvingKey};
 use tracing::instrument;
 
 pub use types::*;
@@ -285,16 +288,15 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         (pk, pk_d, program, vk)
     }
 
-    /// Creates a proving key and a verifying key for a given RISC-V ELF.
     #[instrument(name = "setup", level = "debug", skip_all)]
     pub fn setup_program(
         &self,
         program: &mut Program,
     ) -> (SP1ProvingKey, DeviceProvingKey<C>, SP1VerifyingKey) {
         if let Some(core_shape_config) = &self.core_shape_config {
-            core_shape_config.fix_preprocessed_shape(program);
+            core_shape_config.fix_preprocessed_shape(program).expect("shape exist");
         }
-        let (pk, vk) = self.core_prover.setup(&program);
+        let (pk, vk) = self.core_prover.setup(program);
         let vk = SP1VerifyingKey { vk };
         let pk =
             SP1ProvingKey { pk: self.core_prover.pk_to_host(&pk), elf: vec![], vk: vk.clone() };
@@ -465,7 +467,8 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                     let recursion_shape =
                         SP1RecursionShape { proof_shapes: vec![shape], is_complete };
 
-                    // Only need to compile the recursion program if we're not in the one-shard case.
+                    // Only need to compile the recursion program if we're not in the one-shard
+                    // case.
                     let compress_shape = SP1CompressProgramShape::Recursion(recursion_shape);
 
                     // Insert the program into the cache.
@@ -1743,8 +1746,8 @@ pub mod tests {
     //     // docker image which has a different API than the current. So we need to wait until the
     //     // next release (v1.2.0+), and then switch it back.
     //     let prover = SP1Prover::<CpuProverComponents>::new();
-    //     test_e2e_prover::<CpuProverComponents>(&prover, elf, SP1Stdin::default(), opts, Test::All)
-    // }
+    //     test_e2e_prover::<CpuProverComponents>(&prover, elf, SP1Stdin::default(), opts,
+    // Test::All) }
 
     // Tests an end-to-end workflow of proving a program across the entire proof generation
     // pipeline in addition to verifying deferred proofs.

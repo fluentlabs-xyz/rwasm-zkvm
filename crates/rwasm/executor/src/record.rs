@@ -15,7 +15,7 @@ use crate::{
     events::{
         AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, CallEvent, ConstEvent, CpuEvent,
         GlobalInteractionEvent, MemInstrEvent, MemoryInitializeFinalizeEvent, MemoryLocalEvent,
-        MemoryRecordEnum, PrecompileEvent, PrecompileEvents, SysStateEvent, SyscallEvent,
+        PrecompileEvent, PrecompileEvents, SysStateEvent, SyscallEvent,
     },
     program::Program,
     syscalls::SyscallCode,
@@ -121,12 +121,7 @@ impl ExecutionRecord {
         let precompile_events = take(&mut self.precompile_events);
 
         for (syscall_code, events) in precompile_events.into_iter() {
-            let threshold = match syscall_code {
-                // SyscallCode::KECCAK_PERMUTE => opts.keccak,
-                // SyscallCode::SHA_EXTEND => opts.sha_extend,
-                // SyscallCode::SHA_COMPRESS => opts.sha_compress,
-                _ => opts.deferred,
-            };
+            let threshold = opts.deferred;
 
             let chunks = events.chunks_exact(threshold);
             if last {
@@ -316,7 +311,10 @@ impl MachineRecord for ExecutionRecord {
         self.const_events.append(&mut other.const_events);
         self.call_events.append(&mut other.call_events);
         self.syscall_events.append(&mut other.syscall_events);
-        println!("other precompiles:{:?}", other.precompile_events.get_events(SyscallCode::TABLE_INIT));
+        println!(
+            "other precompiles:{:?}",
+            other.precompile_events.get_events(SyscallCode::TABLE_INIT)
+        );
         self.precompile_events.append(&mut other.precompile_events);
 
         if self.byte_lookups.is_empty() {
@@ -328,7 +326,7 @@ impl MachineRecord for ExecutionRecord {
         self.global_memory_initialize_events.append(&mut other.global_memory_initialize_events);
         self.global_memory_finalize_events.append(&mut other.global_memory_finalize_events);
         self.cpu_local_memory_access.append(&mut other.cpu_local_memory_access);
-        
+
         self.global_interaction_events.append(&mut other.global_interaction_events);
     }
 

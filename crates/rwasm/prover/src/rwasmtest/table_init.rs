@@ -1,8 +1,8 @@
+// TODO: add malicious tests
+
 use crate::rwasmtest::run_rwasm_prover;
 use rwasm::N_MAX_TABLE_SIZE;
 use rwasm_executor::{Opcode, Program};
-
-// TODO: add malicious tests
 
 #[test]
 pub fn test_base_case() {

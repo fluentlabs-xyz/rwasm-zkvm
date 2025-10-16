@@ -15,6 +15,7 @@ const U2048_NUM_BYTES: usize = U2048_NUM_WORDS * 4;
 pub(crate) struct U256xU2048MulSyscall;
 
 impl Syscall for U256xU2048MulSyscall {
+    #[allow(unreachable_code)]
     fn execute(
         &self,
         rt: &mut SyscallContext,

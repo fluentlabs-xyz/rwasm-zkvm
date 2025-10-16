@@ -10,7 +10,8 @@
     clippy::box_default,
     clippy::assign_op_pattern,
     deprecated,
-    incomplete_features
+    incomplete_features,
+    unused_variables
 )]
 #![warn(unused_extern_crates)]
 
@@ -39,12 +40,12 @@ pub mod utils;
 pub mod reduce {
     pub use rwasm_executor::SP1ReduceProof;
 }
-
+/*
 pub mod programs {
     #[allow(dead_code)]
     #[allow(missing_docs)]
     pub mod tests {
-        use hashbrown::HashMap;
+
         use rwasm::Opcode;
         use rwasm_executor::Program;
         #[must_use]
@@ -74,10 +75,9 @@ pub mod programs {
                 // Opcode::I32DivU,
             ];
 
-            let program = Program::from_instrs(instructions);
             //  memory_image: BTreeMap::new() };
 
-            program
+            Program::from_instrs(instructions)
         }
 
         // #[must_use]
@@ -133,7 +133,6 @@ pub mod programs {
         /// Get the SSZ withdrawals program.
         ///
         /// # Panics
-        ///
         // /// This function will panic if the program fails to load.
         // #[must_use]
         // pub fn ssz_withdrawals_program() -> Program {
@@ -196,3 +195,4 @@ pub mod programs {
         }
     }
 }
+*/

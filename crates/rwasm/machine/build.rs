@@ -1,7 +1,5 @@
 fn main() {
-    if std::env::var("DOCS_RS").is_ok() {
-        return;
-    }
+    if std::env::var("DOCS_RS").is_ok() {}
 
     #[cfg(feature = "sys")]
     sys::build_ffi();
@@ -133,11 +131,13 @@ mod sys {
                     }
                 }
             }
-            Err(cbindgen::Error::ParseSyntaxError { .. }) => {} // Ignore parse errors so rust-analyzer can run.
+            Err(cbindgen::Error::ParseSyntaxError { .. }) => {} /* Ignore parse errors so */
+            // rust-analyzer can run.
             Err(e) => panic!("{:?}", e),
         }
 
-        // Copy the headers to the include directory and symlink them to the fixed include directory.
+        // Copy the headers to the include directory and symlink them to the fixed include
+        // directory.
         for header in &headers {
             // Get the path of the header relative to the source include directory.
             let relpath = diff_paths(header, &source_include_dir).unwrap();

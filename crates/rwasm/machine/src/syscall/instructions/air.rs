@@ -6,14 +6,14 @@ use p3_matrix::Matrix;
 use rwasm_executor::{syscalls::SyscallCode, Opcode};
 use sp1_stark::{
     air::{
-        BaseAirBuilder, InteractionScope, PublicValues, SP1AirBuilder, POSEIDON_NUM_WORDS,
-        PV_DIGEST_NUM_WORDS, SP1_PROOF_NUM_PV_ELTS,
+        InteractionScope, PublicValues, SP1AirBuilder, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS,
+        SP1_PROOF_NUM_PV_ELTS,
     },
     Word,
 };
 
 use crate::{
-    air::{MemoryAirBuilder, WordAirBuilder},
+    air::WordAirBuilder,
     memory::MemoryCols,
     operations::{BabyBearWordRangeChecker, IsZeroOperation},
 };
@@ -49,12 +49,13 @@ where
         // - `op_a_immutable = 0`
         // - `is_memory = 0`
         // - `is_syscall = 1`
-        // `next_pc`, `num_extra_cycles`, `op_a_val`, `is_halt` need to be constrained. We outline the checks below.
-        // `next_pc` is constrained for the case where `is_halt` is true to be `0` in `eval_is_halt_unimpl`.
-        // `next_pc` is constrained for the case where `is_halt` is false to be `pc + 4` in `eval`.
-        // `num_extra_cycles` is checked to be equal to the return value of `get_num_extra_ecall_cycles`, in `eval`.
-        // `op_a_val` is constrained in `eval_ecall`.
-        // `is_halt` is checked to be correct in `eval_is_halt_syscall`.
+        // `next_pc`, `num_extra_cycles`, `op_a_val`, `is_halt` need to be constrained. We outline
+        // the checks below. `next_pc` is constrained for the case where `is_halt` is true
+        // to be `0` in `eval_is_halt_unimpl`. `next_pc` is constrained for the case where
+        // `is_halt` is false to be `pc + 4` in `eval`. `num_extra_cycles` is checked to be
+        // equal to the return value of `get_num_extra_ecall_cycles`, in `eval`. `op_a_val`
+        // is constrained in `eval_ecall`. `is_halt` is checked to be correct in
+        // `eval_is_halt_syscall`.
         builder.receive_instruction(
             local.shard,
             local.clk,
@@ -71,8 +72,7 @@ where
             local.is_sys_call,
         );
 
-
-         builder.receive_instruction(
+        builder.receive_instruction(
             local.shard,
             local.clk,
             local.pc,
@@ -95,7 +95,8 @@ where
             .when(AB::Expr::one() - local.is_halt)
             .assert_eq(local.next_pc, local.pc + AB::Expr::from_canonical_u32(2));
 
-        // `num_extra_cycles` is checked to be equal to the return value of `get_num_extra_ecall_cycles`
+        // `num_extra_cycles` is checked to be equal to the return value of
+        // `get_num_extra_ecall_cycles`
         builder.assert_eq::<AB::Var, AB::Expr>(
             local.num_extra_cycles,
             self.get_num_extra_ecall_cycles::<AB>(local),
@@ -145,8 +146,8 @@ impl SyscallInstrsChip {
         let syscall_id = local.syscall_id;
         let send_to_table = local.syscall_code[1];
 
-        // // SAFETY: Assert that for non real row, the send_to_table value is 0 so that the `send_syscall`
-        // // interaction is not activated.
+        // // SAFETY: Assert that for non real row, the send_to_table value is 0 so that the
+        // `send_syscall` // interaction is not activated.
         // builder.when(AB::Expr::one() - local.is_real).assert_zero(send_to_table);
 
         builder.send_syscall(
@@ -164,7 +165,8 @@ impl SyscallInstrsChip {
         //     IsZeroOperation::<AB::F>::eval(
         //         builder,
         //         syscall_id
-        //             - AB::Expr::from_canonical_u32(SyscallCode::ENTER_UNCONSTRAINED.syscall_id()),
+        //             - AB::Expr::from_canonical_u32(SyscallCode::ENTER_UNCONSTRAINED.
+        //               syscall_id()),
         //         local.is_enter_unconstrained,
         //         local.is_real.into(),
         //     );
@@ -198,25 +200,28 @@ impl SyscallInstrsChip {
         //     .assert_word_eq(*local.op_a_access.value(), *local.op_a_access.prev_value());
 
         // // SAFETY: This leaves the case where syscall is `HINT_LEN`.
-        // // In this case, `op_a`'s value can be arbitrary, but it still must be a valid word if `is_real = 1`.
-        // // This is due to `op_a_val` being connected to the CpuChip.
+        // // In this case, `op_a`'s value can be arbitrary, but it still must be a valid word if
+        // `is_real = 1`. // This is due to `op_a_val` being connected to the CpuChip.
         // // In the CpuChip, `op_a_val` is constrained to be a valid word via `eval_registers`.
-        // // As this is a syscall for HINT, the value itself being arbitrary is fine, as long as it is a valid word.
+        // // As this is a syscall for HINT, the value itself being arbitrary is fine, as long as it
+        // is a valid word.
 
         // // Verify value of ecall_range_check_operand column.
         // // SAFETY: If `is_real = 0`, then `ecall_range_check_operand = 0`.
-        // // If `is_real = 1`, then `is_halt_check` and `is_commit_deferred_proofs` are constrained.
-        // // The two results will both be boolean due to `IsZeroOperation`, and both cannot be `1` at the same time.
-        // // Both of them being `1` will require `syscall_id` being `HALT` and `COMMIT_DEFERRED_PROOFS` at the same time.
-        // // This implies that if `is_real = 1`, `ecall_range_check_operand` will be correct, and boolean.
+        // // If `is_real = 1`, then `is_halt_check` and `is_commit_deferred_proofs` are
+        // constrained. // The two results will both be boolean due to `IsZeroOperation`,
+        // and both cannot be `1` at the same time. // Both of them being `1` will require
+        // `syscall_id` being `HALT` and `COMMIT_DEFERRED_PROOFS` at the same time. // This implies
+        // that if `is_real = 1`, `ecall_range_check_operand` will be correct, and boolean.
         // builder.assert_eq(
         //     local.ecall_range_check_operand,
-        //     local.is_real * (local.is_halt_check.result + local.is_commit_deferred_proofs.result),
-        // );
+        //     local.is_real * (local.is_halt_check.result +
+        // local.is_commit_deferred_proofs.result), );
 
         // Babybear range check the operand_to_check word.
-        // SAFETY: `ecall_range_check_operand` is boolean, and no interactions can be made in padding rows.
-        // `operand_to_check` is already known to be a valid word, as it is either
+        // SAFETY: `ecall_range_check_operand` is boolean, and no interactions can be made in
+        // padding rows. `operand_to_check` is already known to be a valid word, as it is
+        // either
         // - `op_b_val` in the case of `HALT`
         // - `op_c_val` in the case of `COMMIT_DEFERRED_PROOFS`
         BabyBearWordRangeChecker::<AB::F>::range_check::<AB>(
@@ -228,6 +233,7 @@ impl SyscallInstrsChip {
     }
 
     /// Constraints related to the COMMIT and COMMIT_DEFERRED_PROOFS instructions.
+    #[allow(dead_code)]
     pub(crate) fn eval_commit<AB: SP1AirBuilder>(
         &self,
         builder: &mut AB,
@@ -302,6 +308,7 @@ impl SyscallInstrsChip {
     }
 
     /// Constraint related to the halt and unimpl instruction.
+    #[allow(dead_code)]
     pub(crate) fn eval_halt_unimpl<AB: SP1AirBuilder>(
         &self,
         builder: &mut AB,
@@ -321,6 +328,7 @@ impl SyscallInstrsChip {
     }
 
     /// Returns a boolean expression indicating whether the instruction is a HALT instruction.
+    #[allow(dead_code)]
     pub(crate) fn eval_is_halt_syscall<AB: SP1AirBuilder>(
         &self,
         builder: &mut AB,
@@ -346,12 +354,14 @@ impl SyscallInstrsChip {
 
         // Verify that the is_halt flag is correct.
         // If `is_real = 0`, then `local.is_halt = 0`.
-        // If `is_real = 1`, then `is_halt_check.result` will be correct, so `local.is_halt` is correct.
+        // If `is_real = 1`, then `is_halt_check.result` will be correct, so `local.is_halt` is
+        // correct.
         builder.assert_eq(local.is_halt, is_halt * local.is_real);
     }
 
     /// Returns two boolean expression indicating whether the instruction is a COMMIT or
     /// COMMIT_DEFERRED_PROOFS instruction.
+    #[allow(dead_code)]
     pub(crate) fn get_is_commit_related_syscall<AB: SP1AirBuilder>(
         &self,
         builder: &mut AB,
@@ -377,8 +387,8 @@ impl SyscallInstrsChip {
         let is_commit_deferred_proofs = {
             IsZeroOperation::<AB::F>::eval(
                 builder,
-                syscall_id
-                    - AB::Expr::from_canonical_u32(
+                syscall_id -
+                    AB::Expr::from_canonical_u32(
                         SyscallCode::COMMIT_DEFERRED_PROOFS.syscall_id(),
                     ),
                 local.is_commit_deferred_proofs,
@@ -401,7 +411,8 @@ impl SyscallInstrsChip {
         let num_extra_cycles = syscall_code[2];
 
         // If `is_real = 0`, then the return value is `0` regardless of `num_extra_cycles`.
-        // If `is_real = 1`, then the `op_a_access` will be done, and `num_extra_cycles` will be correct.
+        // If `is_real = 1`, then the `op_a_access` will be done, and `num_extra_cycles` will be
+        // correct.
         num_extra_cycles * local.is_real
     }
 }

@@ -9,8 +9,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 
 use p3_field::PrimeField32;
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
-use rwasm_executor::events::GlobalInteractionEvent;
-use rwasm_executor::{ExecutionRecord, Program};
+use rwasm_executor::{events::GlobalInteractionEvent, ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
     air::{
@@ -128,7 +127,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryProgramChip {
                 kind: InteractionKind::Memory as u8,
             });
         });
-        println!("chip: memoryprogram: events:{:?}",events);
+        println!("chip: memoryprogram: events:{:?}", events);
         output.global_interaction_events.extend(events);
     }
 

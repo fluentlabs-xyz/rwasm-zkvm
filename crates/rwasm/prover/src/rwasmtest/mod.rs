@@ -1,20 +1,9 @@
 mod table_init;
 
-use hashbrown::HashMap;
-
-use rwasm_executor::{Opcode, Program, SP_START};
+use rwasm_executor::Program;
 use rwasm_machine::utils::setup_logger;
 
 use super::*;
-use anyhow::Result;
-use build::try_build_plonk_bn254_artifacts_dev;
-use p3_field::PrimeField32;
-use serde::{Deserialize, Serialize};
-use serial_test::serial;
-use std::{
-    fs::File,
-    io::{Read, Write},
-};
 
 pub fn run_rwasm_prover(mut program: Program) {
     setup_logger();
@@ -532,22 +521,6 @@ mod tests {
         let program = Program::from_instrs(instructions);
         //  memory_image: BTreeMap::new() };
 
-        program
-    }
-
-    fn build_table_init() -> Program {
-        let ops = vec![
-            Opcode::I32Const(0.into()),
-            Opcode::I32Const(64.into()),
-            Opcode::TableGrow(0),
-            Opcode::I32Const(1.into()),
-            Opcode::I32Const(1.into()),
-            Opcode::I32Const(2.into()),
-            Opcode::TableInit(0),
-            Opcode::TableGet(0),
-        ];
-        let elements = vec![5u32, 7u32, 9u32, 12u32];
-        let program = Program::from_instrs(ops).with_elements(elements);
         program
     }
 

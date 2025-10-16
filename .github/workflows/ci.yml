@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [ change-executor-to-rwasm-native ]
+    paths:
+      - "crates/rwasm/**"
+  pull_request:
+    branches: [ change-executor-to-rwasm-native ]
+    paths:
+      - "crates/rwasm/**"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-amd64-8core
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: "recursive"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run rwasm-executor tests
+        run: |
+          cargo test --package rwasm-executor --lib executor::tests
+
+      - name: Run rwasm-prover tests
+        run: |
+          cargo test --release --package rwasm-prover --lib rwasmtest::tests
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-amd64-8core
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: rustfmt, clippy
+
+      - name: Check formatting
+        run: cargo +nightly fmt --all -- --check
+        continue-on-error: true
+
+      - name: Run clippy
+        run: cargo +nightly clippy -p rwasm-machine -p rwasm-executor -p rwasm-machine-test
+        continue-on-error: true

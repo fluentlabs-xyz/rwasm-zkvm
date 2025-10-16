@@ -101,10 +101,10 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
 
     fn generate_trace(&self, input: &Self::Record, _: &mut Self::Record) -> RowMajorMatrix<F> {
         let events = &input.global_interaction_events;
-         for (idx,event) in events.iter().enumerate(){
-            println!("global event:{:?} ,idx:{},",event,idx);
-         }
-         
+        for (idx, event) in events.iter().enumerate() {
+            println!("global event:{:?} ,idx:{},", event, idx);
+        }
+
         let nb_rows = events.len();
         let padded_nb_rows = <GlobalChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_GLOBAL_COLS);
@@ -212,13 +212,14 @@ where
         let next = main.row_slice(1);
         let next: &GlobalCols<AB::Var> = (*next).borrow();
 
-        // Receive the arguments, which consists of 7 message columns, `is_send`, `is_receive`, and `kind`.
-        // In MemoryGlobal, MemoryLocal, Syscall chips, `is_send`, `is_receive`, `kind` are sent with correct constant values.
-        // For a global send interaction, `is_send = 1` and `is_receive = 0` are used.
-        // For a global receive interaction, `is_send = 0` and `is_receive = 1` are used.
-        // For a memory global interaction, `kind = InteractionKind::Memory` is used.
-        // For a syscall global interaction, `kind = InteractionKind::Syscall` is used.
-        // Therefore, `is_send`, `is_receive` are already known to be boolean, and `kind` is also known to be a `u8` value.
+        // Receive the arguments, which consists of 7 message columns, `is_send`, `is_receive`, and
+        // `kind`. In MemoryGlobal, MemoryLocal, Syscall chips, `is_send`, `is_receive`,
+        // `kind` are sent with correct constant values. For a global send interaction,
+        // `is_send = 1` and `is_receive = 0` are used. For a global receive interaction,
+        // `is_send = 0` and `is_receive = 1` are used. For a memory global interaction,
+        // `kind = InteractionKind::Memory` is used. For a syscall global interaction, `kind
+        // = InteractionKind::Syscall` is used. Therefore, `is_send`, `is_receive` are
+        // already known to be boolean, and `kind` is also known to be a `u8` value.
         // Note that `local.is_real` is constrained to be boolean in `eval_single_digest`.
         builder.receive(
             AirInteraction::new(

@@ -1,8 +1,7 @@
 use std::borrow::BorrowMut;
 
 use crate::{
-    memory::MemoryCols,
-    syscall::fat_op::table::{MemoryReadCols, MemoryWriteCols, TableCols, NUM_TABLE_INIT_SIZE},
+    syscall::fat_op::table::{TableCols, NUM_TABLE_INIT_SIZE},
     utils::pad_rows_fixed,
 };
 use hashbrown::HashMap;
@@ -10,18 +9,13 @@ use itertools::Itertools;
 use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
-use rwasm::{
-    event::{self, TableInitEvent},
-    mem_index::{ELEMENT_SEG_END, UNIT},
-    N_MAX_ELEM_SEGMENTS_BITS, N_MAX_TABLES, N_MAX_TABLE_SIZE,
-};
+use rwasm::{event::TableInitEvent, N_MAX_ELEM_SEGMENTS_BITS, N_MAX_TABLES, N_MAX_TABLE_SIZE};
 use rwasm_executor::{
-    events::{ByteLookupEvent, ByteRecord, PrecompileEvent, ShaCompressEvent},
+    events::{ByteLookupEvent, ByteRecord, PrecompileEvent},
     syscalls::SyscallCode,
     ByteOpcode, ExecutionRecord, Program,
 };
-use sp1_derive::AlignedBorrow;
-use sp1_stark::{air::MachineAir, Word};
+use sp1_stark::air::MachineAir;
 
 use super::TableChip;
 impl<F: PrimeField32> MachineAir<F> for TableChip {
@@ -105,7 +99,7 @@ impl TableChip {
     ) {
         println!("table_init_+event:{:?}", event);
 
-        let mut idx = 0;
+        let idx = 0;
 
         for idx in 0..=event.n as usize {
             let mut row = [F::zero(); NUM_TABLE_INIT_SIZE];

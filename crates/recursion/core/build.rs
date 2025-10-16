@@ -100,7 +100,7 @@ mod sys {
             .with_parse_include(&[
                 "sp1-stark",
                 "sp1-primitives",
-              //  "rwasm-machine",
+                //  "rwasm-machine",
                 "p3-baby-bear",
                 //"rwasm-executor",
             ])
@@ -153,11 +153,13 @@ mod sys {
                     rel_symlink_file(header_path, target_include_dir_fixed.join(cbindgen_hpp));
                 }
             }
-            Err(cbindgen::Error::ParseSyntaxError { .. }) => {} // Ignore parse errors so rust-analyzer can run.
+            Err(cbindgen::Error::ParseSyntaxError { .. }) => {} /* Ignore parse errors so */
+            // rust-analyzer can run.
             Err(e) => panic!("{:?}", e),
         }
 
-        // Copy the headers to the include directory and symlink them to the fixed include directory.
+        // Copy the headers to the include directory and symlink them to the fixed include
+        // directory.
         for header in &headers {
             // Get the path of the header relative to the source include directory.
             let relpath = diff_paths(header, &source_include_dir).unwrap();
@@ -173,8 +175,9 @@ mod sys {
             rel_symlink_file(dst, target_include_dir_fixed.join(relpath));
         }
 
-       // println!("cargo::rustc-link-lib=static=sp1-core-machine-sys"); TODO: make rwasm-machine compilable and fix
-       // let include_dir = env::var("DEP_SP1_CORE_MACHINE_SYS_INCLUDE").unwrap();
+        // println!("cargo::rustc-link-lib=static=sp1-core-machine-sys"); TODO: make rwasm-machine
+        // compilable and fix let include_dir =
+        // env::var("DEP_SP1_CORE_MACHINE_SYS_INCLUDE").unwrap();
 
         // Use the `cc` crate to build the library and statically link it to the crate.
         let mut cc_builder = cc::Build::new();
