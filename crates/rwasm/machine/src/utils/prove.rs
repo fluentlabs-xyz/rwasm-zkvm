@@ -314,7 +314,7 @@ where
 
                                 // Let another worker update the state.
                                 record_gen_sync.advance_turn();
-
+                                
                                 // Fix the shape of the records.
                                 let mut fixed_shape = true;
                                 if let Some(shape_config) = shape_config {
@@ -331,8 +331,7 @@ where
                             } else {
                                 None
                             };
-
-                        //    println!("len{} :fix_shape_records{:?}",shape_fixed_records.clone().unwrap().len(),shape_fixed_records);
+                           
                             if shape_fixed_records.is_none() {
                                 // See if any deferred shards are ready to be committed to.
                                 let mut deferred = deferred.split(done, None, opts.split_opts);

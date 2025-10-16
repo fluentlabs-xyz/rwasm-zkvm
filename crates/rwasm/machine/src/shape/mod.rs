@@ -185,7 +185,10 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                     else {
                         continue;
                     };
-                    println!("air: {},height{}, num_memory_local_events {}, num_global_events{}",air,height, num_memory_local_events, num_global_events);
+                    println!(
+                        "air: {},height{}, num_memory_local_events {}, num_global_events{}",
+                        air, height, num_memory_local_events, num_global_events
+                    );
                     for allowed_log2_height in allowed_log2_heights {
                         let allowed_height = 1 << allowed_log2_height;
                         if height <= allowed_height {
@@ -207,7 +210,7 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                                             .iter()
                                             .map(|x| (RwasmAirId::from_str(&x.0).unwrap(), x.1)),
                                     );
-                                    println!("actual shape{:?}",actual_shape);
+                                    println!("actual shape{:?}", actual_shape);
                                     return Ok(actual_shape);
                                 }
                             }
@@ -451,7 +454,6 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                             (MachineAir::<BabyBear>::name(&ProgramChip), 19),
                             (MachineAir::<BabyBear>::name(&ByteChip::default()), 16),
                             (MachineAir::<BabyBear>::name(&CallChip::default()), 16),
-                             (MachineAir::<BabyBear>::name(&TableChip::default()),22 ),
                         ])
                         .collect::<Vec<_>>(),
                 )
@@ -467,16 +469,14 @@ impl<F: PrimeField32> Default for CoreShapeConfig<F> {
             serde_json::from_slice(MAXIMAL_SHAPES).unwrap();
         let small_shapes: Vec<Shape<RwasmAirId>> = serde_json::from_slice(SMALL_SHAPES).unwrap();
         let mut new_shapes = BTreeMap::new();
-        for (i,vec) in maximal_shapes.iter(){
+        for (i, vec) in maximal_shapes.iter() {
             let mut new_vec = vec![];
-            for item in vec.iter(){
+            for item in vec.iter() {
                 let mut item = (*item).clone();
-               item.inner.insert(RwasmAirId::Call,14);
-               new_vec.push(item);
+                item.inner.insert(RwasmAirId::Call, 14);
+                new_vec.push(item);
             }
-            new_shapes.insert(*i,new_vec);
-
-            
+            new_shapes.insert(*i, new_vec);
         }
         maximal_shapes = new_shapes;
         // Set the allowed preprocessed log2 heights.
