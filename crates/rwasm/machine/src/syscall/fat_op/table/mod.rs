@@ -7,7 +7,7 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use crate::air::WordAirBuilder;
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use rwasm_executor::{syscalls::SyscallCode, ByteOpcode};
+use rwasm_executor::syscalls::SyscallCode;
 use sp1_stark::air::{BaseAirBuilder, InteractionScope, SP1AirBuilder};
 mod column;
 mod trace;
@@ -15,7 +15,7 @@ use crate::memory::MemoryCols;
 pub use column::*;
 use rwasm::{
     mem_index::{AddressType, UNIT},
-    N_MAX_ELEM_SEGMENTS_BITS, N_MAX_TABLES, N_MAX_TABLE_SIZE,
+    N_MAX_TABLE_SIZE,
 };
 #[derive(Default)]
 pub struct TableChip {}
@@ -95,7 +95,7 @@ where
             next.dst_offset.reduce::<AB>(),
         );
 
-        // TODO(Aliaksei): add address memory bound check 
+        // TODO(Aliaksei): add address memory bound check
 
         self.eval_memory_access(local, builder);
 

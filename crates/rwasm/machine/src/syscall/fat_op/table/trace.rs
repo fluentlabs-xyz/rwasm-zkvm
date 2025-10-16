@@ -9,11 +9,11 @@ use itertools::Itertools;
 use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
-use rwasm::{event::TableInitEvent, N_MAX_ELEM_SEGMENTS_BITS, N_MAX_TABLES, N_MAX_TABLE_SIZE};
+use rwasm::event::TableInitEvent;
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, PrecompileEvent},
     syscalls::SyscallCode,
-    ByteOpcode, ExecutionRecord, Program,
+    ExecutionRecord, Program,
 };
 use sp1_stark::air::MachineAir;
 
