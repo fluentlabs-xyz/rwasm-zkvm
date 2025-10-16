@@ -35,6 +35,7 @@ impl<F: Field> AddOperation<F> {
             self.carry[1] = F::one();
         }
         if (a[2] as u32) + (b[2] as u32) + (carry[1] as u32) > 255 {
+            #[allow(unused_assignments)]
             carry[2] = 1;
             self.carry[2] = F::one();
         }
