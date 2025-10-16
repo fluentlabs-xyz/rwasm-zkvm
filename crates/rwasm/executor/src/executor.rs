@@ -1941,7 +1941,6 @@ pub const fn align(addr: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::vec_init_then_push)]
-    
 
     use crate::{align, ExecutionError, Executor, Program};
     use hashbrown::HashMap;

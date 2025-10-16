@@ -576,7 +576,7 @@ pub mod tests {
     };
     use strum::IntoEnumIterator;
 
-    //TODO(Aliaksei): fix ignored tests 
+    //TODO(Aliaksei): fix ignored tests
     #[test]
     #[ignore]
     fn test_primitives_and_machine_air_names_match() {
