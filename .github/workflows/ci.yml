@@ -43,7 +43,7 @@ jobs:
 
       - name: Run rwasm-machine tests
         run: |
-         RUSTFLAGS="-C target-cpu=native" cargo test --release --package rwasm-machine
+          RUSTFLAGS="-C target-cpu=native" cargo test --release --package rwasm-machine
 
   lint:
     name: Lint
