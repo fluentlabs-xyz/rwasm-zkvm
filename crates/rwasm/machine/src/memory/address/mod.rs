@@ -1,16 +1,13 @@
 use p3_air::AirBuilder;
-use p3_field::{AbstractField, Field, PrimeField32};
+use p3_field::{AbstractField, PrimeField32};
 use rwasm::mem_index::{SP_END, UNIT};
-use rwasm_executor::events::{
-    ByteLookupEvent, ByteRecord,
-};
+use rwasm_executor::events::{ByteLookupEvent, ByteRecord};
 use sp1_derive::AlignedBorrow;
 
 use rwasm_executor::{ByteOpcode, SP_START};
 use sp1_stark::air::{BaseAirBuilder, SP1AirBuilder};
 
 const STACK_END_LOW_8BITS: u8 = (SP_END & 0xFF) as u8;
-const STACK_END_HI_8BITS: u8 = ((SP_END & 0xFF00) >> 8) as u8;
 const STACK_UB_LOW_8BITS: u8 = ((SP_START + UNIT) & 0xFF) as u8;
 const STACK_UB_HI_8BITS: u8 = (((SP_START + UNIT) & 0xFF00) >> 8) as u8;
 /// Memory read-write access.
@@ -18,21 +15,17 @@ const STACK_UB_HI_8BITS: u8 = (((SP_START + UNIT) & 0xFF00) >> 8) as u8;
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct StackAddressCols<T> {
-    pub addr: T,
     pub addr_hi_8bits: T,
     pub addr_low_8bits: T,
     pub addr_hi_is_lt_stack_ub_hi: T,
     pub addr_hi_is_zero: T,
     pub addr_hi_is_non_zero: T,
-    pub is_real: T,
 }
 
 impl<F: PrimeField32> StackAddressCols<F> {
     pub fn populate(&mut self, addr: u32, output: &mut impl ByteRecord) {
         assert_ne!(addr, 0);
         let addr: u16 = addr.try_into().unwrap();
-        self.is_real = F::from_bool(true);
-        self.addr = F::from_canonical_u16(addr);
 
         let addr_hi_8bits: u8 = ((addr & 0xFF00) >> 8).try_into().unwrap();
         let addr_low_8bits: u8 = (addr & 0xFF).try_into().unwrap();
@@ -73,26 +66,30 @@ impl<F: PrimeField32> StackAddressCols<F> {
         };
     }
 }
-impl<F: Field> StackAddressCols<F> {
+impl<T: Copy> StackAddressCols<T> {
+    pub fn addr<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
+    where
+        T: Into<AB::Expr>,
+    {
+        let hi = self.addr_hi_8bits.into();
+        let low = self.addr_low_8bits.into();
+        hi * AB::Expr::from_canonical_u32(1 << 8) + low
+    }
+
     pub fn range_check<AB: SP1AirBuilder>(builder: &mut AB, cols: StackAddressCols<AB::Var>) {
-        builder.assert_bool(cols.is_real);
-        //range check addr so that it is no more than 16 bit.
+        let is_real = cols.addr_hi_is_lt_stack_ub_hi + cols.addr_hi_is_non_zero;
+
+        builder.assert_bool(is_real.clone());
+
         //range check the hi and low bits of addr
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::U8Range as u32),
             AB::Expr::zero(),
             cols.addr_hi_8bits,
             cols.addr_low_8bits,
-            cols.is_real,
-        );
-        //assert that the two componets are correct;
-        builder.when(cols.is_real).assert_eq(
-            cols.addr,
-            cols.addr_hi_8bits * AB::Expr::from_canonical_u32(1 << 8) +
-                cols.addr_low_8bits,
+            is_real.clone(),
         );
 
-        builder.assert_bool(cols.addr_hi_is_lt_stack_ub_hi);
         //We first check if the addr_hi is less than the STACK UB hi
 
         builder.send_byte(
@@ -100,15 +97,17 @@ impl<F: Field> StackAddressCols<F> {
             cols.addr_hi_is_lt_stack_ub_hi,
             cols.addr_hi_8bits,
             AB::Expr::from_canonical_u8(STACK_UB_HI_8BITS),
-            cols.is_real,
+            is_real.clone(),
         );
-        builder.assert_bool(cols.addr_hi_is_zero);
+
         //addr_hi will equals STACK UB hi when less than does not hold.
         //Note this case we do not need do LB check
         builder
-            .when(cols.is_real)
+            .when(is_real.clone())
             .when_not(cols.addr_hi_is_lt_stack_ub_hi)
             .assert_eq(cols.addr_hi_8bits, AB::Expr::from_canonical_u8(STACK_UB_HI_8BITS));
+
+        builder.when(is_real).when(cols.addr_hi_is_zero).assert_zero(cols.addr_hi_8bits);
 
         //LB check.
         // Note that we cannot rely on addr_hi_is_zero because when not addr_hi_is_zero might be the
