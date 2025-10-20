@@ -5,7 +5,7 @@ use rwasm_executor::events::{ByteLookupEvent, ByteRecord};
 use sp1_derive::AlignedBorrow;
 
 use rwasm_executor::{ByteOpcode, SP_START};
-use sp1_stark::air::{BaseAirBuilder, SP1AirBuilder};
+use sp1_stark::air::SP1AirBuilder;
 
 const STACK_END_LOW_8BITS: u8 = (SP_END & 0xFF) as u8;
 const STACK_UB_LOW_8BITS: u8 = ((SP_START + UNIT) & 0xFF) as u8;
@@ -17,9 +17,9 @@ const STACK_UB_HI_8BITS: u8 = (((SP_START + UNIT) & 0xFF00) >> 8) as u8;
 pub struct StackAddressCols<T> {
     pub addr_hi_8bits: T,
     pub addr_low_8bits: T,
-    pub addr_hi_is_lt_stack_ub_hi: T,
     pub addr_hi_is_zero: T,
-    pub addr_hi_is_non_zero: T,
+    pub addr_hi_is_not_edge: T,
+    pub addr_hi_is_eq_stack_ub_hi: T,
 }
 
 impl<F: PrimeField32> StackAddressCols<F> {
@@ -31,31 +31,39 @@ impl<F: PrimeField32> StackAddressCols<F> {
         let addr_low_8bits: u8 = (addr & 0xFF).try_into().unwrap();
         self.addr_hi_8bits = F::from_canonical_u8(addr_hi_8bits);
         self.addr_low_8bits = F::from_canonical_u8(addr_low_8bits);
-        let addr_hi_is_lt_stack_ub_hi = addr_hi_8bits < STACK_UB_HI_8BITS;
-        self.addr_hi_is_lt_stack_ub_hi = F::from_bool(addr_hi_is_lt_stack_ub_hi);
+
+        let addr_hi_is_eq_stack_ub_hi = addr_hi_8bits == STACK_UB_HI_8BITS;
+        self.addr_hi_is_eq_stack_ub_hi = F::from_bool(addr_hi_is_eq_stack_ub_hi);
+
         let addr_hi_is_zero = addr_hi_8bits == 0;
         self.addr_hi_is_zero = F::from_bool(addr_hi_is_zero);
-        output.add_u8_range_check(addr_hi_8bits, addr_low_8bits);
-        output.add_byte_lookup_event(ByteLookupEvent {
-            opcode: ByteOpcode::LTU,
-            a1: addr_hi_is_lt_stack_ub_hi as u16,
-            a2: 0,
-            b: addr_hi_8bits,
-            c: STACK_UB_HI_8BITS,
-        });
 
-        if addr_hi_is_lt_stack_ub_hi {
-            if addr_hi_is_zero {
-                output.add_byte_lookup_event(ByteLookupEvent {
-                    opcode: ByteOpcode::LTU,
-                    a1: true as u16,
-                    a2: 0,
-                    b: STACK_END_LOW_8BITS,
-                    c: addr_low_8bits,
-                });
-            }
-        } else {
-            self.addr_hi_is_non_zero = F::from_bool(true);
+        let addr_hi_is_not_edge = !addr_hi_is_zero && !addr_hi_is_eq_stack_ub_hi;
+        self.addr_hi_is_not_edge = F::from_bool(addr_hi_is_not_edge);
+
+        output.add_u8_range_check(addr_hi_8bits, addr_low_8bits);
+
+        if addr_hi_is_not_edge {
+            output.add_byte_lookup_event(ByteLookupEvent {
+                opcode: ByteOpcode::LTU,
+                a1: true as u16,
+                a2: 0,
+                b: addr_hi_8bits,
+                c: STACK_UB_HI_8BITS,
+            });
+        }
+
+        if addr_hi_is_zero {
+            output.add_byte_lookup_event(ByteLookupEvent {
+                opcode: ByteOpcode::LTU,
+                a1: true as u16,
+                a2: 0,
+                b: STACK_END_LOW_8BITS,
+                c: addr_low_8bits,
+            });
+        }
+
+        if addr_hi_is_eq_stack_ub_hi {
             output.add_byte_lookup_event(ByteLookupEvent {
                 opcode: ByteOpcode::LTU,
                 a1: true as u16,
@@ -63,7 +71,7 @@ impl<F: PrimeField32> StackAddressCols<F> {
                 b: addr_low_8bits,
                 c: STACK_UB_LOW_8BITS,
             });
-        };
+        }
     }
 }
 impl<T: Copy> StackAddressCols<T> {
@@ -77,7 +85,8 @@ impl<T: Copy> StackAddressCols<T> {
     }
 
     pub fn range_check<AB: SP1AirBuilder>(builder: &mut AB, cols: StackAddressCols<AB::Var>) {
-        let is_real = cols.addr_hi_is_lt_stack_ub_hi + cols.addr_hi_is_non_zero;
+        let is_real =
+            cols.addr_hi_is_not_edge + cols.addr_hi_is_zero + cols.addr_hi_is_eq_stack_ub_hi;
 
         builder.assert_bool(is_real.clone());
 
@@ -90,36 +99,26 @@ impl<T: Copy> StackAddressCols<T> {
             is_real.clone(),
         );
 
-        //We first check if the addr_hi is less than the STACK UB hi
+        // check edge cases of addr_hi_8bits
 
-        builder.send_byte(
-            AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
-            cols.addr_hi_is_lt_stack_ub_hi,
-            cols.addr_hi_8bits,
-            AB::Expr::from_canonical_u8(STACK_UB_HI_8BITS),
-            is_real.clone(),
-        );
+        builder.when(is_real.clone()).when(cols.addr_hi_is_zero).assert_zero(cols.addr_hi_8bits);
 
-        //addr_hi will equals STACK UB hi when less than does not hold.
-        //Note this case we do not need do LB check
         builder
-            .when(is_real.clone())
-            .when_not(cols.addr_hi_is_lt_stack_ub_hi)
+            .when(is_real)
+            .when(cols.addr_hi_is_eq_stack_ub_hi)
             .assert_eq(cols.addr_hi_8bits, AB::Expr::from_canonical_u8(STACK_UB_HI_8BITS));
 
-        builder.when(is_real).when(cols.addr_hi_is_zero).assert_zero(cols.addr_hi_8bits);
-
-        //LB check.
-        // Note that we cannot rely on addr_hi_is_zero because when not addr_hi_is_zero might be the
-        // case it is an empty cols
-
+        // If it's not an edge case, we check that addr_hi_8bits is located within the space between
+        // the edges
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
-            cols.addr_hi_is_non_zero,
-            cols.addr_low_8bits,
-            AB::Expr::from_canonical_u8(STACK_UB_LOW_8BITS),
-            cols.addr_hi_is_non_zero,
+            AB::Expr::from_bool(true),
+            cols.addr_hi_8bits,
+            AB::Expr::from_canonical_u8(STACK_UB_HI_8BITS),
+            cols.addr_hi_is_not_edge,
         );
+
+        // Check addr_low_8bits in case addr_hi_8bits is an edge case
 
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
@@ -127,6 +126,14 @@ impl<T: Copy> StackAddressCols<T> {
             AB::Expr::from_canonical_u8(STACK_END_LOW_8BITS),
             cols.addr_low_8bits,
             cols.addr_hi_is_zero,
+        );
+
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
+            AB::Expr::from_bool(true),
+            cols.addr_low_8bits,
+            AB::Expr::from_canonical_u8(STACK_UB_LOW_8BITS),
+            cols.addr_hi_is_eq_stack_ub_hi,
         );
     }
 }
