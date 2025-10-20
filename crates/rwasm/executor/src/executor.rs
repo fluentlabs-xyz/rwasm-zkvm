@@ -926,7 +926,7 @@ impl<'a> Executor<'a> {
                     pc: UNUSED_PC,
                     opcode: cmp_ins,
                     a: arg1_gt_arg2 as u32,
-                    b: event.b,
+                    b: event.c,
                     c: event.b,
                     code: cmp_ins.code(),
                 };
