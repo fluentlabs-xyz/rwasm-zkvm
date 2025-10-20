@@ -656,8 +656,8 @@ mod tests {
                 let instructions = vec![
                     Opcode::I32Const(5u32.into()),
                     Opcode::I32Const(10u32.into()),
-                    Opcode::I32Const(op_c.into()),
                     Opcode::I32Const(op_b.into()),
+                    Opcode::I32Const(op_c.into()),
                     opcode,
                 ];
 
