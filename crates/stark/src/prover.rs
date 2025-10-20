@@ -161,7 +161,7 @@ pub trait MachineProver<SC: StarkGenericConfig, A: MachineAir<SC::Val>>:
         SC::Val: PrimeField32,
         A: for<'a> Air<DebugConstraintBuilder<'a, Val<SC>, SC::Challenge>>,
     {
-        self.machine().debug_constraints(pk, &records, challenger);
+        self.machine().debug_constraints(pk, records, challenger);
     }
 }
 

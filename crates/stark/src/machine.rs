@@ -174,7 +174,7 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>>> StarkMachine<SC, A> {
     pub fn debug_constraints(
         &self,
         pk: &StarkProvingKey<SC>,
-        records: &[A::Record],
+        records: Vec<A::Record>,
         challenger: &mut SC::Challenger,
     ) where
         SC::Val: PrimeField32,
@@ -315,7 +315,7 @@ impl<SC: StarkGenericConfig, A: MachineAir<Val<SC>>> StarkMachine<SC, A> {
                 debug_interactions_with_all_chips::<SC, A>(
                     self,
                     pk,
-                    records,
+                    &records,
                     InteractionKind::all_kinds(),
                     InteractionScope::Global,
                 )
