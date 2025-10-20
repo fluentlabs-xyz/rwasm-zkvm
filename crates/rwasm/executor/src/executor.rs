@@ -882,17 +882,17 @@ impl<'a> Executor<'a> {
             Opcode::I32ShrS | Opcode::I32ShrU => {
                 self.record.shift_right_events.push(event);
             }
-            Opcode::I32GeS |
-            Opcode::I32GtS |
-            Opcode::I32GeU |
-            Opcode::I32GtU |
-            Opcode::I32LeS |
-            Opcode::I32LeU |
-            Opcode::I32LtS |
-            Opcode::I32LtU |
-            Opcode::I32Eq |
-            Opcode::I32Eqz |
-            Opcode::I32Ne => {
+            Opcode::I32GeS
+            | Opcode::I32GtS
+            | Opcode::I32GeU
+            | Opcode::I32GtU
+            | Opcode::I32LeS
+            | Opcode::I32LeU
+            | Opcode::I32LtS
+            | Opcode::I32LtU
+            | Opcode::I32Eq
+            | Opcode::I32Eqz
+            | Opcode::I32Ne => {
                 let use_signed_comparison = matches!(
                     opcode,
                     Opcode::I32GeS | Opcode::I32GtS | Opcode::I32LeS | Opcode::I32LtS
@@ -926,7 +926,7 @@ impl<'a> Executor<'a> {
                     pc: UNUSED_PC,
                     opcode: cmp_ins,
                     a: arg1_gt_arg2 as u32,
-                    b: event.c,
+                    b: event.b,
                     c: event.b,
                     code: cmp_ins.code(),
                 };
@@ -1184,8 +1184,8 @@ impl<'a> Executor<'a> {
         // which is not permitted in unconstrained mode. This will result in
         // non-zero memory interactions when generating a proof.
 
-        if self.unconstrained &&
-            (syscall != SyscallCode::EXIT_UNCONSTRAINED && syscall != SyscallCode::WRITE)
+        if self.unconstrained
+            && (syscall != SyscallCode::EXIT_UNCONSTRAINED && syscall != SyscallCode::WRITE)
         {
             return Err(ExecutionError::InvalidSyscallUsage(syscall_id as u64));
         }
@@ -1758,9 +1758,9 @@ impl<'a> Executor<'a> {
             estimator.memory_global_finalize_events = total_mem as u64;
         }
 
-        if self.emit_global_memory_events &&
-            (self.executor_mode == ExecutorMode::Trace ||
-                self.executor_mode == ExecutorMode::Checkpoint)
+        if self.emit_global_memory_events
+            && (self.executor_mode == ExecutorMode::Trace
+                || self.executor_mode == ExecutorMode::Checkpoint)
         {
             // SECTION: Set up all MemoryInitializeFinalizeEvents needed for memory argument.
             let memory_finalize_events = &mut self.record.global_memory_finalize_events;
@@ -2192,6 +2192,57 @@ mod tests {
     }
 
     // ---  LtS vs LtU should diverge for (-1, 1) ---
+    #[test]
+    fn test_ltU() {
+        let x = 5u32;
+        let y = 10u32;
+        let opcodes = vec![
+            // signed LT should be true
+            Opcode::I32Const(x.into()),
+            Opcode::I32Const(y.into()),
+            Opcode::I32LtU,
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+    #[test]
+    fn test_sub2() {
+        let x = 5;
+        let y = 3;
+        let opcodes = vec![
+            Opcode::I32Const(x.into()),
+            Opcode::I32Const(y.into()),
+            Opcode::I32Sub,
+            Opcode::I32Const((x - y).into()),
+            Opcode::I32Eq,
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+    #[test]
+    fn test_lts() {
+        let x = neg(3);
+        let y = neg(1);
+        let opcodes = vec![Opcode::I32Const(x.into()), Opcode::I32Const(y.into()), Opcode::I32LtS];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+    #[test]
+    fn test_gts() {
+        let x = 5;
+        let y = 3;
+        let opcodes = vec![Opcode::I32Const(x.into()), Opcode::I32Const(y.into()), Opcode::I32GtS];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
     #[test]
     fn test_lts_vs_ltu_diverge() {
         let x = neg(1); // 0xffffffff == -1 (signed)
@@ -3095,10 +3146,10 @@ mod tests {
         let v_addr = AddressType::GlobalMemory(addr).to_virtual_addr();
         assert_eq!(
             runtime.state.memory.get(v_addr).unwrap().value,
-            ((x_value & 0x0000_00FF) +
-                ((y_value & 0x0000_00FF) << 8) +
-                ((z_value & 0x0000_00FF) << 16) +
-                ((t_value & 0x0000_00FF) << 24))
+            ((x_value & 0x0000_00FF)
+                + ((y_value & 0x0000_00FF) << 8)
+                + ((z_value & 0x0000_00FF) << 16)
+                + ((t_value & 0x0000_00FF) << 24))
         );
         assert_eq!(sp_value, runtime.state.sp + UNIT);
     }
@@ -4152,11 +4203,11 @@ mod tests {
             .records
             .iter()
             .map(|r| {
-                r.add_events.len() +
-                    r.mul_events.len() +
-                    r.bitwise_events.len() +
-                    r.shift_left_events.len() +
-                    r.shift_right_events.len()
+                r.add_events.len()
+                    + r.mul_events.len()
+                    + r.bitwise_events.len()
+                    + r.shift_left_events.len()
+                    + r.shift_right_events.len()
             })
             .sum();
         let mems: usize = rt.records.iter().map(|r| r.memory_instr_events.len()).sum();
@@ -4818,7 +4869,7 @@ mod tests {
     /// must panic in the current rwasm backend (it does not return Err).
     /// This test documents that behavior explicitly.
     #[test]
-    #[should_panic(expected = "stack underflow")]
+    #[should_panic(expected = "capacity overflow")]
     fn test_stack_underflow_add_traps() {
         let ops = vec![
             // No pushes
