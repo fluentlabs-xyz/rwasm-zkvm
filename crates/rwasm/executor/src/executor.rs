@@ -1633,7 +1633,7 @@ impl<'a> Executor<'a> {
                 rwasm_state.ip,
                 &mut self.store,
             )
-            .step();
+                .step();
             let res = self.execute_cycle(res)?;
             println!("self.record.cpuevent:{:?}", self.record.cpu_events);
             if res {
@@ -1748,9 +1748,9 @@ impl<'a> Executor<'a> {
             // let touched_reg_ct =
             //     1 + (1..32).filter(|&r| self.state.memory.registers.get(r).is_some()).count();
             let total_mem = self.state.memory.page_table.exact_len(); //TODO: fix esitmator
-                                                                      // The memory_image is already initialized in the MemoryProgram chip
-                                                                      // so we subtract it off. It is initialized in the executor in the `initialize`
-                                                                      // function.
+            // The memory_image is already initialized in the MemoryProgram chip
+            // so we subtract it off. It is initialized in the executor in the `initialize`
+            // function.
             estimator.memory_global_init_events = total_mem
                 .checked_sub(self.record.program.module.data_section.len())
                 .expect("program memory image should be accounted for in memory exact len")
@@ -1760,7 +1760,7 @@ impl<'a> Executor<'a> {
 
         if self.emit_global_memory_events
             && (self.executor_mode == ExecutorMode::Trace
-                || self.executor_mode == ExecutorMode::Checkpoint)
+            || self.executor_mode == ExecutorMode::Checkpoint)
         {
             // SECTION: Set up all MemoryInitializeFinalizeEvents needed for memory argument.
             let memory_finalize_events = &mut self.record.global_memory_finalize_events;
@@ -2723,6 +2723,65 @@ mod tests {
     }
 
     #[test]
+    fn test_comparisons() {
+        let sp_value: u32 = SP_START;
+        let x_value: u32 = 233;
+
+        for opcode in [Opcode::I32GeS, Opcode::I32LeS, Opcode::I32GeU, Opcode::I32LeU, Opcode::I32Eq] {
+            let opcodes = vec![
+                Opcode::I32Const(x_value.into()),
+                Opcode::I32Const(x_value.into()),
+                opcode,
+            ];
+
+            let program = Program::from_instrs(opcodes);
+            let mut runtime = Executor::new(program, SP1CoreOpts::default());
+            runtime.run().unwrap();
+            assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+            assert_eq!(sp_value, runtime.state.sp + 4);
+        }
+        for opcode in [Opcode::I32GeS, Opcode::I32LeS, Opcode::I32GeU, Opcode::I32LeU, Opcode::I32Eq] {
+            let opcodes = vec![
+                Opcode::I32Const(neg(x_value).into()),
+                Opcode::I32Const(neg(x_value).into()),
+                opcode,
+            ];
+
+            let program = Program::from_instrs(opcodes);
+            let mut runtime = Executor::new(program, SP1CoreOpts::default());
+            runtime.run().unwrap();
+            assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+            assert_eq!(sp_value, runtime.state.sp + 4);
+        }
+        for opcode in [Opcode::I32GeS, Opcode::I32Ne, Opcode::I32GtS] {
+            let opcodes = vec![
+                Opcode::I32Const(x_value.into()),
+                Opcode::I32Const(neg(x_value).into()),
+                opcode,
+            ];
+
+            let program = Program::from_instrs(opcodes);
+            let mut runtime = Executor::new(program, SP1CoreOpts::default());
+            runtime.run().unwrap();
+            assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+            assert_eq!(sp_value, runtime.state.sp + 4);
+        }
+        for opcode in [Opcode::I32LeS, Opcode::I32Ne, Opcode::I32LtS] {
+            let opcodes = vec![
+                Opcode::I32Const(neg(x_value).into()),
+                Opcode::I32Const(x_value.into()),
+                opcode,
+            ];
+
+            let program = Program::from_instrs(opcodes);
+            let mut runtime = Executor::new(program, SP1CoreOpts::default());
+            runtime.run().unwrap();
+            assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+            assert_eq!(sp_value, runtime.state.sp + 4);
+        }
+    }
+
+    #[test]
     fn test_gts_gtu() {
         let sp_value: u32 = SP_START;
         let x_value: u32 = 21;
@@ -2747,18 +2806,16 @@ mod tests {
     #[test]
     fn test_ges_geu() {
         let sp_value: u32 = SP_START;
-        let x_value: u32 = 321;
+        let x_value: u32 = 1;
         let y_value: u32 = 233;
-        let z_value: u32 = 0;
+        let z_value: u32 = 36;
 
         let opcodes = vec![
             Opcode::I32Const(x_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32Const(z_value.into()),
-            Opcode::I32GeS, /* check whether signed x_value is greater than or equal to signed
-                             * y_value */
-            Opcode::I32GeU, /* check whether unsigned x_value is greater than or equal to
-                             * unsigned y_value */
+            Opcode::I32GeS,
+            Opcode::I32GeU,
         ];
 
         let program = Program::from_instrs(opcodes);
@@ -4865,23 +4922,23 @@ mod tests {
         }
     }
 
-   /* /// Stack underflow: executing I32Add with fewer than two stack values
-    /// must panic in the current rwasm backend (it does not return Err).
-    /// This test documents that behavior explicitly.
-    #[test]
-    #[should_panic(expected = "capacity overflow")]
-    fn test_stack_underflow_add_traps() {
-        let ops = vec![
-            // No pushes
-            Opcode::I32Add, // requires two operands -> underflow
-            Opcode::Return,
-        ];
+    /* /// Stack underflow: executing I32Add with fewer than two stack values
+     /// must panic in the current rwasm backend (it does not return Err).
+     /// This test documents that behavior explicitly.
+     #[test]
+     #[should_panic(expected = "capacity overflow")]
+     fn test_stack_underflow_add_traps() {
+         let ops = vec![
+             // No pushes
+             Opcode::I32Add, // requires two operands -> underflow
+             Opcode::Return,
+         ];
 
-        let program = Program::from_instrs(ops);
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        // `run()` will panic before returning due to value-stack underflow.
-        let _ = rt.run();
-    }*/
+         let program = Program::from_instrs(ops);
+         let mut rt = Executor::new(program, SP1CoreOpts::default());
+         // `run()` will panic before returning due to value-stack underflow.
+         let _ = rt.run();
+     }*/
 
     /// Sign-extension vs zero-extension on 16-bit loads: for the halfword
     /// 0x8000, Load16S yields 0xFFFF8000 and Load16U yields 0x00008000.
