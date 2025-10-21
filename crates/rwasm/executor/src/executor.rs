@@ -882,17 +882,17 @@ impl<'a> Executor<'a> {
             Opcode::I32ShrS | Opcode::I32ShrU => {
                 self.record.shift_right_events.push(event);
             }
-            Opcode::I32GeS
-            | Opcode::I32GtS
-            | Opcode::I32GeU
-            | Opcode::I32GtU
-            | Opcode::I32LeS
-            | Opcode::I32LeU
-            | Opcode::I32LtS
-            | Opcode::I32LtU
-            | Opcode::I32Eq
-            | Opcode::I32Eqz
-            | Opcode::I32Ne => {
+            Opcode::I32GeS |
+            Opcode::I32GtS |
+            Opcode::I32GeU |
+            Opcode::I32GtU |
+            Opcode::I32LeS |
+            Opcode::I32LeU |
+            Opcode::I32LtS |
+            Opcode::I32LtU |
+            Opcode::I32Eq |
+            Opcode::I32Eqz |
+            Opcode::I32Ne => {
                 let use_signed_comparison = matches!(
                     opcode,
                     Opcode::I32GeS | Opcode::I32GtS | Opcode::I32LeS | Opcode::I32LtS
@@ -930,13 +930,13 @@ impl<'a> Executor<'a> {
                     c: event.b,
                     code: cmp_ins.code(),
                 };
-                if opcode == Opcode::I32LtS {
-                    println!("gt event:{:?}", gt_comp_event);
-                    println!("lt event:{:?}", lt_comp_event);
+                //if opcode == Opcode::I32LtS
+                {
+                    println!("opcode {:?} : gt event:{:?}", opcode, gt_comp_event);
+                    println!("opcode {:?} :lt event:{:?}", opcode, lt_comp_event);
                 }
 
                 self.record.lt_events.push(gt_comp_event);
-
                 self.record.lt_events.push(lt_comp_event);
             }
             Opcode::I32Mul => {
@@ -1184,8 +1184,8 @@ impl<'a> Executor<'a> {
         // which is not permitted in unconstrained mode. This will result in
         // non-zero memory interactions when generating a proof.
 
-        if self.unconstrained
-            && (syscall != SyscallCode::EXIT_UNCONSTRAINED && syscall != SyscallCode::WRITE)
+        if self.unconstrained &&
+            (syscall != SyscallCode::EXIT_UNCONSTRAINED && syscall != SyscallCode::WRITE)
         {
             return Err(ExecutionError::InvalidSyscallUsage(syscall_id as u64));
         }
@@ -1633,7 +1633,7 @@ impl<'a> Executor<'a> {
                 rwasm_state.ip,
                 &mut self.store,
             )
-                .step();
+            .step();
             let res = self.execute_cycle(res)?;
             println!("self.record.cpuevent:{:?}", self.record.cpu_events);
             if res {
@@ -1748,9 +1748,9 @@ impl<'a> Executor<'a> {
             // let touched_reg_ct =
             //     1 + (1..32).filter(|&r| self.state.memory.registers.get(r).is_some()).count();
             let total_mem = self.state.memory.page_table.exact_len(); //TODO: fix esitmator
-            // The memory_image is already initialized in the MemoryProgram chip
-            // so we subtract it off. It is initialized in the executor in the `initialize`
-            // function.
+                                                                      // The memory_image is already initialized in the MemoryProgram chip
+                                                                      // so we subtract it off. It is initialized in the executor in the `initialize`
+                                                                      // function.
             estimator.memory_global_init_events = total_mem
                 .checked_sub(self.record.program.module.data_section.len())
                 .expect("program memory image should be accounted for in memory exact len")
@@ -1758,9 +1758,9 @@ impl<'a> Executor<'a> {
             estimator.memory_global_finalize_events = total_mem as u64;
         }
 
-        if self.emit_global_memory_events
-            && (self.executor_mode == ExecutorMode::Trace
-            || self.executor_mode == ExecutorMode::Checkpoint)
+        if self.emit_global_memory_events &&
+            (self.executor_mode == ExecutorMode::Trace ||
+                self.executor_mode == ExecutorMode::Checkpoint)
         {
             // SECTION: Set up all MemoryInitializeFinalizeEvents needed for memory argument.
             let memory_finalize_events = &mut self.record.global_memory_finalize_events;
@@ -2727,12 +2727,11 @@ mod tests {
         let sp_value: u32 = SP_START;
         let x_value: u32 = 233;
 
-        for opcode in [Opcode::I32GeS, Opcode::I32LeS, Opcode::I32GeU, Opcode::I32LeU, Opcode::I32Eq] {
-            let opcodes = vec![
-                Opcode::I32Const(x_value.into()),
-                Opcode::I32Const(x_value.into()),
-                opcode,
-            ];
+        for opcode in
+            [Opcode::I32GeS, Opcode::I32LeS, Opcode::I32GeU, Opcode::I32LeU, Opcode::I32Eq]
+        {
+            let opcodes =
+                vec![Opcode::I32Const(x_value.into()), Opcode::I32Const(x_value.into()), opcode];
 
             let program = Program::from_instrs(opcodes);
             let mut runtime = Executor::new(program, SP1CoreOpts::default());
@@ -2740,7 +2739,9 @@ mod tests {
             assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
             assert_eq!(sp_value, runtime.state.sp + 4);
         }
-        for opcode in [Opcode::I32GeS, Opcode::I32LeS, Opcode::I32GeU, Opcode::I32LeU, Opcode::I32Eq] {
+        for opcode in
+            [Opcode::I32GeS, Opcode::I32LeS, Opcode::I32GeU, Opcode::I32LeU, Opcode::I32Eq]
+        {
             let opcodes = vec![
                 Opcode::I32Const(neg(x_value).into()),
                 Opcode::I32Const(neg(x_value).into()),
@@ -3203,10 +3204,10 @@ mod tests {
         let v_addr = AddressType::GlobalMemory(addr).to_virtual_addr();
         assert_eq!(
             runtime.state.memory.get(v_addr).unwrap().value,
-            ((x_value & 0x0000_00FF)
-                + ((y_value & 0x0000_00FF) << 8)
-                + ((z_value & 0x0000_00FF) << 16)
-                + ((t_value & 0x0000_00FF) << 24))
+            ((x_value & 0x0000_00FF) +
+                ((y_value & 0x0000_00FF) << 8) +
+                ((z_value & 0x0000_00FF) << 16) +
+                ((t_value & 0x0000_00FF) << 24))
         );
         assert_eq!(sp_value, runtime.state.sp + UNIT);
     }
@@ -4260,11 +4261,11 @@ mod tests {
             .records
             .iter()
             .map(|r| {
-                r.add_events.len()
-                    + r.mul_events.len()
-                    + r.bitwise_events.len()
-                    + r.shift_left_events.len()
-                    + r.shift_right_events.len()
+                r.add_events.len() +
+                    r.mul_events.len() +
+                    r.bitwise_events.len() +
+                    r.shift_left_events.len() +
+                    r.shift_right_events.len()
             })
             .sum();
         let mems: usize = rt.records.iter().map(|r| r.memory_instr_events.len()).sum();
@@ -4923,22 +4924,22 @@ mod tests {
     }
 
     /* /// Stack underflow: executing I32Add with fewer than two stack values
-     /// must panic in the current rwasm backend (it does not return Err).
-     /// This test documents that behavior explicitly.
-     #[test]
-     #[should_panic(expected = "capacity overflow")]
-     fn test_stack_underflow_add_traps() {
-         let ops = vec![
-             // No pushes
-             Opcode::I32Add, // requires two operands -> underflow
-             Opcode::Return,
-         ];
+    /// must panic in the current rwasm backend (it does not return Err).
+    /// This test documents that behavior explicitly.
+    #[test]
+    #[should_panic(expected = "capacity overflow")]
+    fn test_stack_underflow_add_traps() {
+        let ops = vec![
+            // No pushes
+            Opcode::I32Add, // requires two operands -> underflow
+            Opcode::Return,
+        ];
 
-         let program = Program::from_instrs(ops);
-         let mut rt = Executor::new(program, SP1CoreOpts::default());
-         // `run()` will panic before returning due to value-stack underflow.
-         let _ = rt.run();
-     }*/
+        let program = Program::from_instrs(ops);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        // `run()` will panic before returning due to value-stack underflow.
+        let _ = rt.run();
+    }*/
 
     /// Sign-extension vs zero-extension on 16-bit loads: for the halfword
     /// 0x8000, Load16S yields 0xFFFF8000 and Load16U yields 0x00008000.
