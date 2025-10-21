@@ -224,6 +224,7 @@ impl ShiftRightChip {
             cols.a = Word::from(event.a);
             cols.b = Word::from(event.b);
             cols.c = Word::from(event.c);
+            cols.op_a_not_0 = F::from_bool(true);
 
             cols.b_msb = F::from_canonical_u32((event.b >> 31) & 1);
 
@@ -566,7 +567,8 @@ mod tests {
     #[test]
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
-        shard.shift_right_events = vec![AluEvent::new(0, Opcode::SRL, 6, 12, 1, false)];
+        shard.shift_right_events =
+            vec![AluEvent::new(0, Opcode::I32ShrU, 6, 12, 1, Opcode::I32ShrU.code())];
         let chip = ShiftRightChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
@@ -579,45 +581,45 @@ mod tests {
         let mut challenger = config.challenger();
 
         let shifts = vec![
-            (Opcode::SRL, 0xffff8000, 0xffff8000, 0),
-            (Opcode::SRL, 0x7fffc000, 0xffff8000, 1),
-            (Opcode::SRL, 0x01ffff00, 0xffff8000, 7),
-            (Opcode::SRL, 0x0003fffe, 0xffff8000, 14),
-            (Opcode::SRL, 0x0001ffff, 0xffff8001, 15),
-            (Opcode::SRL, 0xffffffff, 0xffffffff, 0),
-            (Opcode::SRL, 0x7fffffff, 0xffffffff, 1),
-            (Opcode::SRL, 0x01ffffff, 0xffffffff, 7),
-            (Opcode::SRL, 0x0003ffff, 0xffffffff, 14),
-            (Opcode::SRL, 0x00000001, 0xffffffff, 31),
-            (Opcode::SRL, 0x21212121, 0x21212121, 0),
-            (Opcode::SRL, 0x10909090, 0x21212121, 1),
-            (Opcode::SRL, 0x00424242, 0x21212121, 7),
-            (Opcode::SRL, 0x00008484, 0x21212121, 14),
-            (Opcode::SRL, 0x00000000, 0x21212121, 31),
-            (Opcode::SRL, 0x21212121, 0x21212121, 0xffffffe0),
-            (Opcode::SRL, 0x10909090, 0x21212121, 0xffffffe1),
-            (Opcode::SRL, 0x00424242, 0x21212121, 0xffffffe7),
-            (Opcode::SRL, 0x00008484, 0x21212121, 0xffffffee),
-            (Opcode::SRL, 0x00000000, 0x21212121, 0xffffffff),
-            (Opcode::SRA, 0x00000000, 0x00000000, 0),
-            (Opcode::SRA, 0xc0000000, 0x80000000, 1),
-            (Opcode::SRA, 0xff000000, 0x80000000, 7),
-            (Opcode::SRA, 0xfffe0000, 0x80000000, 14),
-            (Opcode::SRA, 0xffffffff, 0x80000001, 31),
-            (Opcode::SRA, 0x7fffffff, 0x7fffffff, 0),
-            (Opcode::SRA, 0x3fffffff, 0x7fffffff, 1),
-            (Opcode::SRA, 0x00ffffff, 0x7fffffff, 7),
-            (Opcode::SRA, 0x0001ffff, 0x7fffffff, 14),
-            (Opcode::SRA, 0x00000000, 0x7fffffff, 31),
-            (Opcode::SRA, 0x81818181, 0x81818181, 0),
-            (Opcode::SRA, 0xc0c0c0c0, 0x81818181, 1),
-            (Opcode::SRA, 0xff030303, 0x81818181, 7),
-            (Opcode::SRA, 0xfffe0606, 0x81818181, 14),
-            (Opcode::SRA, 0xffffffff, 0x81818181, 31),
+            (Opcode::I32ShrU, 0xffff8000, 0xffff8000, 0),
+            (Opcode::I32ShrU, 0x7fffc000, 0xffff8000, 1),
+            (Opcode::I32ShrU, 0x01ffff00, 0xffff8000, 7),
+            (Opcode::I32ShrU, 0x0003fffe, 0xffff8000, 14),
+            (Opcode::I32ShrU, 0x0001ffff, 0xffff8001, 15),
+            (Opcode::I32ShrU, 0xffffffff, 0xffffffff, 0),
+            (Opcode::I32ShrU, 0x7fffffff, 0xffffffff, 1),
+            (Opcode::I32ShrU, 0x01ffffff, 0xffffffff, 7),
+            (Opcode::I32ShrU, 0x0003ffff, 0xffffffff, 14),
+            (Opcode::I32ShrU, 0x00000001, 0xffffffff, 31),
+            (Opcode::I32ShrU, 0x21212121, 0x21212121, 0),
+            (Opcode::I32ShrU, 0x10909090, 0x21212121, 1),
+            (Opcode::I32ShrU, 0x00424242, 0x21212121, 7),
+            (Opcode::I32ShrU, 0x00008484, 0x21212121, 14),
+            (Opcode::I32ShrU, 0x00000000, 0x21212121, 31),
+            (Opcode::I32ShrU, 0x21212121, 0x21212121, 0xffffffe0),
+            (Opcode::I32ShrU, 0x10909090, 0x21212121, 0xffffffe1),
+            (Opcode::I32ShrU, 0x00424242, 0x21212121, 0xffffffe7),
+            (Opcode::I32ShrU, 0x00008484, 0x21212121, 0xffffffee),
+            (Opcode::I32ShrU, 0x00000000, 0x21212121, 0xffffffff),
+            (Opcode::I32ShrS, 0x00000000, 0x00000000, 0),
+            (Opcode::I32ShrS, 0xc0000000, 0x80000000, 1),
+            (Opcode::I32ShrS, 0xff000000, 0x80000000, 7),
+            (Opcode::I32ShrS, 0xfffe0000, 0x80000000, 14),
+            (Opcode::I32ShrS, 0xffffffff, 0x80000001, 31),
+            (Opcode::I32ShrS, 0x7fffffff, 0x7fffffff, 0),
+            (Opcode::I32ShrS, 0x3fffffff, 0x7fffffff, 1),
+            (Opcode::I32ShrS, 0x00ffffff, 0x7fffffff, 7),
+            (Opcode::I32ShrS, 0x0001ffff, 0x7fffffff, 14),
+            (Opcode::I32ShrS, 0x00000000, 0x7fffffff, 31),
+            (Opcode::I32ShrS, 0x81818181, 0x81818181, 0),
+            (Opcode::I32ShrS, 0xc0c0c0c0, 0x81818181, 1),
+            (Opcode::I32ShrS, 0xff030303, 0x81818181, 7),
+            (Opcode::I32ShrS, 0xfffe0606, 0x81818181, 14),
+            (Opcode::I32ShrS, 0xffffffff, 0x81818181, 31),
         ];
         let mut shift_events: Vec<AluEvent> = Vec::new();
         for t in shifts.iter() {
-            shift_events.push(AluEvent::new(0, t.0, t.1, t.2, t.3, false));
+            shift_events.push(AluEvent::new(0, t.0, t.1, t.2, t.3, t.0.code()));
         }
         let mut shard = ExecutionRecord::default();
         shard.shift_right_events = shift_events;
@@ -634,29 +636,32 @@ mod tests {
     fn test_malicious_sr() {
         const NUM_TESTS: usize = 5;
 
-        for opcode in [Opcode::SRL, Opcode::SRA] {
+        for opcode in [Opcode::I32ShrU, Opcode::I32ShrS] {
             for _ in 0..NUM_TESTS {
-                let (correct_op_a, op_b, op_c) = if opcode == Opcode::SRL {
+                let (correct_op_a, op_b, op_c) = if opcode == Opcode::I32ShrS {
                     let op_b = thread_rng().gen_range(0..u32::MAX);
-                    let op_c = thread_rng().gen_range(0..u32::MAX);
-                    (op_b >> (op_c & 0x1F), op_b, op_c)
-                } else if opcode == Opcode::SRA {
+                    let op_c = thread_rng().gen_range(0..u32::MAX) & 0x1F;
+                    (op_b >> op_c, op_b, op_c)
+                } else if opcode == Opcode::I32ShrU {
                     let op_b = thread_rng().gen_range(0..i32::MAX);
-                    let op_c = thread_rng().gen_range(0..u32::MAX);
-                    ((op_b >> (op_c & 0x1F)) as u32, op_b as u32, op_c)
+                    let op_c = thread_rng().gen_range(0..u32::MAX) & 0x1F;
+                    ((op_b >> op_c) as u32, op_b as u32, op_c)
                 } else {
                     unreachable!()
                 };
 
                 let op_a = thread_rng().gen_range(0..u32::MAX);
-                assert!(op_a != correct_op_a);
+                assert_ne!(op_a, correct_op_a);
 
                 let instructions = vec![
-                    Opcode::new(opcode, 5, op_b, op_c, true, true),
-                    Opcode::new(Opcode::ADD, 10, 0, 0, false, false),
+                    Opcode::I32Const(5u32.into()),
+                    Opcode::I32Const(10u32.into()),
+                    Opcode::I32Const(op_b.into()),
+                    Opcode::I32Const(op_c.into()),
+                    opcode,
                 ];
 
-                let program = Program::new(instructions, 0, 0);
+                let program = Program::from_instrs(instructions);
                 let stdin = SP1Stdin::new();
 
                 type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
@@ -668,11 +673,13 @@ mod tests {
                     RowMajorMatrix<Val<BabyBearPoseidon2>>,
                 )> {
                     let mut malicious_record = record.clone();
-                    malicious_record.cpu_events[0].res = op_a as u32;
-                    if let Some(MemoryRecordEnum::Write(mut write_record)) =
-                        malicious_record.cpu_events[0].res_record
-                    {
-                        write_record.value = op_a as u32;
+                    if malicious_record.cpu_events.len() > 4 {
+                        malicious_record.cpu_events[4].res = op_a as u32;
+                        if let Some(MemoryRecordEnum::Write(mut write_record)) =
+                            malicious_record.cpu_events[4].res_record
+                        {
+                            write_record.value = op_a as u32;
+                        }
                     }
                     let mut traces = prover.generate_traces(&malicious_record);
                     let shift_right_chip_name = chip_name!(ShiftRightChip, BabyBear);

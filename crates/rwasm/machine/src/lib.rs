@@ -40,7 +40,7 @@ pub mod utils;
 pub mod reduce {
     pub use rwasm_executor::SP1ReduceProof;
 }
-/*
+
 pub mod programs {
     #[allow(dead_code)]
     #[allow(missing_docs)]
@@ -48,6 +48,7 @@ pub mod programs {
 
         use rwasm::Opcode;
         use rwasm_executor::Program;
+
         #[must_use]
         pub fn build_elf() -> Program {
             let x_value: u32 = 0x11;
@@ -80,15 +81,27 @@ pub mod programs {
             Program::from_instrs(instructions)
         }
 
-        // #[must_use]
-        // pub fn simple_program() -> Program {
-        //     let instructions = vec![
-        //         Opcode::new(Opcode::ADD, 29, 0, 5, false, true),
-        //         Opcode::new(Opcode::ADD, 30, 0, 37, false, true),
-        //         Opcode::new(Opcode::ADD, 31, 30, 29, false, false),
-        //     ];
-        //     Program::new(instructions, 0, 0)
-        // }
+        #[must_use]
+        pub fn simple_program() -> Program {
+            let instructions = vec![
+                Opcode::I32Const(29.into()),
+                Opcode::I32Const(5.into()),
+                Opcode::I32Const(30.into()),
+                Opcode::I32Const(37.into()),
+                Opcode::I32Const(31.into()),
+                Opcode::I32Const(30.into()),
+                Opcode::I32Const(29.into()),
+                Opcode::I32Add,
+                Opcode::I32Add,
+                Opcode::I32Add,
+            ];
+
+            //  memory_image: BTreeMap::new() };
+
+            Program::from_instrs(instructions)
+        }
+
+        /*
 
         // /// Get the fibonacci program.
         // ///
@@ -149,6 +162,8 @@ pub mod programs {
         //     Program::from(PANIC_ELF).unwrap()
         // }
 
+        */
+
         #[must_use]
         #[allow(clippy::unreadable_literal)]
         pub fn simple_memory_program() -> Program {
@@ -195,4 +210,3 @@ pub mod programs {
         }
     }
 }
-*/

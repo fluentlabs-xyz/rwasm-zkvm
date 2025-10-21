@@ -185,6 +185,7 @@ impl LtChip {
         cols.a = F::from_canonical_u8(a[0]);
         cols.b = Word(b.map(F::from_canonical_u8));
         cols.c = Word(c.map(F::from_canonical_u8));
+        cols.op_a_not_0 = F::from_bool(true); //<-- added
 
         // If this is SLT, mask the MSB of b & c before computing cols.bits.
         let masked_b = b[3] & 0x7f;
@@ -468,7 +469,7 @@ where
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use std::borrow::BorrowMut;
+    use super::LtChip;
 
     use crate::{
         alu::LtCols,
@@ -486,15 +487,13 @@ mod tests {
     };
     use sp1_stark::{
         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
-        MachineProver, StarkGenericConfig, Val,
+        MachineProver, StarkGenericConfig,
     };
-
-    use super::LtChip;
 
     #[test]
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
-        shard.lt_events = vec![AluEvent::new(0, Opcode::SLT, 0, 3, 2, false)];
+        shard.lt_events = vec![AluEvent::new(0, Opcode::I32LtS, 0, 3, 2, Opcode::I32LtS.code())];
         let chip = LtChip::default();
         let generate_trace = chip.generate_trace(&shard, &mut ExecutionRecord::default());
         let trace: RowMajorMatrix<BabyBear> = generate_trace;
@@ -522,21 +521,29 @@ mod tests {
         const NEG_4: u32 = 0b11111111111111111111111111111100;
         shard.lt_events = vec![
             // 0 == 3 < 2
-            AluEvent::new(0, Opcode::SLT, 0, 3, 2, false),
+            AluEvent::new(0, Opcode::I32LtS, 0, 3, 2, Opcode::I32LtS.code()),
             // 1 == 2 < 3
-            AluEvent::new(0, Opcode::SLT, 1, 2, 3, false),
+            AluEvent::new(0, Opcode::I32LtS, 1, 2, 3, Opcode::I32LtS.code()),
             // 0 == 5 < -3
-            AluEvent::new(0, Opcode::SLT, 0, 5, NEG_3, false),
+            AluEvent::new(0, Opcode::I32LtS, 0, 5, NEG_3, Opcode::I32LtS.code()),
             // 1 == -3 < 5
-            AluEvent::new(0, Opcode::SLT, 1, NEG_3, 5, false),
+            AluEvent::new(0, Opcode::I32LtS, 1, NEG_3, 5, Opcode::I32LtS.code()),
             // 0 == -3 < -4
-            AluEvent::new(0, Opcode::SLT, 0, NEG_3, NEG_4, false),
+            AluEvent::new(0, Opcode::I32LtS, 0, NEG_3, NEG_4, Opcode::I32LtS.code()),
             // 1 == -4 < -3
-            AluEvent::new(0, Opcode::SLT, 1, NEG_4, NEG_3, false),
+            AluEvent::new(0, Opcode::I32LtS, 1, NEG_4, NEG_3, Opcode::I32LtS.code()),
             // 0 == 3 < 3
-            AluEvent::new(0, Opcode::SLT, 0, 3, 3, false),
+            AluEvent::new(0, Opcode::I32LtS, 0, 3, 3, Opcode::I32LtS.code()),
             // 0 == -3 < -3
-            AluEvent::new(0, Opcode::SLT, 0, NEG_3, NEG_3, false),
+            AluEvent::new(0, Opcode::I32LtS, 0, NEG_3, NEG_3, Opcode::I32LtS.code()),
+            AluEvent::new(
+                0,
+                Opcode::I32LtS,
+                0,
+                1749720339u32,
+                3190814577u32,
+                Opcode::I32LtS.code(),
+            ),
         ];
 
         prove_babybear_template(&mut shard);
@@ -549,83 +556,83 @@ mod tests {
         const LARGE: u32 = 0b11111111111111111111111111111101;
         shard.lt_events = vec![
             // 0 == 3 < 2
-            AluEvent::new(0, Opcode::SLTU, 0, 3, 2),
+            AluEvent::new(0, Opcode::I32LtU, 0, 3, 2, Opcode::I32LtU.code()),
             // 1 == 2 < 3
-            AluEvent::new(0, Opcode::SLTU, 1, 2, 3),
+            AluEvent::new(0, Opcode::I32LtU, 1, 2, 3, Opcode::I32LtU.code()),
             // 0 == LARGE < 5
-            AluEvent::new(0, Opcode::SLTU, 0, LARGE, 5),
+            AluEvent::new(0, Opcode::I32LtU, 0, LARGE, 5, Opcode::I32LtU.code()),
             // 1 == 5 < LARGE
-            AluEvent::new(0, Opcode::SLTU, 1, 5, LARGE),
+            AluEvent::new(0, Opcode::I32LtU, 1, 5, LARGE, Opcode::I32LtU.code()),
             // 0 == 0 < 0
-            AluEvent::new(0, Opcode::SLTU, 0, 0, 0),
+            AluEvent::new(0, Opcode::I32LtU, 0, 0, 0, Opcode::I32LtU.code()),
             // 0 == LARGE < LARGE
-            AluEvent::new(0, Opcode::SLTU, 0, LARGE, LARGE),
+            AluEvent::new(0, Opcode::I32LtU, 0, LARGE, LARGE, Opcode::I32LtU.code()),
         ];
 
         prove_babybear_template(&mut shard);
     }
-
     #[test]
-    fn test_malicious_lt() {
-        const NUM_TESTS: usize = 5;
+    fn test_malicious_ltu() {
+        run_malicious_lt(Opcode::I32LtU)
+    }
+    #[test]
+    fn test_malicious_lts() {
+        //TODO it is failed!
+        run_malicious_lt(Opcode::I32LtS)
+    }
 
-        for opcode in [Opcode::SLTU, Opcode::SLT] {
-            for _ in 0..NUM_TESTS {
-                let op_b = thread_rng().gen_range(0..u32::MAX);
-                let op_c = thread_rng().gen_range(0..u32::MAX);
+    fn run_malicious_lt(opcode: Opcode) {
+        use core::borrow::BorrowMut;
+        const NUM_TESTS: usize = 10;
 
-                let correct_op_a = if opcode == Opcode::SLTU {
-                    op_b < op_c
-                } else {
-                    (op_b as i32) < (op_c as i32)
-                };
+        let rng = thread_rng();
+        for _ in 0..NUM_TESTS {
+            let op_b = thread_rng().gen_range(0..u32::MAX);
+            let op_c = thread_rng().gen_range(0..u32::MAX);
 
-                let op_a = !correct_op_a;
+            let correct_op_a =
+                if opcode == Opcode::I32LtU { op_b < op_c } else { (op_b as i32) < (op_c as i32) };
+            //Pops rhs, then lhs, pushes i32( lhs <_s rhs ? 1 : 0 )
+            let op_a = !correct_op_a;
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(op_c.into()),
+                Opcode::I32Const(op_b.into()),
+                opcode,
+            ]);
+            let stdin = SP1Stdin::new();
+            type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
 
-                let instructions = vec![
-                    Opcode::new(opcode, 5, op_b, op_c, true, true),
-                    Opcode::new(Opcode::ADD, 10, 0, 0, false, false),
-                ];
-
-                let program = Program::new(instructions, 0, 0);
-                let stdin = SP1Stdin::new();
-
-                type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
-
-                let malicious_trace_pv_generator = move |prover: &P,
-                                                         record: &mut ExecutionRecord|
-                      -> Vec<(
-                    String,
-                    RowMajorMatrix<Val<BabyBearPoseidon2>>,
-                )> {
-                    let mut malicious_record = record.clone();
-                    malicious_record.cpu_events[0].res = op_a as u32;
+            let malicious_trace_pv_generator = move |prover: &P, record: &mut ExecutionRecord| {
+                let mut malicious_record = record.clone();
+                // The ALU op is the 3rd instruction (index 2)
+                if malicious_record.cpu_events.len() > 2 {
+                    malicious_record.cpu_events[2].res = op_a as u32;
+                    // keep memory write consistent
                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
-                        malicious_record.cpu_events[0].res_record
+                        &mut malicious_record.cpu_events[2].res_record
                     {
                         write_record.value = op_a as u32;
                     }
-                    let mut traces = prover.generate_traces(&malicious_record);
-
-                    let lt_chip_name = chip_name!(LtChip, BabyBear);
-                    for (chip_name, trace) in traces.iter_mut() {
-                        if *chip_name == lt_chip_name {
-                            let first_row = trace.row_mut(0);
-                            let first_row: &mut LtCols<BabyBear> = first_row.borrow_mut();
-                            first_row.a = BabyBear::from_bool(op_a);
-                        }
-                    }
-
-                    traces
-                };
-
-                let result =
-                    run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
+                }
+                let mut traces = prover.generate_traces(&malicious_record);
                 let lt_chip_name = chip_name!(LtChip, BabyBear);
-                assert!(
-                    result.is_err() && result.unwrap_err().is_constraints_failing(&lt_chip_name)
-                );
-            }
+                if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == lt_chip_name)
+                {
+                    let row = trace.row_mut(0);
+                    let row: &mut LtCols<BabyBear> = row.borrow_mut();
+                    row.a = BabyBear::from_bool(op_a); // inject the forged value
+                }
+
+                traces
+            };
+
+            let result =
+                run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
+            let lt_chip_name = chip_name!(LtChip, BabyBear);
+            assert!(result.is_err());
+            println!("mytest op_a={} op_b={}, op_b={}", op_a, op_b, op_c);
+            println!("{:?}", result);
+            assert!(result.unwrap_err().is_constraints_failing(&lt_chip_name));
         }
     }
 }

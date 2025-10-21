@@ -132,21 +132,5 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        io::SP1Stdin,
-        rwasm::RwasmAir,
-        utils::{prove_core, setup_logger},
-    };
-    use sp1_primitives::io::SP1PublicValues;
-
-    use rand::{Rng, SeedableRng};
-    use rwasm_executor::{Program, SP1Context};
-    use sp1_stark::{
-        baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver, SP1CoreOpts,
-        StarkGenericConfig,
-    };
-
-    use tiny_keccak::Hasher;
-
     const NUM_TEST_CASES: usize = 45;
 }

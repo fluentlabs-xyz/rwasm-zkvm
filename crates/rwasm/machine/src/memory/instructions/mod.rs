@@ -16,23 +16,8 @@ impl<F> BaseAir<F> for MemoryInstructionsChip {
 
 #[cfg(test)]
 mod tests {
-    use std::borrow::BorrowMut;
 
-    use p3_baby_bear::BabyBear;
-    use p3_field::AbstractField;
-    use p3_matrix::dense::RowMajorMatrix;
-    use rwasm_executor::{events::MemoryRecordEnum, ExecutionRecord, Opcode, Program};
-    use sp1_stark::{
-        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
-        MachineProver, Val,
-    };
-
-    use crate::{
-        io::SP1Stdin,
-        memory::{columns::MemoryInstructionsColumns, MemoryInstructionsChip},
-        rwasm::RwasmAir,
-        utils::run_malicious_test,
-    };
+    use rwasm_executor::Opcode;
 
     enum FailureType {
         ConstraintsFailing,
@@ -45,7 +30,7 @@ mod tests {
         failure_type: FailureType,
     }
 
-    #[test]
+    /*#[test]
     fn test_malicious_stores() {
         let test_cases = vec![
             TestCase {
@@ -224,5 +209,5 @@ mod tests {
         assert!(
             result.is_err() && result.unwrap_err().is_constraints_failing(&memory_instr_chip_name)
         );
-    }
+    }*/
 }

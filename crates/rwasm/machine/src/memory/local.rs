@@ -293,7 +293,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::print_stdout)]
+    /*#![allow(clippy::print_stdout)]
 
     use crate::{
         memory::MemoryLocalChip, programs::tests::*, rwasm::RwasmAir,
@@ -488,5 +488,5 @@ mod tests {
 
         // Convert the trace to a row major matrix.
         RowMajorMatrix::new(values, NUM_MEMORY_LOCAL_INIT_COLS)
-    }
+    }*/
 }

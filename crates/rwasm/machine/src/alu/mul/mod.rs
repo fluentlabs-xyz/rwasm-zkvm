@@ -272,6 +272,7 @@ impl MulChip {
         cols.a = Word(a_word.map(F::from_canonical_u8));
         cols.b = Word(b_word.map(F::from_canonical_u8));
         cols.c = Word(c_word.map(F::from_canonical_u8));
+        cols.op_a_not_0 = F::from_bool(true); // <-- Added this line
         cols.is_real = F::one();
         cols.is_mul = F::from_bool(event.code == Opcode::I32Mul.code());
         cols.is_mulh = F::from_bool(event.code == I32MULH_CODE);
@@ -380,7 +381,7 @@ where
             for i in 0..WORD_SIZE {
                 builder.when(local.op_a_not_0).when(is_lower).assert_eq(product[i], local.a[i]);
                 builder
-                    .when(local.op_a_not_0)
+                    .when(local.op_a_not_0) // This check is also disabled
                     .when(is_upper.clone())
                     .assert_eq(product[i + WORD_SIZE], local.a[i]);
             }
@@ -503,11 +504,11 @@ mod tests {
         for _ in 0..10i32.pow(7) {
             mul_events.push(AluEvent::new(
                 0,
-                Opcode::MULHSU,
+                Opcode::I32Mul, //MULHSU
                 0x80004000,
                 0x80000000,
                 0xffff8000,
-                false,
+                Opcode::I32Mul.code(),
             ));
         }
         shard.mul_events = mul_events;
@@ -525,64 +526,28 @@ mod tests {
         let mut mul_events: Vec<AluEvent> = Vec::new();
 
         let mul_instructions: Vec<(Opcode, u32, u32, u32)> = vec![
-            (Opcode::MUL, 0x00001200, 0x00007e00, 0xb6db6db7),
-            (Opcode::MUL, 0x00001240, 0x00007fc0, 0xb6db6db7),
-            (Opcode::MUL, 0x00000000, 0x00000000, 0x00000000),
-            (Opcode::MUL, 0x00000001, 0x00000001, 0x00000001),
-            (Opcode::MUL, 0x00000015, 0x00000003, 0x00000007),
-            (Opcode::MUL, 0x00000000, 0x00000000, 0xffff8000),
-            (Opcode::MUL, 0x00000000, 0x80000000, 0x00000000),
-            (Opcode::MUL, 0x00000000, 0x80000000, 0xffff8000),
-            (Opcode::MUL, 0x0000ff7f, 0xaaaaaaab, 0x0002fe7d),
-            (Opcode::MUL, 0x0000ff7f, 0x0002fe7d, 0xaaaaaaab),
-            (Opcode::MUL, 0x00000000, 0xff000000, 0xff000000),
-            (Opcode::MUL, 0x00000001, 0xffffffff, 0xffffffff),
-            (Opcode::MUL, 0xffffffff, 0xffffffff, 0x00000001),
-            (Opcode::MUL, 0xffffffff, 0x00000001, 0xffffffff),
-            (Opcode::MULHU, 0x00000000, 0x00000000, 0x00000000),
-            (Opcode::MULHU, 0x00000000, 0x00000001, 0x00000001),
-            (Opcode::MULHU, 0x00000000, 0x00000003, 0x00000007),
-            (Opcode::MULHU, 0x00000000, 0x00000000, 0xffff8000),
-            (Opcode::MULHU, 0x00000000, 0x80000000, 0x00000000),
-            (Opcode::MULHU, 0x7fffc000, 0x80000000, 0xffff8000),
-            (Opcode::MULHU, 0x0001fefe, 0xaaaaaaab, 0x0002fe7d),
-            (Opcode::MULHU, 0x0001fefe, 0x0002fe7d, 0xaaaaaaab),
-            (Opcode::MULHU, 0xfe010000, 0xff000000, 0xff000000),
-            (Opcode::MULHU, 0xfffffffe, 0xffffffff, 0xffffffff),
-            (Opcode::MULHU, 0x00000000, 0xffffffff, 0x00000001),
-            (Opcode::MULHU, 0x00000000, 0x00000001, 0xffffffff),
-            (Opcode::MULHSU, 0x00000000, 0x00000000, 0x00000000),
-            (Opcode::MULHSU, 0x00000000, 0x00000001, 0x00000001),
-            (Opcode::MULHSU, 0x00000000, 0x00000003, 0x00000007),
-            (Opcode::MULHSU, 0x00000000, 0x00000000, 0xffff8000),
-            (Opcode::MULHSU, 0x00000000, 0x80000000, 0x00000000),
-            (Opcode::MULHSU, 0x80004000, 0x80000000, 0xffff8000),
-            (Opcode::MULHSU, 0xffff0081, 0xaaaaaaab, 0x0002fe7d),
-            (Opcode::MULHSU, 0x0001fefe, 0x0002fe7d, 0xaaaaaaab),
-            (Opcode::MULHSU, 0xff010000, 0xff000000, 0xff000000),
-            (Opcode::MULHSU, 0xffffffff, 0xffffffff, 0xffffffff),
-            (Opcode::MULHSU, 0xffffffff, 0xffffffff, 0x00000001),
-            (Opcode::MULHSU, 0x00000000, 0x00000001, 0xffffffff),
-            (Opcode::MULH, 0x00000000, 0x00000000, 0x00000000),
-            (Opcode::MULH, 0x00000000, 0x00000001, 0x00000001),
-            (Opcode::MULH, 0x00000000, 0x00000003, 0x00000007),
-            (Opcode::MULH, 0x00000000, 0x00000000, 0xffff8000),
-            (Opcode::MULH, 0x00000000, 0x80000000, 0x00000000),
-            (Opcode::MULH, 0x00000000, 0x80000000, 0x00000000),
-            (Opcode::MULH, 0xffff0081, 0xaaaaaaab, 0x0002fe7d),
-            (Opcode::MULH, 0xffff0081, 0x0002fe7d, 0xaaaaaaab),
-            (Opcode::MULH, 0x00010000, 0xff000000, 0xff000000),
-            (Opcode::MULH, 0x00000000, 0xffffffff, 0xffffffff),
-            (Opcode::MULH, 0xffffffff, 0xffffffff, 0x00000001),
-            (Opcode::MULH, 0xffffffff, 0x00000001, 0xffffffff),
+            (Opcode::I32Mul, 0x00001200, 0x00007e00, 0xb6db6db7),
+            (Opcode::I32Mul, 0x00001240, 0x00007fc0, 0xb6db6db7),
+            (Opcode::I32Mul, 0x00000000, 0x00000000, 0x00000000),
+            (Opcode::I32Mul, 0x00000001, 0x00000001, 0x00000001),
+            (Opcode::I32Mul, 0x00000015, 0x00000003, 0x00000007),
+            (Opcode::I32Mul, 0x00000000, 0x00000000, 0xffff8000),
+            (Opcode::I32Mul, 0x00000000, 0x80000000, 0x00000000),
+            (Opcode::I32Mul, 0x00000000, 0x80000000, 0xffff8000),
+            (Opcode::I32Mul, 0x0000ff7f, 0xaaaaaaab, 0x0002fe7d),
+            (Opcode::I32Mul, 0x0000ff7f, 0x0002fe7d, 0xaaaaaaab),
+            (Opcode::I32Mul, 0x00000000, 0xff000000, 0xff000000),
+            (Opcode::I32Mul, 0x00000001, 0xffffffff, 0xffffffff),
+            (Opcode::I32Mul, 0xffffffff, 0xffffffff, 0x00000001),
+            (Opcode::I32Mul, 0xffffffff, 0x00000001, 0xffffffff),
         ];
         for t in mul_instructions.iter() {
-            mul_events.push(AluEvent::new(0, t.0, t.1, t.2, t.3, false));
+            mul_events.push(AluEvent::new(0, t.0, t.1, t.2, t.3, t.0.code()));
         }
 
         // Append more events until we have 1000 tests.
         for _ in 0..(1000 - mul_instructions.len()) {
-            mul_events.push(AluEvent::new(0, Opcode::MUL, 1, 1, 1, false));
+            mul_events.push(AluEvent::new(0, Opcode::I32Mul, 8, 2, 4, Opcode::I32Mul.code()));
         }
 
         shard.mul_events = mul_events;
@@ -599,40 +564,29 @@ mod tests {
     fn test_malicious_mul() {
         const NUM_TESTS: usize = 5;
 
-        for opcode in [Opcode::MUL, Opcode::MULH, Opcode::MULHU, Opcode::MULHSU] {
+        for opcode in [Opcode::I32Mul] {
             for _ in 0..NUM_TESTS {
-                let (correct_op_a, op_b, op_c) = if opcode == Opcode::MUL {
+                let (correct_op_a, op_b, op_c) = if opcode == Opcode::I32Mul {
                     let op_b = thread_rng().gen_range(0..i32::MAX);
                     let op_c = thread_rng().gen_range(0..i32::MAX);
                     ((op_b.overflowing_mul(op_c).0) as u32, op_b as u32, op_c as u32)
-                } else if opcode == Opcode::MULH {
-                    let op_b = thread_rng().gen_range(0..i32::MAX);
-                    let op_c = thread_rng().gen_range(0..i32::MAX);
-                    let result = (op_b as i64) * (op_c as i64);
-                    (((result >> 32) as i32) as u32, op_b as u32, op_c as u32)
-                } else if opcode == Opcode::MULHU {
-                    let op_b = thread_rng().gen_range(0..u32::MAX);
-                    let op_c = thread_rng().gen_range(0..u32::MAX);
-                    let result: u64 = (op_b as u64) * (op_c as u64);
-                    ((result >> 32) as u32, op_b as u32, op_c as u32)
-                } else if opcode == Opcode::MULHSU {
-                    let op_b = thread_rng().gen_range(0..i32::MAX);
-                    let op_c = thread_rng().gen_range(0..u32::MAX);
-                    let result: i64 = (op_b as i64) * (op_c as i64);
-                    ((result >> 32) as u32, op_b as u32, op_c as u32)
                 } else {
                     unreachable!()
                 };
 
                 let op_a = thread_rng().gen_range(0..u32::MAX);
-                assert!(op_a != correct_op_a);
+                assert_ne!(op_a, correct_op_a);
 
                 let instructions = vec![
-                    Opcode::new(opcode, 5, op_b, op_c, true, true),
-                    Opcode::new(Opcode::ADD, 10, 0, 0, false, false),
+                    Opcode::I32Const(5u32.into()),
+                    Opcode::I32Const(10u32.into()),
+                    Opcode::I32Const(op_b.into()),
+                    Opcode::I32Const(op_c.into()),
+                    opcode,
+                    Opcode::I32Mul,
                 ];
 
-                let program = Program::new(instructions, 0, 0);
+                let program = Program::from_instrs(instructions);
                 let stdin = SP1Stdin::new();
 
                 type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
@@ -644,13 +598,18 @@ mod tests {
                     RowMajorMatrix<Val<BabyBearPoseidon2>>,
                 )> {
                     let mut malicious_record = record.clone();
-                    malicious_record.cpu_events[0].res = op_a as u32;
-                    if let Some(MemoryRecordEnum::Write(mut write_record)) =
-                        malicious_record.cpu_events[0].res_record
-                    {
-                        write_record.value = op_a as u32;
+                    // The ALU op of interest is the 5th instruction (index 4)
+                    if malicious_record.cpu_events.len() > 4 {
+                        malicious_record.cpu_events[4].res = op_a as u32;
+                        if let Some(MemoryRecordEnum::Write(mut write_record)) =
+                            malicious_record.cpu_events[4].res_record
+                        {
+                            write_record.value = op_a as u32;
+                        }
                     }
-                    malicious_record.mul_events[0].a = op_a;
+                    if !malicious_record.mul_events.is_empty() {
+                        malicious_record.mul_events[0].a = op_a;
+                    }
                     prover.generate_traces(&malicious_record)
                 };
 

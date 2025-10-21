@@ -575,6 +575,7 @@ pub mod tests {
         SP1CoreOpts, StarkProvingKey, StarkVerifyingKey,
     };
     use strum::IntoEnumIterator;
+
     #[test]
     fn test_primitives_and_machine_air_names_match() {
         let chips = RiscvAir::<BabyBear>::chips();

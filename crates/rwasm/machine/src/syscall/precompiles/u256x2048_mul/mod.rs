@@ -13,18 +13,14 @@ mod tests {
             MemoryReadRecord, MemoryWriteRecord, PrecompileEvent, SyscallEvent, U256xU2048MulEvent,
         },
         syscalls::SyscallCode,
-        ExecutionRecord, Program,
+        ExecutionRecord,
     };
     use sp1_primitives::consts::bytes_to_words_le;
-    use sp1_stark::{
-        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, StarkGenericConfig,
-    };
+    use sp1_stark::{air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, StarkGenericConfig};
 
     use crate::{
-        io::SP1Stdin,
         syscall::precompiles::u256x2048_mul::air::U256x2048MulChip,
         utils::{
-            self, run_test,
             uni_stark::{uni_stark_prove, uni_stark_verify},
             words_to_bytes_le_vec,
         },

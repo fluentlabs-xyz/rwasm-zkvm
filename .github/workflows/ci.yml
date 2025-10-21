@@ -39,7 +39,11 @@ jobs:
 
       - name: Run rwasm-prover tests
         run: |
-          cargo test --release --package rwasm-prover --lib rwasmtest
+          RUSTFLAGS="-C target-cpu=native" cargo test --release --package rwasm-prover --lib rwasmtest
+
+      - name: Run rwasm-machine tests
+        run: |
+          RUSTFLAGS="-C target-cpu=native" cargo test --release --package rwasm-machine
 
   lint:
     name: Lint
@@ -57,4 +61,4 @@ jobs:
         run: cargo +nightly fmt --all -- --check
 
       - name: Run clippy
-        run: cargo +nightly clippy -p rwasm-machine -p rwasm-executor -p rwasm-machine-test -- -D warnings
+        run: cargo +stable clippy -p rwasm-machine -p rwasm-executor -p rwasm-machine-test -- -D warnings

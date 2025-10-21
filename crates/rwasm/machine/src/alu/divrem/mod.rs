@@ -233,6 +233,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 cols.a = Word::from(event.a);
                 cols.b = Word::from(event.b);
                 cols.c = Word::from(event.c);
+                cols.op_a_not_0 = F::one(); // <-- Added this line
                 cols.is_real = F::one();
                 cols.is_divu = F::from_bool(event.opcode == Opcode::I32DivU);
                 cols.is_remu = F::from_bool(event.opcode == Opcode::I32RemU);
@@ -824,27 +825,22 @@ where
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use crate::{
-        io::SP1Stdin,
-        rwasm::RwasmAir,
-        utils::{run_malicious_test, uni_stark_prove, uni_stark_verify},
-    };
+    use super::DivRemChip;
+    use crate::{io::SP1Stdin, rwasm::RwasmAir};
     use p3_baby_bear::BabyBear;
     use p3_matrix::dense::RowMajorMatrix;
-    use rand::{thread_rng, Rng};
     use rwasm_executor::{
         events::{AluEvent, MemoryRecordEnum},
         ExecutionRecord, Opcode, Program,
     };
     use sp1_stark::{
         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
-        MachineProver, StarkGenericConfig, Val,
+        MachineProver,
     };
 
-    use super::DivRemChip;
+    use crate::utils::run_malicious_test;
 
     #[test]
-
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
         shard.divrem_events =
@@ -855,79 +851,179 @@ mod tests {
         println!("{:?}", trace.values)
     }
 
+    #[test]
+    fn divu_trace_basic() {
+        use core::borrow::Borrow;
+        use p3_field::AbstractField;
+
+        let mut shard = ExecutionRecord::default();
+        // b=17, c=3 -> quotient=5, remainder=2
+        shard.divrem_events =
+            vec![AluEvent::new(0, Opcode::I32DivU, 0, 17, 3, Opcode::I32DivU.code())];
+
+        let chip = DivRemChip::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        // Read the first (and only) row back into column form
+        let mut row = [BabyBear::zero(); super::NUM_DIVREM_COLS];
+        row.copy_from_slice(&trace.values[..super::NUM_DIVREM_COLS]);
+        let cols: &super::DivRemCols<BabyBear> = row.as_slice().borrow();
+
+        // Correct opcode flags
+        assert_eq!(cols.is_divu, BabyBear::one());
+        assert_eq!(cols.is_div, BabyBear::zero());
+
+        // Quotient and remainder bytes
+        assert_eq!(cols.quotient[0], BabyBear::from_canonical_u8(5));
+        assert_eq!(cols.remainder[0], BabyBear::from_canonical_u8(2));
+        for i in 1..sp1_primitives::consts::WORD_SIZE {
+            assert_eq!(cols.quotient[i], BabyBear::zero());
+            assert_eq!(cols.remainder[i], BabyBear::zero());
+        }
+
+        // c * q = 3 * 5 = 15 -> least-significant byte is 15
+        assert_eq!(cols.c_times_quotient[0], BabyBear::from_canonical_u8(15));
+    }
+
+    #[test]
+    fn divs_overflow_flags_and_remainder_zero() {
+        use core::borrow::Borrow;
+        use p3_field::AbstractField;
+
+        let b = i32::MIN as u32;
+        let c = (-1i32) as u32;
+
+        let mut shard = ExecutionRecord::default();
+        shard.divrem_events =
+            vec![AluEvent::new(0, Opcode::I32DivS, 0, b, c, Opcode::I32DivS.code())];
+
+        let chip = DivRemChip::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        let mut row = [BabyBear::zero(); super::NUM_DIVREM_COLS];
+        row.copy_from_slice(&trace.values[..super::NUM_DIVREM_COLS]);
+        let cols: &super::DivRemCols<BabyBear> = row.as_slice().borrow();
+
+        // Signed division and overflow are flagged
+        assert_eq!(cols.is_div, BabyBear::one());
+        assert_eq!(cols.is_overflow, BabyBear::one());
+
+        // In the overflow case (INT_MIN / -1), remainder must be 0
+        for i in 0..sp1_primitives::consts::WORD_SIZE {
+            assert_eq!(cols.remainder[i], BabyBear::zero());
+        }
+
+        // Signs: b and c are both negative
+        assert_eq!(cols.b_neg, BabyBear::one());
+        assert_eq!(cols.c_neg, BabyBear::one());
+
+        // max(abs(c), 1) == 1
+        assert_eq!(cols.max_abs_c_or_1[0], BabyBear::one());
+        for i in 1..sp1_primitives::consts::WORD_SIZE {
+            assert_eq!(cols.max_abs_c_or_1[i], BabyBear::zero());
+        }
+    }
+
+    #[test]
+    fn div_by_zero_sets_quotient_to_all_ones() {
+        use core::borrow::Borrow;
+        use p3_field::AbstractField;
+
+        let mut shard = ExecutionRecord::default();
+        // Division by zero: c = 0. For DIV(U), quotient must be 0xffffffff
+        shard.divrem_events =
+            vec![AluEvent::new(0, Opcode::I32DivU, 0, 123_456u32, 0u32, Opcode::I32DivU.code())];
+
+        let chip = DivRemChip::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        let mut row = [BabyBear::zero(); super::NUM_DIVREM_COLS];
+        row.copy_from_slice(&trace.values[..super::NUM_DIVREM_COLS]);
+        let cols: &super::DivRemCols<BabyBear> = row.as_slice().borrow();
+
+        // c==0 is detected
+        assert_eq!(cols.is_c_0.result, BabyBear::one());
+
+        // Quotient is 0xffffffff (all bytes 0xff)
+        for i in 0..sp1_primitives::consts::WORD_SIZE {
+            assert_eq!(cols.quotient[i], BabyBear::from_canonical_u8(u8::MAX));
+        }
+
+        // Remainder range check multiplicity is disabled when c==0
+        assert_eq!(cols.remainder_check_multiplicity, BabyBear::zero());
+    }
+
     fn neg(a: u32) -> u32 {
         u32::MAX - a + 1
     }
 
-    // #[test]
-    // fn test_malicious_divrem() {
-    //     const NUM_TESTS: usize = 5;
+    #[test]
+    fn test_malicious_divrem() {
+        use rand::{thread_rng, Rng};
 
-    //     for opcode in [
-    //         Opcode::I32DivS,
-    //         Opcode::I32DivSU,
-    //         Opcode::I32RemS,
-    //         Opcode::I32RemU,
-    //     ] {
-    //         for _ in 0..NUM_TESTS {
-    //             let (correct_op_a, op_b, op_c) = if opcode == Opcode::I32DivS {
-    //                 let op_b = thread_rng().gen_range(0..i32::MAX);
-    //                 let op_c = thread_rng().gen_range(0..i32::MAX);
-    //                 ((op_b / op_c) as u32, op_b as u32, op_c as u32)
-    //             } else if opcode == Opcode::I32DivSU {
-    //                 let op_b = thread_rng().gen_range(0..u32::MAX);
-    //                 let op_c = thread_rng().gen_range(0..u32::MAX);
-    //                 (op_b / op_c, op_b as u32, op_c as u32)
-    //             } else if opcode == Opcode::I32RemS {
-    //                 let op_b = thread_rng().gen_range(0..i32::MAX);
-    //                 let op_c = thread_rng().gen_range(0..i32::MAX);
-    //                 ((op_b % op_c) as u32, op_b as u32, op_c as u32)
-    //             } else if opcode == Opcode::I32RemU {
-    //                 let op_b = thread_rng().gen_range(0..u32::MAX);
-    //                 let op_c = thread_rng().gen_range(0..u32::MAX);
-    //                 (op_b % op_c, op_b as u32, op_c as u32)
-    //             } else {
-    //                 unreachable!()
-    //             };
+        type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
 
-    //             let op_a = thread_rng().gen_range(0..u32::MAX);
-    //             assert!(op_a != correct_op_a);
+        let mut rng = thread_rng();
 
-    //             let instructions = vec![
-    //                 Opcode::new(opcode, 5, op_b, op_c, true, true),
-    //                 Opcode::new(Opcode::ADD, 10, 0, 0, false, false),
-    //             ];
+        for &opcode in &[Opcode::I32RemS, Opcode::I32RemU, Opcode::I32DivS, Opcode::I32DivU] {
+            let (op_b_u32, op_c_u32, correct): (u32, u32, u32) = match opcode {
+                Opcode::I32DivS => {
+                    let b: i32 = rng.gen_range(0..i32::MAX);
+                    let c: i32 = rng.gen_range(1..i32::MAX); // avoid div-by-zero
+                    (b as u32, c as u32, (b / c) as u32)
+                }
+                Opcode::I32DivU => {
+                    let b: u32 = rng.gen();
+                    let c: u32 = rng.gen_range(1..=u32::MAX); // avoid div-by-zero
+                    (b, c, b / c)
+                }
+                Opcode::I32RemS => {
+                    let b: i32 = rng.gen_range(0..i32::MAX);
+                    let c: i32 = rng.gen_range(1..i32::MAX); // avoid div-by-zero
+                    (b as u32, c as u32, (b % c) as u32)
+                }
+                Opcode::I32RemU => {
+                    let b: u32 = rng.gen();
+                    let c: u32 = rng.gen_range(1..=u32::MAX); // avoid div-by-zero
+                    (b, c, b % c)
+                }
+                _ => unreachable!(),
+            };
 
-    //             let program = Program::new(instructions, 0, 0);
-    //             let stdin = SP1Stdin::new();
+            let op_a = correct.wrapping_add(16); // force an incorrect result
 
-    //             type P = CpuProver<BabyBearPoseidon2, RiscvAir<BabyBear>>;
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(op_b_u32.into()),
+                Opcode::I32Const(op_c_u32.into()),
+                opcode,
+            ]);
+            let stdin = SP1Stdin::new();
 
-    //             let malicious_trace_pv_generator = move |prover: &P,
-    //                                                      record: &mut ExecutionRecord|
-    //                   -> Vec<(
-    //                 String,
-    //                 RowMajorMatrix<Val<BabyBearPoseidon2>>,
-    //             )> {
-    //                 let mut malicious_record = record.clone();
-    //                 malicious_record.cpu_events[0].a = op_a;
-    //                 if let Some(MemoryRecordEnum::Write(mut write_record)) =
-    //                     malicious_record.cpu_events[0].a_record
-    //                 {
-    //                     write_record.value = op_a;
-    //                 }
-    //                 malicious_record.divrem_events[0].a = op_a;
-    //                 prover.generate_traces(&malicious_record)
-    //             };
+            let malicious = move |prover: &P, record: &mut ExecutionRecord| {
+                let mut malicious_record = record.clone();
+                // The ALU op is the 3rd instruction (index 2)
+                if malicious_record.cpu_events.len() > 2 {
+                    malicious_record.cpu_events[2].res = op_a;
 
-    //             let result =
-    //                 run_malicious_test::<P>(program, stdin,
-    // Box::new(malicious_trace_pv_generator));             let divrem_chip_name =
-    // chip_name!(DivRemChip, BabyBear);             assert!(
-    //                 result.is_err()
-    //                     && result.unwrap_err().is_constraints_failing(&divrem_chip_name)
-    //             );
-    //         }
-    //     }
-    // }
+                    // keep memory write consistent
+                    if let Some(MemoryRecordEnum::Write(mut write_record)) =
+                        malicious_record.cpu_events[2].res_record
+                    {
+                        write_record.value = op_a;
+                    }
+                    malicious_record.divrem_events[0].a = op_a;
+                }
+                prover.generate_traces(&malicious_record)
+            };
+
+            let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
+            let divrem_chip_name = chip_name!(DivRemChip, BabyBear);
+            assert!(
+                result.is_err() && result.unwrap_err().is_constraints_failing(&divrem_chip_name)
+            );
+        }
+    }
 }

@@ -285,13 +285,10 @@ mod tests {
     use p3_matrix::dense::RowMajorMatrix;
     use rand::{thread_rng, Rng};
     use rwasm::Opcode;
-    use rwasm_executor::{
-        events::{AluEvent, MemoryRecordEnum},
-        ExecutionRecord, DEFAULT_PC_INC,
-    };
+    use rwasm_executor::{events::AluEvent, ExecutionRecord, DEFAULT_PC_INC};
     use sp1_stark::{
         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
-        MachineProver, StarkGenericConfig, Val,
+        MachineProver, StarkGenericConfig,
     };
     use std::sync::LazyLock;
 
@@ -301,6 +298,8 @@ mod tests {
         rwasm::RwasmAir,
         utils::{run_malicious_test, uni_stark_prove as prove, uni_stark_verify as verify},
     };
+    use core::borrow::Borrow;
+    use rwasm_executor::events::MemoryRecordEnum;
 
     /// Lazily initialized record for use across multiple tests.
     /// Consists of random `ADD` and `SUB` instructions.
@@ -311,7 +310,14 @@ mod tests {
                     let operand_1 = 1u32;
                     let operand_2 = 2u32;
                     let result = operand_1.wrapping_add(operand_2);
-                    AluEvent::new(i % 2, Opcode::ADD, result, operand_1, operand_2, false)
+                    AluEvent::new(
+                        i % 2,
+                        Opcode::I32Add,
+                        result,
+                        operand_1,
+                        operand_2,
+                        Opcode::I32Add.code(),
+                    )
                 }]
             })
             .collect::<Vec<_>>();
@@ -321,7 +327,14 @@ mod tests {
                     let operand_1 = thread_rng().gen_range(0..u32::MAX);
                     let operand_2 = thread_rng().gen_range(0..u32::MAX);
                     let result = operand_1.wrapping_add(operand_2);
-                    AluEvent::new(i % 2, Opcode::SUB, result, operand_1, operand_2, false)
+                    AluEvent::new(
+                        i % 2,
+                        Opcode::I32Sub,
+                        result,
+                        operand_1,
+                        operand_2,
+                        Opcode::I32Sub.code(),
+                    )
                 }]
             })
             .collect::<Vec<_>>();
@@ -350,11 +363,11 @@ mod tests {
             let result = operand_1.wrapping_add(operand_2);
             shard.add_events.push(AluEvent::new(
                 i * DEFAULT_PC_INC,
-                Opcode::ADD,
+                Opcode::I32Add,
                 result,
                 operand_1,
                 operand_2,
-                false,
+                Opcode::I32Add.code(),
             ));
         }
         for i in 0..255 {
@@ -363,11 +376,11 @@ mod tests {
             let result = operand_1.wrapping_sub(operand_2);
             shard.add_events.push(AluEvent::new(
                 i * DEFAULT_PC_INC,
-                Opcode::SUB,
+                Opcode::I32Sub,
                 result,
                 operand_1,
                 operand_2,
-                false,
+                Opcode::I32Sub.code(),
             ));
         }
 
@@ -378,6 +391,88 @@ mod tests {
 
         let mut challenger = config.challenger();
         verify(&config, &chip, &mut challenger, &proof).unwrap();
+    }
+
+    // Helper: convert a 4-byte little-endian Word<F> back to u32.
+    fn word_to_u32<F: PrimeField32>(w: &Word<F>) -> u32 {
+        let limbs = &w.0;
+        limbs[0].as_canonical_u32() |
+            (limbs[1].as_canonical_u32() << 8) |
+            (limbs[2].as_canonical_u32() << 16) |
+            (limbs[3].as_canonical_u32() << 24)
+    }
+
+    #[test]
+    fn row_encodes_add_correctly() {
+        // a = b + c
+        let b: u32 = 8;
+        let c: u32 = 6;
+        let a = b.wrapping_add(c);
+
+        let mut shard = ExecutionRecord::default();
+        shard.add_events.push(AluEvent::new(
+            0,
+            Opcode::I32Add,
+            a, // result 'a'
+            b, // operand_1 (b for add)
+            c, // operand_2 (c)
+            Opcode::I32Add.code(),
+        ));
+
+        let chip = AddSubChip::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        // Read row 0 as columns.
+        let row0 = &trace.values[0..NUM_ADD_SUB_COLS];
+        let cols: &AddSubCols<BabyBear> = row0.borrow();
+
+        // Flags and pc
+        assert_eq!(cols.is_add, BabyBear::one());
+        assert_eq!(cols.is_sub, BabyBear::zero());
+        assert_eq!(cols.pc.as_canonical_u32(), 0);
+
+        // Operands and computed value
+        assert_eq!(word_to_u32(&cols.operand_1), b);
+        assert_eq!(word_to_u32(&cols.operand_2), c);
+        assert_eq!(word_to_u32(&cols.add_operation.value), a);
+    }
+
+    #[test]
+    fn row_encodes_sub_correctly() {
+        // For SUB: b = a + c  (since a = b - c)
+        let a: u32 = 10;
+        let c: u32 = 7;
+        let b = a.wrapping_add(c);
+
+        let mut shard = ExecutionRecord::default();
+        shard.sub_events.push(AluEvent::new(
+            0,
+            Opcode::I32Sub,
+            a, // 'a' for sub
+            a, // operand_1 is 'a' for sub rows
+            c, // operand_2 is 'c'
+            Opcode::I32Sub.code(),
+        ));
+
+        let chip = AddSubChip::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        // Read row 0 as columns.
+        let row0 = &trace.values[0..NUM_ADD_SUB_COLS];
+        let cols: &AddSubCols<BabyBear> = row0.borrow();
+
+        // Flags and pc
+        assert_eq!(cols.is_add, BabyBear::zero());
+        assert_eq!(cols.is_sub, BabyBear::one());
+        assert_eq!(cols.pc.as_canonical_u32(), 0);
+
+        // Operands and computed value
+        // For sub rows, operand_1 is 'a' and operand_2 is 'c', and add_operation.value equals 'b'.
+        assert_eq!(word_to_u32(&cols.operand_1), a);
+        assert_eq!(word_to_u32(&cols.operand_2), c);
+        assert_eq!(word_to_u32(&cols.add_operation.value), b);
     }
 
     #[cfg(feature = "sys")]
@@ -432,5 +527,81 @@ mod tests {
 
         // Convert the trace to a row major matrix.
         RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_ADD_SUB_COLS)
+    }
+
+    #[test]
+    fn test_malicious_add_sub() {
+        type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
+
+        let mut rng = thread_rng();
+
+        for &opcode in &[Opcode::I32Add, Opcode::I32Sub] {
+            let (op_b, op_c): (u32, u32) = (rng.gen(), rng.gen());
+            let correct = match opcode {
+                Opcode::I32Add => op_b.wrapping_add(op_c),
+                Opcode::I32Sub => op_b.wrapping_sub(op_c),
+                _ => unreachable!(),
+            };
+            let op_a = correct.wrapping_add(16); // force an incorrect result
+
+            // stack: 5, 10,op_b, op_c, then <add|sub>, then a final add
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(5u32.into()),
+                Opcode::I32Const(10u32.into()),
+                Opcode::I32Const(op_b.into()),
+                Opcode::I32Const(op_c.into()),
+                opcode,
+                Opcode::I32Add,
+            ]);
+            let stdin = SP1Stdin::new();
+
+            let malicious = move |prover: &P, record: &mut ExecutionRecord| {
+                let mut rec = record.clone();
+
+                // The ALU op of interest is the 5th instruction (index 4)
+                if rec.cpu_events.len() > 4 {
+                    let evt = &mut rec.cpu_events[4];
+                    evt.res = op_a;
+
+                    // Keep memory trace consistent with our forged result
+                    if let Some(MemoryRecordEnum::Write(mut wr)) = evt.res_record.take() {
+                        wr.value = op_a;
+                        evt.res_record = Some(MemoryRecordEnum::Write(wr));
+                    }
+                }
+
+                // Corrupt the corresponding add/sub micro-event
+                match opcode {
+                    Opcode::I32Add => {
+                        if let Some(add) = rec.add_events.get_mut(0) {
+                            add.a = op_a;
+                        }
+                    }
+                    Opcode::I32Sub => {
+                        if let Some(sub) = rec.sub_events.get_mut(0) {
+                            sub.a = op_a;
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+
+                // Generate traces, then poison the AddSubChip row to ensure constraint failure
+                let mut traces = prover.generate_traces(&rec);
+                let chip = chip_name!(AddSubChip, BabyBear);
+                if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == chip) {
+                    // add events come before sub events
+                    let idx = if matches!(opcode, Opcode::I32Add) { 0 } else { 1 };
+                    let row = trace.row_mut(idx);
+                    let row: &mut AddSubCols<BabyBear> = row.borrow_mut();
+                    row.add_operation.value = op_a.into(); // inject the forged value
+                }
+
+                traces
+            };
+
+            let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
+            let chip = chip_name!(AddSubChip, BabyBear);
+            assert!(matches!(result, Err(e) if e.is_constraints_failing(&chip)));
+        }
     }
 }

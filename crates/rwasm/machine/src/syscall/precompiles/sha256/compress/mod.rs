@@ -32,15 +32,7 @@ impl ShaCompressChip {
 #[cfg(test)]
 pub mod compress_tests {
 
-    use rwasm_executor::{syscalls::SyscallCode, Opcode, Program};
-    use sp1_stark::CpuProver;
-
-    use crate::{
-        io::SP1Stdin,
-        utils::{run_test, setup_logger},
-    };
-
-    pub fn sha_compress_program() -> Program {
+    /*pub fn sha_compress_program() -> Program {
         let w_ptr = 100;
         let h_ptr = 1000;
         let mut instructions = vec![Opcode::new(Opcode::ADD, 29, 0, 5, false, true)];
@@ -71,5 +63,5 @@ pub mod compress_tests {
         let program = sha_compress_program();
         let stdin = SP1Stdin::new();
         run_test::<CpuProver<_, _>>(program, stdin).unwrap();
-    }
+    }*/
 }

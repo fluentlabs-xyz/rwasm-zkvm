@@ -177,39 +177,40 @@ mod tests {
 
     use std::sync::Arc;
 
-    use hashbrown::HashMap;
     use p3_baby_bear::BabyBear;
 
+    use crate::program::ProgramChip;
     use p3_matrix::dense::RowMajorMatrix;
     use rwasm_executor::{ExecutionRecord, Opcode, Program};
     use sp1_stark::air::MachineAir;
 
-    use crate::program::ProgramChip;
-
     #[test]
     fn generate_trace() {
-        // main:
-        //     addi x29, x0, 5
-        //     addi x30, x0, 37
-        //     add x31, x30, x29
-        let instructions = vec![
-            Opcode::new(Opcode::ADD, 29, 0, 5, false, true),
-            Opcode::new(Opcode::ADD, 30, 0, 37, false, true),
-            Opcode::new(Opcode::ADD, 31, 30, 29, false, false),
+        let val1: u32 = 0x1000;
+        let val2: u32 = 0xABCD;
+        let ops = vec![
+            Opcode::I32Const(1u32.into()),
+            Opcode::MemoryGrow,
+            Opcode::I32Const(val1.into()),
+            Opcode::I32Const(val2.into()),
+            Opcode::I32Const(val1.into()),
+            Opcode::I32Const(val2.into()),
+            Opcode::I32Const(val1.into()),
+            Opcode::I32Const(val2.into()),
+            Opcode::I32Const(val1.into()),
+            Opcode::I32Add,
+            Opcode::I32Add,
+            Opcode::I32Add,
+            Opcode::I32Add,
+            Opcode::I32Add,
+            Opcode::I32Add,
         ];
-        let shard = ExecutionRecord {
-            program: Arc::new(Program {
-                instructions,
-                pc_start: 0,
-                pc_base: 0,
-                memory_image: HashMap::new(),
-                preprocessed_shape: None,
-            }),
-            ..Default::default()
-        };
+
+        let shard =
+            ExecutionRecord { program: Arc::new(Program::from_instrs(ops)), ..Default::default() };
         let chip = ProgramChip::new();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
-        println!("{:?}", trace.values)
+        println!("{:?} width {:?}", trace.values, trace.width);
     }
 }
