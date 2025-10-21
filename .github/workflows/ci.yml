@@ -61,4 +61,4 @@ jobs:
         run: cargo +nightly fmt --all -- --check
 
       - name: Run clippy
-        run: cargo +nightly clippy -p rwasm-machine -p rwasm-executor -p rwasm-machine-test -- -D warnings
+        run: cargo +stable clippy -p rwasm-machine -p rwasm-executor -p rwasm-machine-test -- -D warnings
