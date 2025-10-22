@@ -30,7 +30,7 @@ use crate::{
     // dependencies::{
     //   emit_branch_dependencies, emit_divrem_dependencies,
     //      emit_memory_dependencies,
-    // },TODO: redo dependecies
+    // },TODO: redo dependencies
     estimate_riscv_lde_size,
     events::{
         AluEvent, BranchEvent, CpuEvent, MemInstrEvent, MemoryInitializeFinalizeEvent,
@@ -53,7 +53,7 @@ use crate::{
 /// The default increment for the program counter.  Is used for all opcodes except
 /// for branches and jumps.
 pub const DEFAULT_PC_INC: u32 = 1;
-///The default increment for the clk. we increase clk for two becaseu we have
+///The default increment for the clk. we increase clk for two because we have
 /// a reading phase and a writing phase.
 pub const DEFAULT_CLK_INC: u32 = 2 * DEFAULT_PC_INC;
 /// This is used in the `InstrEvent` to indicate that the opcode is not from the CPU.
@@ -1742,7 +1742,7 @@ impl<'a> Executor<'a> {
             // registers 1..32
             // let touched_reg_ct =
             //     1 + (1..32).filter(|&r| self.state.memory.registers.get(r).is_some()).count();
-            let total_mem = self.state.memory.page_table.exact_len(); //TODO: fix esitmator
+            let total_mem = self.state.memory.page_table.exact_len(); //TODO: fix estimator
                                                                       // The memory_image is already initialized in the MemoryProgram chip
                                                                       // so we subtract it off. It is initialized in the executor in the `initialize`
                                                                       // function.

@@ -58,7 +58,7 @@ pub struct BranchColumns<T> {
     /// CPU table, so I'm preserving those columns/constraints for now.
     pub not_branching: T,
 
-    /// Whether a equals zerp.
+    /// Whether a equals zero.
     pub a_eq_zero: T,
 
     /// Whether a is greater than zero.

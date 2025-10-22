@@ -242,7 +242,7 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
         indexed_shape_clusters
             .into_iter()
             .filter_map(|(i, cluster)| {
-                // println!("heighit:{:?},",heights);
+                // println!("height:{:?},",heights);
                 let shape = cluster.find_shape(heights)?;
                 // println!("shape:{:?}",shape);
                 let area = self.estimate_lde_size(&shape);

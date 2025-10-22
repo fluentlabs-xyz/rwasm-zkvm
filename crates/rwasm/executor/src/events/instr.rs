@@ -142,9 +142,9 @@ pub struct SysStateEvent {
     pub next_fuel: u32,
     /// The Opcode
     pub opcode: Opcode,
-    /// maximium memory before op
+    /// maximum memory before op
     pub max_memory: u32,
-    /// maximium memory after op
+    /// maximum memory after op
     pub next_max_memory: u32,
 }
 

@@ -155,7 +155,7 @@ where
 
             // To prevent the ALU send above to be non-zero when the row is a padding row.
             builder.when_not(is_real.clone()).assert_zero(local.is_branching);
-            //seprate branching into two cases
+            //separate branching into two cases
             builder.when(is_real.clone()).assert_bool(local.is_branching_non_table);
             builder.when(is_real.clone()).assert_bool(local.is_branching_table);
             builder.when(is_real.clone()).assert_eq(

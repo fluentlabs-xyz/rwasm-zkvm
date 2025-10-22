@@ -18,7 +18,7 @@ pub struct AluCols<T> {
     /// Whether a is less than b.
     pub arg1_lt_arg2: T,
 
-    /// The comparision result. gurantee to be bool
+    /// The comparison result. guarantee to be bool
     pub res_bool: T,
 }
 

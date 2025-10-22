@@ -3,7 +3,7 @@
 | LocalGet(LocalDepth) |Local| :heavy_check_mark:|||
 | LocalSet(LocalDepth) |Local| :heavy_check_mark:|||
 LocalTee(LocalDepth) |Local| :heavy_check_mark:|||
-Br(BranchOffset),|Braching| :heavy_check_mark:|:heavy_check_mark:||
+Br(BranchOffset),|Branching| :heavy_check_mark:|:heavy_check_mark:||
 BrIfEqz(BranchOffset),|Branching | :heavy_check_mark:|:heavy_check_mark:||
 BrIfNez(BranchOffset),|Branching | :heavy_check_mark:|:heavy_check_mark:||
 BrAdjust(BranchOffset), // without dropkeep => drop ||||

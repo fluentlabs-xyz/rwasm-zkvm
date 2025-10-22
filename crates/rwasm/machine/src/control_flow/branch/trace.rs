@@ -35,7 +35,7 @@ impl<F: PrimeField32> MachineAir<F> for BranchChip {
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
         let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_BRANCH_COLS);
-        println!("!!! make branching evnet");
+        println!("!!! make branching event");
         let blu_events = values
             .chunks_mut(chunk_size * NUM_BRANCH_COLS)
             .enumerate()
