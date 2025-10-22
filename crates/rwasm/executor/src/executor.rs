@@ -4826,7 +4826,6 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
 
         rt.run().unwrap();
-        println!("table:{:?}", rt.store.tables);
     }
 
     /// Boundary check: a 32‑bit load that starts inside the last page but
