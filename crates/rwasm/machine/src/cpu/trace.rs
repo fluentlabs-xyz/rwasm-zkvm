@@ -172,13 +172,16 @@ impl CpuChip {
                 cols.op_res_access.populate(record, &mut Vec::new());
             } else {
                 cols.op_res_access.populate(record, blu_events);
+                cols.op_res_addr.populate(event.res_addr.unwrap().to_virtual_addr(), blu_events);
             }
         }
         if let Some(MemoryRecordEnum::Read(record)) = event.arg1_record {
             cols.op_arg1_access.populate(record, blu_events);
+            cols.op_arg1_addr.populate(event.arg1_addr.unwrap().to_virtual_addr(), blu_events);
         }
         if let Some(MemoryRecordEnum::Read(record)) = event.arg2_record {
             cols.op_arg2_access.populate(record, blu_events);
+            cols.op_arg2_addr.populate(event.arg2_addr.unwrap().to_virtual_addr(), blu_events);
         }
 
         if instruction.is_ecall_instruction() {

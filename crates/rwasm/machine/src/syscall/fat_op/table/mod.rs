@@ -14,7 +14,7 @@ mod trace;
 use crate::memory::MemoryCols;
 pub use column::*;
 use rwasm::{
-    mem_index::{AddressType, UNIT},
+    mem_index::{TypedAddress, UNIT},
     N_MAX_TABLE_SIZE,
 };
 #[derive(Default)]
@@ -139,10 +139,10 @@ impl TableChip {
             local.is_first,
         );
 
-        let src_addr = AB::Expr::from_canonical_u32(AddressType::Element(0).to_virtual_addr()) +
+        let src_addr = AB::Expr::from_canonical_u32(TypedAddress::Element(0).to_virtual_addr()) +
             local.src_offset.reduce::<AB>() * unit.clone();
 
-        let table_addr = AB::Expr::from_canonical_u32(AddressType::Table(0).to_virtual_addr()) +
+        let table_addr = AB::Expr::from_canonical_u32(TypedAddress::Table(0).to_virtual_addr()) +
             (local.dst_offset.reduce::<AB>() +
                 local.table_idx * AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE)) *
                 unit;

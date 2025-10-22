@@ -1,9 +1,10 @@
+mod address;
 mod consistency;
 mod global;
 mod instructions;
 mod local;
 mod program;
-
+pub use address::*;
 pub use consistency::*;
 pub use global::*;
 pub use instructions::*;

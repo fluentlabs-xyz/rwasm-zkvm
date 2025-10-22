@@ -16,6 +16,7 @@ use crate::{
         columns::{CpuCols, NUM_CPU_COLS},
         CpuChip,
     },
+    memory::StackAddressCols,
 };
 use rwasm_executor::UNUSED_PC;
 impl<AB> Air<AB> for CpuChip
@@ -92,6 +93,10 @@ where
         // Check that when `is_real=0` that all flags that send interactions are zero.
         let not_real = AB::Expr::one() - local.is_real;
         builder.when(not_real.clone()).assert_zero(AB::Expr::one() - local.is_syscall);
+
+        StackAddressCols::<AB::F>::range_check(builder, local.op_res_addr);
+        StackAddressCols::<AB::F>::range_check(builder, local.op_arg1_addr);
+        StackAddressCols::<AB::F>::range_check(builder, local.op_arg2_addr);
     }
 }
 
@@ -235,9 +240,7 @@ impl CpuChip {
         builder.eval_memory_access(
             local.shard,
             clk.clone(),
-            local.sp +
-                local.instruction.aux_val.reduce::<AB>() * AB::Expr::from_canonical_u32(UNIT) -
-                AB::Expr::from_canonical_u32(UNIT),
+            local.op_arg1_addr.addr::<AB>(),
             &local.op_arg1_access,
             local.instruction.is_localget,
         );
@@ -245,7 +248,7 @@ impl CpuChip {
         builder.eval_memory_access(
             local.shard,
             clk.clone(),
-            local.sp,
+            local.op_arg1_addr.addr::<AB>(),
             &local.op_arg1_access,
             local.instruction.is_localset + local.instruction.is_localtee,
         );
@@ -253,11 +256,26 @@ impl CpuChip {
         builder.eval_memory_access(
             local.shard,
             clk.clone() + AB::Expr::one(),
+            local.op_res_addr.addr::<AB>(),
+            &local.op_res_access,
+            local.instruction.is_localset + local.instruction.is_localtee,
+        );
+
+        builder.when(local.instruction.is_localget).assert_eq(
+            local.op_arg1_addr.addr::<AB>(),
+            local.sp +
+                local.instruction.aux_val.reduce::<AB>() * AB::Expr::from_canonical_u32(UNIT) -
+                AB::Expr::from_canonical_u32(UNIT),
+        );
+        builder
+            .when(local.instruction.is_localset + local.instruction.is_localtee)
+            .assert_eq(local.op_arg1_addr.addr::<AB>(), local.sp);
+
+        builder.when(local.instruction.is_localset + local.instruction.is_localtee).assert_eq(
+            local.op_res_addr.addr::<AB>(),
             local.next_sp +
                 local.instruction.aux_val.reduce::<AB>() * AB::Expr::from_canonical_u32(UNIT) -
                 AB::Expr::from_canonical_u32(UNIT),
-            &local.op_res_access,
-            local.instruction.is_localset + local.instruction.is_localtee,
         );
 
         builder
@@ -446,6 +464,21 @@ impl CpuChip {
         local: &CpuCols<AB::Var>,
         clk: AB::Expr,
     ) {
+        builder.eval_memory_access(
+            local.shard,
+            clk.clone() + AB::Expr::from_canonical_u8(1),
+            local.op_res_addr.addr::<AB>(),
+            &local.op_res_access,
+            local.instruction.is_binary +
+                local.instruction.is_unary +
+                local.instruction.is_i32load +
+                local.instruction.is_i32load16s +
+                local.instruction.is_i32load16u +
+                local.instruction.is_i32load8s +
+                local.instruction.is_i32load8u +
+                local.instruction.is_localget +
+                local.instruction.is_i32const,
+        );
         self.eval_op_memory_increase_sp(builder, local, clk.clone());
         self.eval_op_memory_decrease_sp(builder, local, clk.clone());
         self.eval_binary_op_memory_sp(builder, local, clk.clone());
@@ -458,13 +491,9 @@ impl CpuChip {
         local: &CpuCols<AB::Var>,
         clk: AB::Expr,
     ) {
-        builder.eval_memory_access(
-            local.shard,
-            clk + AB::Expr::from_canonical_u8(1),
-            local.sp - AB::Expr::from_canonical_u8(4),
-            &local.op_res_access,
-            local.instruction.is_localget + local.instruction.is_i32const,
-        );
+        builder
+            .when(local.instruction.is_localget + local.instruction.is_i32const)
+            .assert_eq(local.next_sp, local.op_res_addr.addr::<AB>());
 
         builder
             .when(local.instruction.is_localget + local.instruction.is_i32const)
@@ -502,19 +531,16 @@ impl CpuChip {
         local: &CpuCols<AB::Var>,
         clk: AB::Expr,
     ) {
-        builder.eval_memory_access(
-            local.shard,
-            clk.clone() + AB::Expr::from_canonical_u8(1),
-            local.sp,
-            &local.op_res_access,
-            local.instruction.is_unary +
-                local.instruction.is_i32load +
-                local.instruction.is_i32load16s +
-                local.instruction.is_i32load16u +
-                local.instruction.is_i32load8s +
-                local.instruction.is_i32load8u,
-        );
-
+        builder
+            .when(
+                local.instruction.is_unary +
+                    local.instruction.is_i32load +
+                    local.instruction.is_i32load16s +
+                    local.instruction.is_i32load16u +
+                    local.instruction.is_i32load8s +
+                    local.instruction.is_i32load8u,
+            )
+            .assert_eq(local.op_res_addr.addr::<AB>(), local.next_sp);
         builder.eval_memory_access(
             local.shard,
             clk.clone(),
@@ -545,12 +571,19 @@ impl CpuChip {
         local: &CpuCols<AB::Var>,
         clk: AB::Expr,
     ) {
+        builder
+            .when(local.instruction.is_binary)
+            .assert_eq(local.op_res_addr.addr::<AB>(), local.next_sp);
+
         builder.eval_memory_access(
             local.shard,
-            clk.clone() + AB::Expr::from_canonical_u8(1),
+            clk.clone(),
             local.sp + AB::Expr::from_canonical_u8(4),
-            &local.op_res_access,
-            local.instruction.is_binary, // +local.instruction.is_table_grow,
+            &local.op_arg1_access,
+            local.instruction.is_binary +
+                local.instruction.is_i32store +
+                local.instruction.is_i32store16 +
+                local.instruction.is_i32store8, // + local.instruction.is_table_grow,
         );
 
         builder.eval_memory_access(
@@ -564,16 +597,25 @@ impl CpuChip {
                 local.instruction.is_i32store8, // + local.instruction.is_table_grow,
         );
 
-        builder.eval_memory_access(
-            local.shard,
-            clk.clone(),
-            local.sp + AB::Expr::from_canonical_u8(4),
-            &local.op_arg1_access,
-            local.instruction.is_binary +
-                local.instruction.is_i32store +
-                local.instruction.is_i32store16 +
-                local.instruction.is_i32store8, // + local.instruction.is_table_grow,
-        );
+        builder
+            .when(
+                local.instruction.is_binary +
+                    local.instruction.is_i32store +
+                    local.instruction.is_i32store16 +
+                    local.instruction.is_i32store8,
+            )
+            .assert_eq(
+                local.sp + AB::Expr::from_canonical_u32(UNIT),
+                local.op_arg1_addr.addr::<AB>(),
+            );
+        builder
+            .when(
+                local.instruction.is_binary +
+                    local.instruction.is_i32store +
+                    local.instruction.is_i32store16 +
+                    local.instruction.is_i32store8,
+            )
+            .assert_eq(local.sp, local.op_arg2_addr.addr::<AB>());
         builder
             .when(local.instruction.is_binary)
             .assert_eq(local.sp + AB::Expr::from_canonical_u32(UNIT), local.next_sp);

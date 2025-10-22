@@ -8,7 +8,7 @@ use hashbrown::HashMap;
 use p3_field::{AbstractExtensionField, Field, PrimeField32};
 use p3_maybe_rayon::prelude::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 
-use rwasm::{mem_index::AddressType, InstructionSet, Opcode, RwasmModule, RwasmModuleInner};
+use rwasm::{mem_index::TypedAddress, InstructionSet, Opcode, RwasmModule, RwasmModuleInner};
 use serde::{Deserialize, Serialize};
 use sp1_stark::{
     air::{MachineAir, MachineProgram},
@@ -98,13 +98,13 @@ impl Program {
             .map(|(addr, data)| {
                 let addr = addr as u32;
                 let word = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-                let v_addr = AddressType::Data(addr).to_virtual_addr();
+                let v_addr = TypedAddress::Data(addr).to_virtual_addr();
                 (v_addr, word)
             })
             .collect();
 
         v_data.extend(module.elem_section.iter().enumerate().map(|(addr, data)| {
-            let v_addr = AddressType::Element(addr as u32).to_virtual_addr();
+            let v_addr = TypedAddress::Element(addr as u32).to_virtual_addr();
             (v_addr, *data)
         }));
         v_data

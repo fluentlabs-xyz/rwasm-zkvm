@@ -14,11 +14,10 @@ use enum_map::EnumMap;
 use hashbrown::HashMap;
 
 use rwasm::{
-    always_failing_syscall_handler,
     event::FatOpEvent,
     mem::{MemoryLocalEvent, MemoryRecordEnum},
-    CallStack, ExecutionEngine, ImportLinker, InstructionPtr, Opcode, RwasmExecutor, RwasmStore,
-    TraceCallData, TrapCode, ValueStack, ValueStackPtr,
+    CallStack, InstructionPtr, Opcode, RwasmExecutor, RwasmStore, TraceCallData, TrapCode,
+    ValueStack, ValueStackPtr,
 };
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
@@ -353,14 +352,7 @@ impl<'a> Executor<'a> {
         let costs: HashMap<RwasmAirId, usize> =
             costs.into_iter().map(|(k, v)| (RwasmAirId::from_str(&k).unwrap(), v)).collect();
 
-        let store = RwasmStore::new(
-            ExecutionEngine::default(),
-            // TODO(dmitry123): "use import linker from fluentbase once tracer is merged"
-            Arc::new(ImportLinker::default()),
-            (),
-            // TODO(dmitry123): "use syscall handler from runtime"
-            always_failing_syscall_handler,
-        );
+        let store = RwasmStore::default();
 
         Self {
             record: Box::new(record),
@@ -853,10 +845,13 @@ impl<'a> Executor<'a> {
             next_call_sp,
             res,
             res_record: record.res_record,
+            res_addr: record.res_addr,
             arg1,
             arg1_record: record.arg1_record,
+            arg1_addr: record.arg1_addr,
             arg2,
             arg2_record: record.arg2_record,
+            arg2_addr: record.arg2_addr,
             exit_code,
             call_data,
         });
@@ -1946,7 +1941,7 @@ mod tests {
     use hashbrown::HashMap;
 
     use rwasm::{
-        mem_index::{AddressType, SP_START, UNIT},
+        mem_index::{TypedAddress, SP_START, UNIT},
         BranchOffset, Opcode,
     };
     use sp1_stark::SP1CoreOpts;
@@ -3129,7 +3124,7 @@ mod tests {
             runtime
                 .state
                 .memory
-                .get(AddressType::GlobalMemory(addr).to_virtual_addr())
+                .get(TypedAddress::GlobalMemory(addr).to_virtual_addr())
                 .unwrap()
                 .value,
             x_value
@@ -3162,7 +3157,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        let v_addr = AddressType::GlobalMemory(addr).to_virtual_addr();
+        let v_addr = TypedAddress::GlobalMemory(addr).to_virtual_addr();
         println!("v_addr");
         println!("stack val:{:x}", runtime.state.memory.get(v_addr).unwrap().value);
         assert_eq!(
@@ -3201,7 +3196,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        let v_addr = AddressType::GlobalMemory(addr).to_virtual_addr();
+        let v_addr = TypedAddress::GlobalMemory(addr).to_virtual_addr();
         assert_eq!(
             runtime.state.memory.get(v_addr).unwrap().value,
             ((x_value & 0x0000_00FF) +
@@ -4830,7 +4825,6 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
 
         rt.run().unwrap();
-        println!("table:{:?}", rt.store.tables);
     }
 
     /// Boundary check: a 32‑bit load that starts inside the last page but
