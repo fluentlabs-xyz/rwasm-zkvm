@@ -1,5 +1,9 @@
+use crate::{
+    memory::{ElementAddressCols, TableAddressCols},
+    operations::Range16bCols,
+};
+use rwasm::N_MAX_TABLE_SIZE;
 use sp1_derive::AlignedBorrow;
-use sp1_stark::Word;
 
 use crate::memory::{MemoryReadCols, MemoryWriteCols};
 
@@ -15,16 +19,21 @@ pub struct TableCols<T> {
     pub sp: T,
     pub shard: T,
     pub clk: T,
-    pub table_idx: T,
+    pub table_idx: TableIdxCols<T>,
     pub src_access: MemoryReadCols<T>,
     pub dst_access: MemoryReadCols<T>,
     pub length_access: MemoryReadCols<T>,
+    pub length: LengthCols<T>,
     pub src_read_access: MemoryReadCols<T>,
     pub dst_write_access: MemoryWriteCols<T>,
     pub is_first: T,
     pub is_last: T,
     pub is_non_zero_length: T,
-    pub src_offset: Word<T>,
-    pub dst_offset: Word<T>,
+    pub src_address: ElementAddressCols<T>,
+    pub dst_address: TableAddressCols<T>,
     pub is_real: T,
 }
+
+pub type TableIdxCols<T> = Range16bCols<T, 0, N_MAX_TABLE_SIZE>;
+
+pub type LengthCols<T> = Range16bCols<T, 0, N_MAX_TABLE_SIZE>;

@@ -109,15 +109,30 @@ impl TableChip {
                 break;
             }
 
+            // populate SP access
             if idx == 0 {
                 local.is_first = F::one();
                 local.dst_access.populate(event.stack_access[0], blu);
                 local.src_access.populate(event.stack_access[1], blu);
                 local.length_access.populate(event.stack_access[2], blu);
+
+                local.table_idx.populate(event.table_idx, blu);
+                local.length.populate(event.n, blu);
             } else {
                 local.dst_access.populate(event.stack_access[0], &mut Vec::new());
                 local.src_access.populate(event.stack_access[1], &mut Vec::new());
                 local.length_access.populate(event.stack_access[2], &mut Vec::new());
+
+                local.table_idx.populate_value(event.table_idx);
+            }
+
+            // populate address
+            if idx == 0 || idx == event.n as usize - 1 {
+                local.src_address.populate(event.s + idx as u32, blu);
+                local.dst_address.populate(event.d + idx as u32, blu);
+            } else {
+                local.src_address.populate_value(event.s + idx as u32);
+                local.dst_address.populate_value(event.d + idx as u32);
             }
 
             if event.n != 0 {
@@ -129,10 +144,6 @@ impl TableChip {
             local.shard = F::from_canonical_u32(event.shard);
             local.clk = F::from_canonical_u32(event.clk);
 
-            let src_offset = event.s + idx as u32;
-
-            let dst_offset = event.d + idx as u32;
-
             if let (Some(memory_read_access), Some(memory_write_access)) =
                 (event.memory_read_access.get(idx), event.memory_write_acess.get(idx))
             {
@@ -140,14 +151,9 @@ impl TableChip {
                 local.dst_write_access.populate(*memory_write_access, blu);
             }
 
-            local.table_idx = F::from_canonical_u32(event.table_idx);
             if idx == event.n as usize - 1 || event.n == 0 {
                 local.is_last = F::one();
             }
-
-            local.src_offset = src_offset.into();
-
-            local.dst_offset = dst_offset.into();
 
             if rows.as_ref().is_some() {
                 rows.as_mut().unwrap().push(row);

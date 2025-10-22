@@ -1,6 +1,9 @@
 use std::borrow::Borrow;
 
-use crate::air::MemoryAirBuilder;
+use crate::{
+    air::MemoryAirBuilder,
+    memory::{ElementAddressCols, TableAddressCols},
+};
 
 use p3_air::{Air, AirBuilder, BaseAir};
 
@@ -38,6 +41,10 @@ where
         builder.when(local.is_last).assert_one(local.is_real);
         builder.when(local.is_first).assert_one(local.is_real);
 
+        builder
+            .when(local.is_first)
+            .assert_eq(local.length.value::<AB>(), local.length_access.value().reduce::<AB>());
+
         // check transition between events
         builder.when_transition().when(local.is_last).when(next.is_real).assert_one(next.is_first);
 
@@ -48,7 +55,7 @@ where
         builder
             .when_transition()
             .when_not(local.is_last)
-            .assert_eq(local.table_idx, next.table_idx);
+            .assert_eq(local.table_idx.value::<AB>(), next.table_idx.value::<AB>());
         builder
             .when_transition()
             .when_not(local.is_last)
@@ -74,28 +81,43 @@ where
         builder.when(local.is_last).when(local.is_non_zero_length).assert_eq(
             local.src_access.value().reduce::<AB>() + local.length_access.value().reduce::<AB>() -
                 AB::Expr::one(),
-            local.src_offset.reduce::<AB>(),
+            local.src_address.value::<AB>(),
         );
         builder.when(local.is_last).when(local.is_non_zero_length).assert_eq(
             local.dst_access.value().reduce::<AB>() + local.length_access.value().reduce::<AB>() -
                 AB::Expr::one(),
-            local.dst_offset.reduce::<AB>(),
+            local.dst_address.value::<AB>(),
+        );
+        builder.when_transition().when(local.is_real).when_not(local.is_last).assert_eq(
+            local.src_address.value::<AB>() + AB::Expr::one(),
+            next.src_address.value::<AB>(),
+        );
+        builder.when_transition().when(local.is_real).when_not(local.is_last).assert_eq(
+            local.dst_address.value::<AB>() + AB::Expr::one(),
+            next.dst_address.value::<AB>(),
         );
 
         // check that it does not go out of memory bounds
-        builder.when(local.is_first).assert_word_eq(*local.src_access.value(), local.src_offset);
-        builder.when(local.is_first).assert_word_eq(*local.dst_access.value(), local.dst_offset);
+        builder
+            .when(local.is_first)
+            .assert_eq(local.src_access.value().reduce::<AB>(), local.src_address.value::<AB>());
+        builder
+            .when(local.is_first)
+            .assert_eq(local.dst_access.value().reduce::<AB>(), local.dst_address.value::<AB>());
 
-        builder.when_transition().when(local.is_real).when_not(local.is_last).assert_eq(
-            local.src_offset.reduce::<AB>() + AB::Expr::one(),
-            next.src_offset.reduce::<AB>(),
-        );
-        builder.when_transition().when(local.is_real).when_not(local.is_last).assert_eq(
-            local.dst_offset.reduce::<AB>() + AB::Expr::one(),
-            next.dst_offset.reduce::<AB>(),
-        );
+        ElementAddressCols::<AB::Var>::range_check(builder, local.src_address);
+        builder.when(local.is_first).assert_one(local.src_address.is_real::<AB>());
+        builder.when(local.is_last).assert_one(local.src_address.is_real::<AB>());
 
-        // TODO(Aliaksei): add address memory bound check
+        TableAddressCols::<AB::Var>::range_check(builder, local.dst_address);
+        builder.when(local.is_first).assert_one(local.dst_address.is_real::<AB>());
+        builder.when(local.is_last).assert_one(local.dst_address.is_real::<AB>());
+
+        TableIdxCols::<AB::Var>::range_check(builder, local.table_idx);
+        builder.when(local.is_first).assert_one(local.table_idx.is_real::<AB>());
+
+        LengthCols::<AB::Var>::range_check(builder, local.length);
+        builder.when(local.is_first).assert_one(local.length.is_real::<AB>());
 
         self.eval_memory_access(local, builder);
 
@@ -140,11 +162,11 @@ impl TableChip {
         );
 
         let src_addr = AB::Expr::from_canonical_u32(TypedAddress::Element(0).to_virtual_addr()) +
-            local.src_offset.reduce::<AB>() * unit.clone();
+            local.src_address.value::<AB>() * unit.clone();
 
         let table_addr = AB::Expr::from_canonical_u32(TypedAddress::Table(0).to_virtual_addr()) +
-            (local.dst_offset.reduce::<AB>() +
-                local.table_idx * AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE)) *
+            (local.dst_address.value::<AB>() +
+                local.table_idx.value::<AB>() * AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE)) *
                 unit;
 
         builder.eval_memory_access(
