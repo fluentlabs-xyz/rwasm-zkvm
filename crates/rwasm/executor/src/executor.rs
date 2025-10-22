@@ -353,14 +353,7 @@ impl<'a> Executor<'a> {
         let costs: HashMap<RwasmAirId, usize> =
             costs.into_iter().map(|(k, v)| (RwasmAirId::from_str(&k).unwrap(), v)).collect();
 
-        let store = RwasmStore::new(
-            ExecutionEngine::default(),
-            // TODO(dmitry123): "use import linker from fluentbase once tracer is merged"
-            Arc::new(ImportLinker::default()),
-            (),
-            // TODO(dmitry123): "use syscall handler from runtime"
-            always_failing_syscall_handler,
-        );
+        let store = RwasmStore::default();
 
         Self {
             record: Box::new(record),
