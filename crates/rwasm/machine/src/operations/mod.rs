@@ -22,6 +22,7 @@ mod lt;
 mod not;
 mod or;
 pub mod poseidon2;
+mod range;
 mod xor;
 
 pub use add::*;
@@ -40,4 +41,5 @@ pub use is_zero_word::*;
 pub use lt::*;
 pub use not::*;
 pub use or::*;
+pub use range::*;
 pub use xor::*;

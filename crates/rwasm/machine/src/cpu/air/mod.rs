@@ -240,7 +240,7 @@ impl CpuChip {
         builder.eval_memory_access(
             local.shard,
             clk.clone(),
-            local.op_arg1_addr.addr::<AB>(),
+            local.op_arg1_addr.value::<AB>(),
             &local.op_arg1_access,
             local.instruction.is_localget,
         );
@@ -248,7 +248,7 @@ impl CpuChip {
         builder.eval_memory_access(
             local.shard,
             clk.clone(),
-            local.op_arg1_addr.addr::<AB>(),
+            local.op_arg1_addr.value::<AB>(),
             &local.op_arg1_access,
             local.instruction.is_localset + local.instruction.is_localtee,
         );
@@ -256,23 +256,23 @@ impl CpuChip {
         builder.eval_memory_access(
             local.shard,
             clk.clone() + AB::Expr::one(),
-            local.op_res_addr.addr::<AB>(),
+            local.op_res_addr.value::<AB>(),
             &local.op_res_access,
             local.instruction.is_localset + local.instruction.is_localtee,
         );
 
         builder.when(local.instruction.is_localget).assert_eq(
-            local.op_arg1_addr.addr::<AB>(),
+            local.op_arg1_addr.value::<AB>(),
             local.sp +
                 local.instruction.aux_val.reduce::<AB>() * AB::Expr::from_canonical_u32(UNIT) -
                 AB::Expr::from_canonical_u32(UNIT),
         );
         builder
             .when(local.instruction.is_localset + local.instruction.is_localtee)
-            .assert_eq(local.op_arg1_addr.addr::<AB>(), local.sp);
+            .assert_eq(local.op_arg1_addr.value::<AB>(), local.sp);
 
         builder.when(local.instruction.is_localset + local.instruction.is_localtee).assert_eq(
-            local.op_res_addr.addr::<AB>(),
+            local.op_res_addr.value::<AB>(),
             local.next_sp +
                 local.instruction.aux_val.reduce::<AB>() * AB::Expr::from_canonical_u32(UNIT) -
                 AB::Expr::from_canonical_u32(UNIT),
@@ -467,7 +467,7 @@ impl CpuChip {
         builder.eval_memory_access(
             local.shard,
             clk.clone() + AB::Expr::from_canonical_u8(1),
-            local.op_res_addr.addr::<AB>(),
+            local.op_res_addr.value::<AB>(),
             &local.op_res_access,
             local.instruction.is_binary +
                 local.instruction.is_unary +
@@ -493,7 +493,7 @@ impl CpuChip {
     ) {
         builder
             .when(local.instruction.is_localget + local.instruction.is_i32const)
-            .assert_eq(local.next_sp, local.op_res_addr.addr::<AB>());
+            .assert_eq(local.next_sp, local.op_res_addr.value::<AB>());
 
         builder
             .when(local.instruction.is_localget + local.instruction.is_i32const)
@@ -540,7 +540,7 @@ impl CpuChip {
                     local.instruction.is_i32load8s +
                     local.instruction.is_i32load8u,
             )
-            .assert_eq(local.op_res_addr.addr::<AB>(), local.next_sp);
+            .assert_eq(local.op_res_addr.value::<AB>(), local.next_sp);
         builder.eval_memory_access(
             local.shard,
             clk.clone(),
@@ -573,7 +573,7 @@ impl CpuChip {
     ) {
         builder
             .when(local.instruction.is_binary)
-            .assert_eq(local.op_res_addr.addr::<AB>(), local.next_sp);
+            .assert_eq(local.op_res_addr.value::<AB>(), local.next_sp);
 
         builder.eval_memory_access(
             local.shard,
@@ -606,7 +606,7 @@ impl CpuChip {
             )
             .assert_eq(
                 local.sp + AB::Expr::from_canonical_u32(UNIT),
-                local.op_arg1_addr.addr::<AB>(),
+                local.op_arg1_addr.value::<AB>(),
             );
         builder
             .when(
@@ -615,7 +615,7 @@ impl CpuChip {
                     local.instruction.is_i32store16 +
                     local.instruction.is_i32store8,
             )
-            .assert_eq(local.sp, local.op_arg2_addr.addr::<AB>());
+            .assert_eq(local.sp, local.op_arg2_addr.value::<AB>());
         builder
             .when(local.instruction.is_binary)
             .assert_eq(local.sp + AB::Expr::from_canonical_u32(UNIT), local.next_sp);
