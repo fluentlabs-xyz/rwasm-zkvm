@@ -109,7 +109,7 @@ impl Program {
         }));
         v_data
     }
-    /// get Opcode by programm counter
+    /// get Opcode by program counter
     pub fn fetch(&self, pc: u32) -> Opcode {
         self.module.code_section[pc as usize]
     }

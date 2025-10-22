@@ -108,7 +108,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryLocalChip {
                 kind: InteractionKind::Memory as u8,
             });
             println!(
-                "memory recieve {:?}",
+                "memory receive {:?}",
                 [
                     mem_event.initial_mem_access.shard,
                     mem_event.initial_mem_access.timestamp,
