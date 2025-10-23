@@ -925,14 +925,34 @@ impl<'a> Executor<'a> {
                     c: event.b,
                     code: cmp_ins.code(),
                 };
-                //if opcode == Opcode::I32LtS
+
                 {
                     println!("opcode {:?} : gt event:{:?}", opcode, gt_comp_event);
                     println!("opcode {:?} :lt event:{:?}", opcode, lt_comp_event);
                 }
 
-                self.record.lt_events.push(gt_comp_event);
-                self.record.lt_events.push(lt_comp_event);
+                match opcode {
+                    // Opcodes that only need a "less than" check.
+                    Opcode::I32LtS | Opcode::I32LtU => {
+                        self.record.lt_events.push(lt_comp_event);
+                    }
+                    // Opcodes that only need a "greater than" check.
+                    Opcode::I32GtS | Opcode::I32GtU => {
+                        self.record.lt_events.push(gt_comp_event);
+                    }
+                    // All other comparisons depend on equality, so they need both checks.
+                    Opcode::I32LeS |
+                    Opcode::I32LeU |
+                    Opcode::I32GeS |
+                    Opcode::I32GeU |
+                    Opcode::I32Eq |
+                    Opcode::I32Eqz |
+                    Opcode::I32Ne => {
+                        self.record.lt_events.push(gt_comp_event);
+                        self.record.lt_events.push(lt_comp_event);
+                    }
+                    _ => unreachable!(),
+                }
             }
             Opcode::I32Mul => {
                 self.record.mul_events.push(event);

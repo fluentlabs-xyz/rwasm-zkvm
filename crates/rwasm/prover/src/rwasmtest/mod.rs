@@ -1,5 +1,5 @@
+mod comp;
 mod table_init;
-
 use rwasm_executor::Program;
 use rwasm_machine::utils::setup_logger;
 

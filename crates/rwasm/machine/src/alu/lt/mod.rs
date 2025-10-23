@@ -474,7 +474,7 @@ mod tests {
     use crate::{
         alu::LtCols,
         io::SP1Stdin,
-        rwasm::RwasmAir,
+        rwasm::{CpuChip, RwasmAir},
         utils::{run_malicious_test, uni_stark_prove as prove, uni_stark_verify as verify},
     };
     use p3_baby_bear::BabyBear;
@@ -577,7 +577,6 @@ mod tests {
     }
     #[test]
     fn test_malicious_lts() {
-        //TODO it is failed!
         run_malicious_lt(Opcode::I32LtS)
     }
 
@@ -595,8 +594,8 @@ mod tests {
             //Pops rhs, then lhs, pushes i32( lhs <_s rhs ? 1 : 0 )
             let op_a = !correct_op_a;
             let program = Program::from_instrs(vec![
-                Opcode::I32Const(op_c.into()),
                 Opcode::I32Const(op_b.into()),
+                Opcode::I32Const(op_c.into()),
                 opcode,
             ]);
             let stdin = SP1Stdin::new();
@@ -628,11 +627,9 @@ mod tests {
 
             let result =
                 run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-            let lt_chip_name = chip_name!(LtChip, BabyBear);
+            let chip_name = chip_name!(CpuChip, BabyBear);
             assert!(result.is_err());
-            println!("mytest op_a={} op_b={}, op_b={}", op_a, op_b, op_c);
-            println!("{:?}", result);
-            assert!(result.unwrap_err().is_constraints_failing(&lt_chip_name));
+            assert!(result.unwrap_err().is_constraints_failing(&chip_name));
         }
     }
 }
