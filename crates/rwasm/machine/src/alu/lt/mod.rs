@@ -574,10 +574,19 @@ mod tests {
 
     #[test]
     fn test_malicious_lt() {
-        for opcode in [Opcode::I32Eq, Opcode::I32LtS,Opcode::I32GtS,Opcode::I32LtU,Opcode::I32GtU,Opcode::I32LeS,Opcode::I32GeS,Opcode::I32LeU,Opcode::I32GeU] {
+        for opcode in [
+            Opcode::I32Eq,
+            Opcode::I32LtS,
+            Opcode::I32GtS,
+            Opcode::I32LtU,
+            Opcode::I32GtU,
+            Opcode::I32LeS,
+            Opcode::I32GeS,
+            Opcode::I32LeU,
+            Opcode::I32GeU,
+        ] {
             run_malicious_lt(opcode)
         }
-
     }
 
     fn run_malicious_lt(opcode: Opcode) {
@@ -589,17 +598,27 @@ mod tests {
             let op_b = thread_rng().gen_range(0..u32::MAX);
             let op_c = thread_rng().gen_range(0..u32::MAX);
 
-            let correct_op_a =
-                if opcode == Opcode::I32LtU { op_b < op_c }
-                else if opcode == Opcode::I32GtU { op_b > op_c }
-                else if opcode == Opcode::I32LeU { op_b <= op_c }
-                else if opcode == Opcode::I32GeU { op_b >= op_c }
-                else if opcode == Opcode::I32Eq { op_b == op_c }
-                else if opcode == Opcode::I32LtS { (op_b as i32) < (op_c as i32) }
-                else if opcode == Opcode::I32GtS { (op_b as i32) > (op_c as i32) }
-                else if opcode == Opcode::I32LeS { (op_b as i32) <= (op_c as i32) }
-                else if opcode == Opcode::I32GeS { (op_b as i32) >= (op_c as i32) }
-                else { true };
+            let correct_op_a = if opcode == Opcode::I32LtU {
+                op_b < op_c
+            } else if opcode == Opcode::I32GtU {
+                op_b > op_c
+            } else if opcode == Opcode::I32LeU {
+                op_b <= op_c
+            } else if opcode == Opcode::I32GeU {
+                op_b >= op_c
+            } else if opcode == Opcode::I32Eq {
+                op_b == op_c
+            } else if opcode == Opcode::I32LtS {
+                (op_b as i32) < (op_c as i32)
+            } else if opcode == Opcode::I32GtS {
+                (op_b as i32) > (op_c as i32)
+            } else if opcode == Opcode::I32LeS {
+                (op_b as i32) <= (op_c as i32)
+            } else if opcode == Opcode::I32GeS {
+                (op_b as i32) >= (op_c as i32)
+            } else {
+                true
+            };
             //Pops rhs, then lhs, pushes i32( lhs <_s rhs ? 1 : 0 )
             let op_a = !correct_op_a;
             let program = Program::from_instrs(vec![
