@@ -19,7 +19,6 @@ use crate::{
     memory::StackAddressCols,
 };
 use rwasm_executor::UNUSED_PC;
-use sp1_stark::air::InstructionAirBuilder;
 
 impl<AB> Air<AB> for CpuChip
 where
@@ -180,13 +179,13 @@ impl CpuChip {
 
         // Create flags to determine which checks are necessary based on the opcode.
         // A `lt` check is needed for all comparisons except `gt` and `le`.
-        let needs_lt_check = is_comparison.clone() -
+        let needs_lt_check = is_comparison -
             (local.instruction.is_i32gts +
                 local.instruction.is_i32gtu +
                 local.instruction.is_i32les +
                 local.instruction.is_i32leu);
         // A `gt` check is needed for all comparisons except `lt` and `ge`.
-        let needs_gt_check = is_comparison.clone() -
+        let needs_gt_check = is_comparison -
             (local.instruction.is_i32lts +
                 local.instruction.is_i32ltu +
                 local.instruction.is_i32ges +
