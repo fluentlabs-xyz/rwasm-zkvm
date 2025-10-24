@@ -159,17 +159,17 @@ impl CpuChip {
         builder
             .when(local.instruction.is_i32lts + local.instruction.is_i32ltu)
             .assert_eq(local.alu_cols.res_bool, local.alu_cols.arg1_lt_arg2);
-        builder.when(local.instruction.is_i32les + local.instruction.is_i32leu).assert_eq(
-            local.alu_cols.res_bool,
-            local.alu_cols.arg1_eq_arg2 + local.alu_cols.arg1_lt_arg2,
-        );
         builder
             .when(local.instruction.is_i32gts + local.instruction.is_i32gtu)
             .assert_eq(local.alu_cols.res_bool, local.alu_cols.arg1_gt_arg2);
-        builder.when(local.instruction.is_i32ges + local.instruction.is_i32geu).assert_eq(
-            local.alu_cols.res_bool,
-            local.alu_cols.arg1_eq_arg2 + local.alu_cols.arg1_gt_arg2,
-        );
+
+        builder
+            .when(local.instruction.is_i32les + local.instruction.is_i32leu)
+            .assert_eq(local.alu_cols.res_bool, AB::Expr::one() - local.alu_cols.arg1_gt_arg2);
+
+        builder
+            .when(local.instruction.is_i32ges + local.instruction.is_i32geu)
+            .assert_eq(local.alu_cols.res_bool, AB::Expr::one() - local.alu_cols.arg1_lt_arg2);
         builder
             .when(local.instruction.is_i32ne)
             .assert_eq(AB::Expr::one() - local.alu_cols.res_bool, local.alu_cols.arg1_eq_arg2);
@@ -179,10 +179,18 @@ impl CpuChip {
         builder.when(local.instruction.is_i32eqz).assert_word_zero(local.op_arg2_val());
 
         // Create flags to determine which checks are necessary based on the opcode.
-        let needs_lt_check =
-            is_comparison.clone() - local.instruction.is_i32gts - local.instruction.is_i32gtu;
-        let needs_gt_check =
-            is_comparison.clone() - local.instruction.is_i32lts - local.instruction.is_i32ltu;
+        // A `lt` check is needed for all comparisons except `gt` and `le`.
+        let needs_lt_check = is_comparison.clone() -
+            (local.instruction.is_i32gts +
+                local.instruction.is_i32gtu +
+                local.instruction.is_i32les +
+                local.instruction.is_i32leu);
+        // A `gt` check is needed for all comparisons except `lt` and `ge`.
+        let needs_gt_check = is_comparison.clone() -
+            (local.instruction.is_i32lts +
+                local.instruction.is_i32ltu +
+                local.instruction.is_i32ges +
+                local.instruction.is_i32geu);
 
         let cmp_ins_expr = use_signed_comparison.clone() *
             AB::Expr::from_canonical_u32(Opcode::I32LtS.code()) +
