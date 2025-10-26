@@ -19,6 +19,7 @@ use crate::{
     memory::StackAddressCols,
 };
 use rwasm_executor::UNUSED_PC;
+
 impl<AB> Air<AB> for CpuChip
 where
     AB: SP1CoreAirBuilder + AirBuilderWithPublicValues,
@@ -157,17 +158,17 @@ impl CpuChip {
         builder
             .when(local.instruction.is_i32lts + local.instruction.is_i32ltu)
             .assert_eq(local.alu_cols.res_bool, local.alu_cols.arg1_lt_arg2);
-        builder.when(local.instruction.is_i32les + local.instruction.is_i32leu).assert_eq(
-            local.alu_cols.res_bool,
-            local.alu_cols.arg1_eq_arg2 + local.alu_cols.arg1_lt_arg2,
-        );
         builder
             .when(local.instruction.is_i32gts + local.instruction.is_i32gtu)
             .assert_eq(local.alu_cols.res_bool, local.alu_cols.arg1_gt_arg2);
-        builder.when(local.instruction.is_i32ges + local.instruction.is_i32geu).assert_eq(
-            local.alu_cols.res_bool,
-            local.alu_cols.arg1_eq_arg2 + local.alu_cols.arg1_gt_arg2,
-        );
+
+        builder
+            .when(local.instruction.is_i32les + local.instruction.is_i32leu)
+            .assert_eq(local.alu_cols.res_bool, AB::Expr::one() - local.alu_cols.arg1_gt_arg2);
+
+        builder
+            .when(local.instruction.is_i32ges + local.instruction.is_i32geu)
+            .assert_eq(local.alu_cols.res_bool, AB::Expr::one() - local.alu_cols.arg1_lt_arg2);
         builder
             .when(local.instruction.is_i32ne)
             .assert_eq(AB::Expr::one() - local.alu_cols.res_bool, local.alu_cols.arg1_eq_arg2);
@@ -175,41 +176,58 @@ impl CpuChip {
             .when(local.instruction.is_i32eqz + local.instruction.is_i32eq)
             .assert_eq(local.alu_cols.res_bool, local.alu_cols.arg1_eq_arg2);
         builder.when(local.instruction.is_i32eqz).assert_word_zero(local.op_arg2_val());
-        // Send to the ALU table to verify correct calculation of addr_word.
+
+        // Create flags to determine which checks are necessary based on the opcode.
+        // A `lt` check is needed for all comparisons except `gt` and `le`.
+        let needs_lt_check = is_comparison -
+            (local.instruction.is_i32gts +
+                local.instruction.is_i32gtu +
+                local.instruction.is_i32les +
+                local.instruction.is_i32leu);
+        // A `gt` check is needed for all comparisons except `lt` and `ge`.
+        let needs_gt_check = is_comparison -
+            (local.instruction.is_i32lts +
+                local.instruction.is_i32ltu +
+                local.instruction.is_i32ges +
+                local.instruction.is_i32geu);
+
+        let cmp_ins_expr = use_signed_comparison.clone() *
+            AB::Expr::from_canonical_u32(Opcode::I32LtS.code()) +
+            (AB::Expr::one() - use_signed_comparison.clone()) *
+                AB::Expr::from_canonical_u32(Opcode::I32LtU.code());
+
+        // Conditionally send the `lt` check to the ALU table.
         builder.send_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
             AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
             AB::Expr::zero(),
-            use_signed_comparison.clone() * AB::Expr::from_canonical_u32(Opcode::I32LtS.code()) +
-                (AB::Expr::one() - use_signed_comparison.clone()) *
-                    AB::Expr::from_canonical_u32(Opcode::I32LtU.code()),
+            cmp_ins_expr.clone(),
             Word::extend_var::<AB>(comparison_alu.arg1_lt_arg2),
             local.op_arg1_val(),
             local.op_arg2_val(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
-            is_comparison,
+            needs_lt_check,
         );
 
+        // Conditionally send the `gt` check to the ALU table.
         builder.send_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
             AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
             AB::Expr::zero(),
-            use_signed_comparison.clone() * AB::Expr::from_canonical_u32(Opcode::I32LtS.code()) +
-                (AB::Expr::one() - use_signed_comparison.clone()) *
-                    AB::Expr::from_canonical_u32(Opcode::I32LtU.code()),
+            cmp_ins_expr.clone(),
             Word::extend_var::<AB>(comparison_alu.arg1_gt_arg2),
-            local.op_arg2_val(),
+            local.op_arg2_val(), // Operands swapped to check `arg2 < arg1`
             local.op_arg1_val(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
-            is_comparison,
+            needs_gt_check,
         );
     }
 

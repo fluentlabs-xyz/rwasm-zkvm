@@ -892,47 +892,60 @@ impl<'a> Executor<'a> {
                     opcode,
                     Opcode::I32GeS | Opcode::I32GtS | Opcode::I32LeS | Opcode::I32LtS
                 );
-                let arg1_lt_arg2 = if use_signed_comparison {
-                    (event.b as i32) < (event.c as i32)
-                } else {
-                    event.b < event.c
-                };
-                let arg1_gt_arg2 = if use_signed_comparison {
-                    (event.b as i32) > (event.c as i32)
-                } else {
-                    event.b > event.c
-                };
-                let cmp_ins = {
+
+                let (lt_res, gt_res, cmp_opcode) = {
                     if use_signed_comparison {
-                        Opcode::I32LtS
+                        (
+                            ((event.b as i32) < (event.c as i32)) as u32,
+                            ((event.b as i32) > (event.c as i32)) as u32,
+                            Opcode::I32LtS,
+                        )
                     } else {
-                        Opcode::I32LtU
+                        ((event.b < event.c) as u32, (event.b > event.c) as u32, Opcode::I32LtU)
                     }
                 };
+
                 let lt_comp_event = AluEvent {
                     pc: UNUSED_PC,
-                    opcode: cmp_ins,
-                    a: arg1_lt_arg2 as u32,
+                    opcode: cmp_opcode,
+                    a: lt_res,
                     b: event.b,
                     c: event.c,
-                    code: cmp_ins.code(),
+                    code: cmp_opcode.code(),
                 };
                 let gt_comp_event = AluEvent {
                     pc: UNUSED_PC,
-                    opcode: cmp_ins,
-                    a: arg1_gt_arg2 as u32,
+                    opcode: cmp_opcode,
+                    a: gt_res,
                     b: event.c,
                     c: event.b,
-                    code: cmp_ins.code(),
+                    code: cmp_opcode.code(),
                 };
-                //if opcode == Opcode::I32LtS
-                {
-                    println!("opcode {:?} : gt event:{:?}", opcode, gt_comp_event);
-                    println!("opcode {:?} :lt event:{:?}", opcode, lt_comp_event);
-                }
 
-                self.record.lt_events.push(gt_comp_event);
-                self.record.lt_events.push(lt_comp_event);
+                match opcode {
+                    // Opcodes that only need a "less than" check.
+                    Opcode::I32LtS | Opcode::I32LtU => {
+                        self.record.lt_events.push(lt_comp_event);
+                    }
+                    // b > c is equivalent to c < b
+                    Opcode::I32GtS | Opcode::I32GtU => {
+                        self.record.lt_events.push(gt_comp_event);
+                    }
+                    // b >= c is equivalent to !(b < c)
+                    Opcode::I32GeS | Opcode::I32GeU => {
+                        self.record.lt_events.push(AluEvent { a: 1 - gt_res, ..lt_comp_event });
+                    }
+                    // b <= c is equivalent to !(c < b)
+                    Opcode::I32LeS | Opcode::I32LeU => {
+                        self.record.lt_events.push(AluEvent { a: 1 - lt_res, ..gt_comp_event });
+                    }
+                    // Equality checks need to know if `b < c` and `c < b` are both false.
+                    Opcode::I32Eq | Opcode::I32Eqz | Opcode::I32Ne => {
+                        self.record.lt_events.push(gt_comp_event);
+                        self.record.lt_events.push(lt_comp_event);
+                    }
+                    _ => unreachable!(),
+                }
             }
             Opcode::I32Mul => {
                 self.record.mul_events.push(event);

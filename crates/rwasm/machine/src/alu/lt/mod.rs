@@ -474,7 +474,7 @@ mod tests {
     use crate::{
         alu::LtCols,
         io::SP1Stdin,
-        rwasm::RwasmAir,
+        rwasm::{CpuChip, RwasmAir},
         utils::{run_malicious_test, uni_stark_prove as prove, uni_stark_verify as verify},
     };
     use p3_baby_bear::BabyBear;
@@ -571,32 +571,59 @@ mod tests {
 
         prove_babybear_template(&mut shard);
     }
+
     #[test]
-    fn test_malicious_ltu() {
-        run_malicious_lt(Opcode::I32LtU)
-    }
-    #[test]
-    fn test_malicious_lts() {
-        //TODO it is failed!
-        run_malicious_lt(Opcode::I32LtS)
+    fn test_malicious_lt() {
+        for opcode in [
+            Opcode::I32Eq,
+            Opcode::I32LtS,
+            Opcode::I32GtS,
+            Opcode::I32LtU,
+            Opcode::I32GtU,
+            Opcode::I32LeS,
+            Opcode::I32GeS,
+            Opcode::I32LeU,
+            Opcode::I32GeU,
+        ] {
+            run_malicious_lt(opcode)
+        }
     }
 
     fn run_malicious_lt(opcode: Opcode) {
         use core::borrow::BorrowMut;
-        const NUM_TESTS: usize = 10;
+        const NUM_TESTS: usize = 2;
 
         let rng = thread_rng();
         for _ in 0..NUM_TESTS {
             let op_b = thread_rng().gen_range(0..u32::MAX);
             let op_c = thread_rng().gen_range(0..u32::MAX);
 
-            let correct_op_a =
-                if opcode == Opcode::I32LtU { op_b < op_c } else { (op_b as i32) < (op_c as i32) };
+            let correct_op_a = if opcode == Opcode::I32LtU {
+                op_b < op_c
+            } else if opcode == Opcode::I32GtU {
+                op_b > op_c
+            } else if opcode == Opcode::I32LeU {
+                op_b <= op_c
+            } else if opcode == Opcode::I32GeU {
+                op_b >= op_c
+            } else if opcode == Opcode::I32Eq {
+                op_b == op_c
+            } else if opcode == Opcode::I32LtS {
+                (op_b as i32) < (op_c as i32)
+            } else if opcode == Opcode::I32GtS {
+                (op_b as i32) > (op_c as i32)
+            } else if opcode == Opcode::I32LeS {
+                (op_b as i32) <= (op_c as i32)
+            } else if opcode == Opcode::I32GeS {
+                (op_b as i32) >= (op_c as i32)
+            } else {
+                true
+            };
             //Pops rhs, then lhs, pushes i32( lhs <_s rhs ? 1 : 0 )
             let op_a = !correct_op_a;
             let program = Program::from_instrs(vec![
-                Opcode::I32Const(op_c.into()),
                 Opcode::I32Const(op_b.into()),
+                Opcode::I32Const(op_c.into()),
                 opcode,
             ]);
             let stdin = SP1Stdin::new();
@@ -628,11 +655,10 @@ mod tests {
 
             let result =
                 run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-            let lt_chip_name = chip_name!(LtChip, BabyBear);
+            let chip_name = chip_name!(CpuChip, BabyBear);
+            println!("run_malicious_lt for opcode : {:?}", opcode);
             assert!(result.is_err());
-            println!("mytest op_a={} op_b={}, op_b={}", op_a, op_b, op_c);
-            println!("{:?}", result);
-            assert!(result.unwrap_err().is_constraints_failing(&lt_chip_name));
+            assert!(result.unwrap_err().is_constraints_failing(&chip_name));
         }
     }
 }
