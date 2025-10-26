@@ -47,6 +47,8 @@ pub struct ExecutionRecord {
     pub divrem_events: Vec<AluEvent>,
     /// A trace of the SLT, SLTI, SLTU, and SLTIU events.
     pub lt_events: Vec<AluEvent>,
+    /// A trace of the Rotl, Rotr events.
+    pub rotate_events: Vec<AluEvent>,
     /// A trace of the memory opcodes.
     pub memory_instr_events: Vec<MemInstrEvent>,
 

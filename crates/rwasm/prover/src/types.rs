@@ -34,7 +34,7 @@ pub struct SP1ProvingKey {
 }
 
 /// The information necessary to verify a proof for a given RISC-V program.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct SP1VerifyingKey {
     pub vk: StarkVerifyingKey<CoreSC>,
 }

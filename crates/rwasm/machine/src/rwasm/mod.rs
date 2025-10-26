@@ -28,7 +28,10 @@ use crate::{
 /// A module for importing all the different RISC-V chips.
 pub(crate) mod rwasm_chips {
     pub use crate::{
-        alu::{AddSubChip, BitwiseChip, DivRemChip, LtChip, MulChip, ShiftLeft, ShiftRightChip},
+        alu::{
+            AddSubChip, BitwiseChip, DivRemChip, LtChip, MulChip, RotateChip, ShiftLeft,
+            ShiftRightChip,
+        },
         bytes::ByteChip,
         cpu::CpuChip,
         memory::MemoryGlobalChip,
@@ -89,6 +92,8 @@ pub enum RwasmAir<F: PrimeField32> {
     ShiftLeft(ShiftLeft),
     /// An AIR for RISC-V SRL and SRA instruction.
     ShiftRight(ShiftRightChip),
+    /// An AIR for WASM Rotl, Rotr instruction.
+    Rotate(RotateChip),
     /// An AIR for RISC-V memory instructions.
     Memory(MemoryInstructionsChip),
     /// An AIR for RISC-V branch instructions.
@@ -366,6 +371,10 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(shift_left.name(), shift_left.cost());
         chips.push(shift_left);
 
+        let rotate = Chip::new(RwasmAir::Rotate(RotateChip::default()));
+        costs.insert(rotate.name(), rotate.cost());
+        chips.push(rotate);
+
         let lt = Chip::new(RwasmAir::Lt(LtChip::default()));
         costs.insert(lt.name(), lt.cost());
         chips.push(lt);
@@ -441,6 +450,7 @@ impl<F: PrimeField32> RwasmAir<F> {
             RwasmAir::Lt(LtChip::default()),
             RwasmAir::ShiftLeft(ShiftLeft::default()),
             RwasmAir::ShiftRight(ShiftRightChip::default()),
+            RwasmAir::Rotate(RotateChip::default()),
             RwasmAir::Memory(MemoryInstructionsChip::default()),
             RwasmAir::Branch(BranchChip::default()),
             RwasmAir::Call(CallChip::default()),
@@ -529,6 +539,7 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Lt => RwasmAirId::Lt,
             RwasmAirDiscriminants::ShiftLeft => RwasmAirId::ShiftLeft,
             RwasmAirDiscriminants::ShiftRight => RwasmAirId::ShiftRight,
+            RwasmAirDiscriminants::Rotate => RwasmAirId::Rotate,
             RwasmAirDiscriminants::Memory => RwasmAirId::MemoryInstrs,
             RwasmAirDiscriminants::Branch => RwasmAirId::Branch,
             RwasmAirDiscriminants::Call => RwasmAirId::Call,
