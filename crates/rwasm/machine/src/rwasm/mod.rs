@@ -351,6 +351,10 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(div_rem.name(), div_rem.cost());
         chips.push(div_rem);
 
+        let rotate = Chip::new(RwasmAir::Rotate(RotateChip::default()));
+        costs.insert(rotate.name(), rotate.cost());
+        chips.push(rotate);
+
         let add_sub = Chip::new(RwasmAir::Add(AddSubChip::default()));
         costs.insert(add_sub.name(), add_sub.cost());
         chips.push(add_sub);
@@ -370,10 +374,6 @@ impl<F: PrimeField32> RwasmAir<F> {
         let shift_left = Chip::new(RwasmAir::ShiftLeft(ShiftLeft::default()));
         costs.insert(shift_left.name(), shift_left.cost());
         chips.push(shift_left);
-
-        let rotate = Chip::new(RwasmAir::Rotate(RotateChip::default()));
-        costs.insert(rotate.name(), rotate.cost());
-        chips.push(rotate);
 
         let lt = Chip::new(RwasmAir::Lt(LtChip::default()));
         costs.insert(lt.name(), lt.cost());

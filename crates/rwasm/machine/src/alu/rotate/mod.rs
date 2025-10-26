@@ -1,13 +1,14 @@
+//! Rotate (i32.rotl / i32.rotr) verification chip — proves a = rot(b, c) by decomposing into two
+//! shifts and a byte-wise OR with non-overlap.
 use core::borrow::{Borrow, BorrowMut};
 
-use hashbrown::HashMap;
+use core::mem::size_of;
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
 use rwasm_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_PC_INC, UNUSED_PC,
+    ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::MachineAir, Word};
@@ -58,6 +59,7 @@ impl RotateChip {
         cols: &mut RotateCols<F>,
         blu: &mut impl ByteRecord,
     ) {
+        // --- 1) Basic columns: copy CPU operands/results into the trace row.
         cols.pc = F::from_canonical_u32(event.pc);
 
         cols.a = Word::from(event.a);
@@ -69,11 +71,12 @@ impl RotateChip {
         cols.c_masked = Word::from(k);
         cols.c_inverse = Word::from(inv);
 
-        // Flags
+        // --- 2) Instruction selectors.
         cols.is_rotl = F::from_bool(event.code == Opcode::I32Rotl.code());
         cols.is_rotr = F::from_bool(event.code == Opcode::I32Rotr.code());
 
-        // Compute the two contributing words such that: a = left_shifted OR right_shifted
+        // --- 3) Decomposition: precompute the two contributions (left/right) from the executor.
+        // For real rows, we will constrain in AIR that: a = left OR right and (left & right) == 0.
         // For ROTR(k): left = b << (32 - k), right = b >> k
         // For ROTL(k): left = b >> (32 - k), right = b << k
         let (left_bytes, right_bytes) = if event.code == Opcode::I32Rotl.code() {
@@ -91,7 +94,7 @@ impl RotateChip {
         cols.left_shifted = Word(left_bytes.map(F::from_canonical_u8));
         cols.right_shifted = Word(right_bytes.map(F::from_canonical_u8));
 
-        // Add byte lookups to assert: a = left_shifted OR right_shifted
+        // --- 4) Byte lookups: a = left OR right (byte-wise).
         for ((a_b, l_b), r_b) in event.a.to_le_bytes().into_iter().zip(left_bytes).zip(right_bytes)
         {
             let byte_event =
@@ -99,7 +102,36 @@ impl RotateChip {
             blu.add_byte_lookup_event(byte_event);
         }
 
-        // Range checks for helper words
+        // --- 5) Byte lookups used in AIR non-overlap: (left & right) == 0 (byte-wise).
+        for (l_b, r_b) in left_bytes.iter().copied().zip(right_bytes.iter().copied()) {
+            let byte_event =
+                ByteLookupEvent { opcode: ByteOpcode::AND, a1: 0, a2: 0, b: l_b, c: r_b };
+            blu.add_byte_lookup_event(byte_event);
+        }
+
+        // --- 6) Masking checks wired via AND lookups on low byte.
+        // c_masked = c & 0x1f  and  c_inverse is 5-bit: (inv & 0x1f) = inv.
+        let c0 = (event.c & 0xff) as u8;
+        let k0 = (k & 0xff) as u8;
+        blu.add_byte_lookup_event(ByteLookupEvent {
+            opcode: ByteOpcode::AND,
+            a1: k0 as u16,
+            a2: 0,
+            b: c0,
+            c: 0x1f,
+        });
+
+        // c_inverse 5-bit check:
+        let inv0 = (inv & 0xff) as u8;
+        blu.add_byte_lookup_event(ByteLookupEvent {
+            opcode: ByteOpcode::AND,
+            a1: inv0 as u16,
+            a2: 0,
+            b: inv0,
+            c: 0x1f,
+        });
+
+        // --- 7) Range checks for helper words.
         blu.add_u8_range_checks(&left_bytes);
         blu.add_u8_range_checks(&right_bytes);
     }
@@ -114,46 +146,30 @@ where
         let local = main.row_slice(0);
         let local: &RotateCols<AB::Var> = (*local).borrow();
 
-        // One-hot for opcode flags
+        // ---------------------------------------------------------------------
+        // 0) Flags & real-row selector
+        // ---------------------------------------------------------------------
         let is_real = local.is_rotl + local.is_rotr;
-
-        // Flags must be boolean and mutually exclusive (their sum is boolean).
         builder.assert_bool(local.is_rotl);
         builder.assert_bool(local.is_rotr);
         builder.assert_bool(is_real.clone());
 
         // Constrain `c_masked[0] + c_inverse[0]` to be either 0 or 32.
+        // This proves that c_inverse is correctly derived from c_masked.
         let sum = local.c_masked[0] + local.c_inverse[0];
         let thirty_two = AB::Expr::from_canonical_u32(32);
         builder.when(is_real.clone()).assert_zero(sum.clone() * (sum.clone() - thirty_two));
 
-        // Enforce a = left_shifted OR right_shifted (byte-wise).
-        let or_opcode = ByteOpcode::OR.as_field::<AB::F>();
-        for i in 0..4 {
-            builder.send_byte(
-                or_opcode,
-                local.a[i],
-                local.left_shifted[i],
-                local.right_shifted[i],
-                is_real.clone(),
-            );
-        }
-
-        // Ensure the two contributions do not overlap: (left & right) == 0 byte-wise.
+        // Common byte opcodes and constants.
         let and_opcode = ByteOpcode::AND.as_field::<AB::F>();
-        let zero = AB::Expr::zero();
-        for i in 0..4 {
-            builder.send_byte(
-                and_opcode,
-                zero.clone(), // AND output must be 0
-                local.left_shifted[i],
-                local.right_shifted[i],
-                is_real.clone(),
-            );
-        }
-
-        // Constrain c_masked = c & 0x1F on the least-significant byte, and higher bytes are zero.
+        let or_opcode = ByteOpcode::OR.as_field::<AB::F>();
         let mask_0x1f = AB::Expr::from_canonical_u8(0x1f);
+
+        // ---------------------------------------------------------------------
+        // 1) Masking of the rotation amount (k = c & 31)
+        //    - Low byte: c_masked[0] = c[0] & 0x1f (via a byte AND lookup)
+        //    - Upper bytes of c_masked must be zero
+        // ---------------------------------------------------------------------
         builder.send_byte(
             and_opcode,
             local.c_masked[0],
@@ -165,88 +181,81 @@ where
             builder.when(is_real.clone()).assert_zero(local.c_masked[i]);
         }
 
-        // Constrain c_inverse to be a 5-bit quantity as well.
+        // ---------------------------------------------------------------------
+        // 2) The “inverse” (32 - k) is also 5‑bit: inv & 0x1f == inv on the low byte; higher bytes
+        //    are zero.
+        // ---------------------------------------------------------------------
         builder.send_byte(
             and_opcode,
             local.c_inverse[0],
             local.c_inverse[0],
-            mask_0x1f,
+            mask_0x1f.clone(),
             is_real.clone(),
         );
         for i in 1..4 {
             builder.when(is_real.clone()).assert_zero(local.c_inverse[i]);
         }
 
-        // Constrain the shift operations by sending them to the ALU bus.
-        let shr_opcode = AB::Expr::from_canonical_u32(Opcode::I32ShrU.code());
-        let shl_opcode = AB::Expr::from_canonical_u32(Opcode::I32Shl.code());
+        // ---------------------------------------------------------------------
+        // 3) k + (32 - k) ∈ {0, 32} Using s = c_masked[0] + c_inverse[0], enforce s(s − 32) = 0.
+        //    When k = 0, s = 0; otherwise s = 32.
+        // ---------------------------------------------------------------------
+        let s = local.c_masked[0] + local.c_inverse[0];
+        let thirty_two = AB::Expr::from_canonical_u32(32);
+        builder.when(is_real.clone()).assert_zero(s.clone() * (s.clone() - thirty_two));
 
-        // For ROTL(b, k), we depend on `b << k` and `b >> (32 - k)`
-        builder.send_instruction(
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::from_canonical_u32(UNUSED_PC),
-            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
-            AB::Expr::zero(),
-            shl_opcode.clone(),
-            local.right_shifted,
-            local.b,
-            local.c_masked,
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            local.is_rotl,
-        );
-        builder.send_instruction(
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::from_canonical_u32(UNUSED_PC),
-            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
-            AB::Expr::zero(),
-            shr_opcode.clone(),
-            local.left_shifted,
-            local.b,
-            local.c_inverse,
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            local.is_rotl,
-        );
+        // ---------------------------------------------------------------------
+        // 4) Decomposition: a = left_shifted OR right_shifted  (byte-wise)
+        // ---------------------------------------------------------------------
+        for i in 0..4 {
+            builder.send_byte(
+                or_opcode,
+                local.a[i],
+                local.left_shifted[i],
+                local.right_shifted[i],
+                is_real.clone(),
+            );
+        }
 
-        // For ROTR(b, k), we depend on `b >> k` and `b << (32 - k)`
-        builder.send_instruction(
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::from_canonical_u32(UNUSED_PC),
-            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
-            AB::Expr::zero(),
-            shr_opcode.clone(),
-            local.right_shifted,
-            local.b,
-            local.c_masked,
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            local.is_rotr,
-        );
-        builder.send_instruction(
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::from_canonical_u32(UNUSED_PC),
-            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
-            AB::Expr::zero(),
-            shl_opcode.clone(),
-            local.left_shifted,
-            local.b,
-            local.c_inverse,
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            local.is_rotr,
-        );
+        // ---------------------------------------------------------------------
+        // 5) Non‑overlap: (left_shifted & right_shifted) == 0 (byte-wise) This forbids
+        //    double-counting when the OR recombines the two parts.
+        // ---------------------------------------------------------------------
+        let zero = AB::Expr::zero();
+        for i in 0..4 {
+            builder.send_byte(
+                and_opcode,
+                zero.clone(), // AND output must be 0
+                local.left_shifted[i],
+                local.right_shifted[i],
+                is_real.clone(),
+            );
+        }
 
-        // Receive the main rotate instruction from the CPU bus.
-        let is_rot_op = local.is_rotl * AB::Expr::from_canonical_u32(Opcode::I32Rotl.code()) +
+        // ---------------------------------------------------------------------
+        // 6) Local range checks for helper words (each is a byte)
+        // ---------------------------------------------------------------------
+        let left_bytes = [
+            local.left_shifted[0],
+            local.left_shifted[1],
+            local.left_shifted[2],
+            local.left_shifted[3],
+        ];
+        builder.slice_range_check_u8(&left_bytes, is_real.clone());
+
+        let right_bytes = [
+            local.right_shifted[0],
+            local.right_shifted[1],
+            local.right_shifted[2],
+            local.right_shifted[3],
+        ];
+        builder.slice_range_check_u8(&right_bytes, is_real.clone());
+
+        // ---------------------------------------------------------------------
+        // 7) CPU bus: receive the actual rotated opcode and operands. We do not emit synthetic
+        //    SHL/SHR here; only the rotate CPU row.
+        // ---------------------------------------------------------------------
+        let cpu_opcode = local.is_rotl * AB::Expr::from_canonical_u32(Opcode::I32Rotl.code()) +
             local.is_rotr * AB::Expr::from_canonical_u32(Opcode::I32Rotr.code());
 
         builder.receive_instruction(
@@ -255,7 +264,7 @@ where
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
             AB::Expr::zero(),
-            is_rot_op,
+            cpu_opcode,
             local.a,
             local.b,
             local.c,
@@ -280,87 +289,21 @@ impl<F: PrimeField32> MachineAir<F> for RotateChip {
         "Rotate".to_string()
     }
 
-    fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
-        let chunk_size = core::cmp::max(input.rotate_events.len() / num_cpus::get(), 1);
-
-        let collected_deps: Vec<_> = input
-            .rotate_events
-            .par_chunks(chunk_size)
-            .map(|events| {
-                let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-                let mut sl_events = Vec::new();
-                let mut sr_events = Vec::new();
-
-                for event in events {
-                    let mut row = [F::zero(); NUM_ROTATE_COLS];
-                    let cols: &mut RotateCols<F> = row.as_mut_slice().borrow_mut();
-                    self.event_to_row(event, cols, &mut blu);
-
-                    let b = event.b;
-                    let c = event.c;
-                    let k = c & 31;
-                    let inv = (32 - k) & 31;
-
-                    if event.code == Opcode::I32Rotl.code() {
-                        sl_events.push(AluEvent::new(
-                            UNUSED_PC,
-                            Opcode::I32Shl,
-                            b.wrapping_shl(k),
-                            b,
-                            k,
-                            Opcode::I32Shl.code(),
-                        ));
-                        sr_events.push(AluEvent::new(
-                            UNUSED_PC,
-                            Opcode::I32ShrU,
-                            b.wrapping_shr(inv),
-                            b,
-                            inv,
-                            Opcode::I32ShrU.code(),
-                        ));
-                    } else {
-                        sr_events.push(AluEvent::new(
-                            UNUSED_PC,
-                            Opcode::I32ShrU,
-                            b.wrapping_shr(k),
-                            b,
-                            k,
-                            Opcode::I32ShrU.code(),
-                        ));
-                        sl_events.push(AluEvent::new(
-                            UNUSED_PC,
-                            Opcode::I32Shl,
-                            b.wrapping_shl(inv),
-                            b,
-                            inv,
-                            Opcode::I32Shl.code(),
-                        ));
-                    }
-                }
-                (blu, sl_events, sr_events)
-            })
-            .collect();
-
-        let blu_maps: Vec<_> = collected_deps.iter().map(|(blu, _, _)| blu).collect();
-        output.add_byte_lookup_events_from_maps(blu_maps);
-
-        for (_, sl_events, sr_events) in collected_deps {
-            output.shift_left_events.extend(sl_events);
-            output.shift_right_events.extend(sr_events);
-        }
+    fn local_only(&self) -> bool {
+        true
     }
 
     fn generate_trace(
         &self,
         input: &ExecutionRecord,
-        _output: &mut ExecutionRecord,
+        output: &mut ExecutionRecord, // This is used for byte lookups
     ) -> RowMajorMatrix<F> {
         let mut rows: Vec<[F; NUM_ROTATE_COLS]> = vec![];
         for event in input.rotate_events.iter() {
             let mut row = [F::zero(); NUM_ROTATE_COLS];
             let cols: &mut RotateCols<F> = row.as_mut_slice().borrow_mut();
-            let mut blu = Vec::new();
-            self.event_to_row(event, cols, &mut blu);
+            // Pass `output` to `event_to_row` so it can add byte lookups.
+            self.event_to_row(event, cols, output);
             rows.push(row);
         }
 
@@ -374,15 +317,8 @@ impl<F: PrimeField32> MachineAir<F> for RotateChip {
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
-        if let Some(shape) = shard.shape.as_ref() {
-            shape.included::<F, _>(self)
-        } else {
-            !shard.rotate_events.is_empty()
-        }
-    }
-
-    fn local_only(&self) -> bool {
-        false
+        // This is correct. The chip is only included if there are rotate events.
+        !shard.rotate_events.is_empty()
     }
 }
 

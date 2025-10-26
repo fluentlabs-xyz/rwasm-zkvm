@@ -2,9 +2,16 @@
 
 use crate::rwasmtest::run_rwasm_prover;
 use rwasm_executor::{Opcode, Program};
+use rwasm_machine::{
+    io::SP1Stdin,
+    rwasm::RwasmAir,
+    utils::{run_test, setup_logger},
+};
+use sp1_stark::CpuProver;
 
 #[test]
 fn test_i32_rotl() {
+    setup_logger();
     let program = Program::from_instrs(vec![
         Opcode::I32Const(2u32.into()),
         Opcode::I32Const(1u32.into()),
@@ -21,6 +28,7 @@ fn test_i32_rotl() {
 
 #[test]
 fn test_i32_rotr() {
+    setup_logger();
     let program = Program::from_instrs(vec![
         Opcode::I32Const(2u32.into()),
         Opcode::I32Const(1u32.into()),
