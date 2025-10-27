@@ -30,7 +30,7 @@ pub struct RotateCols<T> {
     /// The 32-bit value to be rotated.
     pub b: Word<T>,
     /// The 32-bit rotation amount.
-    pub c: Word<T>,
+    pub c: T,
 
     /// The rotation amount, masked to 5 bits (c & 0x1F).
     pub c_masked: T,
@@ -65,7 +65,7 @@ impl RotateChip {
 
         cols.a = Word::from(event.a);
         cols.b = Word::from(event.b);
-        cols.c = Word::from(event.c);
+        cols.c = F::from_canonical_u32(event.c);
 
         let k = (event.c & 31) as u32; // mask to 5 bits
         let inv = ((32 - k) & 31) as u32;
@@ -170,13 +170,7 @@ where
         //    - Low byte: c_masked[0] = c[0] & 0x1f (via a byte AND lookup)
         //    - Upper bytes of c_masked must be zero
         // ---------------------------------------------------------------------
-        builder.send_byte(
-            and_opcode,
-            local.c_masked,
-            local.c[0],
-            mask_0x1f.clone(),
-            is_real.clone(),
-        );
+        builder.send_byte(and_opcode, local.c_masked, local.c, mask_0x1f.clone(), is_real.clone());
 
         // ---------------------------------------------------------------------
         // 2) The “inverse” (32 - k) is also 5‑bit: inv & 0x1f == inv on the low byte; higher bytes
@@ -248,7 +242,10 @@ where
             cpu_opcode,
             local.a,
             local.b,
-            local.c,
+            {
+                let zero = AB::Expr::zero();
+                Word([local.c.into(), zero.clone(), zero.clone(), zero.clone()])
+            },
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
