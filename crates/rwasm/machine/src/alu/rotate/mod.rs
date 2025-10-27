@@ -1,12 +1,15 @@
 //! Rotate (i32.rotl / i32.rotr) verification chip — proves a = rot(b, c) by decomposing into two
 //! shifts and a byte-wise OR with non-overlap.
 use core::borrow::{Borrow, BorrowMut};
+use p3_maybe_rayon::prelude::ParallelIterator;
 
 use core::mem::size_of;
+use hashbrown::HashMap;
 use itertools::izip;
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use rayon::prelude::ParallelSlice;
 use rwasm_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_PC_INC, UNUSED_PC,
@@ -361,7 +364,76 @@ impl<F: PrimeField32> MachineAir<F> for RotateChip {
 
         RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_ROTATE_COLS)
     }
+    fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
+        let chunk_size = core::cmp::max(input.rotate_events.len() / num_cpus::get(), 1);
 
+        let collected_deps: Vec<_> = input
+            .rotate_events
+            .par_chunks(chunk_size)
+            .map(|events| {
+                let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
+                let mut sl_events = Vec::new();
+                let mut sr_events = Vec::new();
+
+                for event in events {
+                    let mut row = [F::zero(); NUM_ROTATE_COLS];
+                    let cols: &mut RotateCols<F> = row.as_mut_slice().borrow_mut();
+                    self.event_to_row(event, cols, &mut blu); // Still need to populate byte lookups
+
+                    let b = event.b;
+                    let c = event.c; // Get the u32 value from Word<T>
+                    let k = c & 31;
+                    let inv = (32 - k) & 31;
+
+                    if event.code == Opcode::I32Rotl.code() {
+                        sl_events.push(AluEvent::new(
+                            UNUSED_PC,
+                            Opcode::I32Shl,
+                            b.wrapping_shl(k),
+                            b,
+                            k,
+                            Opcode::I32Shl.code(),
+                        ));
+                        sr_events.push(AluEvent::new(
+                            UNUSED_PC,
+                            Opcode::I32ShrU,
+                            b.wrapping_shr(inv),
+                            b,
+                            inv,
+                            Opcode::I32ShrU.code(),
+                        ));
+                    } else {
+                        // I32Rotr
+                        sr_events.push(AluEvent::new(
+                            UNUSED_PC,
+                            Opcode::I32ShrU,
+                            b.wrapping_shr(k),
+                            b,
+                            k,
+                            Opcode::I32ShrU.code(),
+                        ));
+                        sl_events.push(AluEvent::new(
+                            UNUSED_PC,
+                            Opcode::I32Shl,
+                            b.wrapping_shl(inv),
+                            b,
+                            inv,
+                            Opcode::I32Shl.code(),
+                        ));
+                    }
+                }
+                (blu, sl_events, sr_events)
+            })
+            .collect();
+
+        let blu_maps: Vec<_> = collected_deps.iter().map(|(blu, _, _)| blu).collect();
+        output.add_byte_lookup_events_from_maps(blu_maps);
+
+        for (_, sl_events, sr_events) in collected_deps {
+            output.shift_left_events.extend(sl_events);
+            output.shift_right_events.extend(sr_events);
+        }
+    }
     fn included(&self, shard: &Self::Record) -> bool {
         // This is correct. The chip is only included if there are rotate events.
         !shard.rotate_events.is_empty()
