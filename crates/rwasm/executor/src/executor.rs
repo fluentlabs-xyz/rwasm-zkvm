@@ -955,7 +955,7 @@ impl<'a> Executor<'a> {
                 emit_divrem_dependencies(self, event);
             }
             Opcode::I32Rotl | Opcode::I32Rotr => {
-                todo!();
+                self.record.rotate_events.push(event);
             }
             _ => unreachable!(),
         }
@@ -5014,5 +5014,64 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
         assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+    }
+
+    #[test]
+    fn test_i32rotl_masks_and_rotates() {
+        // Ensure ROTL masks the shift by 31 and rotates correctly.
+        let b: u32 = 0x2121_2121u32;
+        let c: u32 = 0xffff_ffefu32; // masks to 15
+        let expected: u32 = b.rotate_left(c & 31);
+
+        let program = Program::from_instrs(vec![
+            Opcode::I32Const(b.into()),
+            Opcode::I32Const(c.into()),
+            Opcode::I32Rotl,
+        ]);
+
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+
+        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+        assert_eq!(top, expected, "I32Rotl result mismatch (masking or rotation incorrect)");
+    }
+
+    #[test]
+    fn test_i32rotr_basic() {
+        // Basic ROTR by 1: 0x8000_0001 -> 0xC000_0000 (but we check via rotate_right to avoid
+        // literal mistakes)
+        let b: u32 = 0x8000_0001u32;
+        let c: u32 = 1u32;
+        let expected: u32 = b.rotate_right(c & 31);
+
+        let program = Program::from_instrs(vec![
+            Opcode::I32Const(b.into()),
+            Opcode::I32Const(c.into()),
+            Opcode::I32Rotr,
+        ]);
+
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+
+        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+        assert_eq!(top, expected, "I32Rotr result mismatch");
+    }
+    #[test]
+    fn test_i32rot() {
+        let b: u32 = 0x8000_0001u32;
+        let c: u32 = 7u32;
+        let program = Program::from_instrs(vec![
+            Opcode::I32Const(b.into()),
+            Opcode::I32Const(c.into()),
+            Opcode::I32Rotr,
+            Opcode::I32Const(c.into()),
+            Opcode::I32Rotl,
+        ]);
+
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+
+        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+        assert_eq!(top, b, "recovery result mismatch");
     }
 }

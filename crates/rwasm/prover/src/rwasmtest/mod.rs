@@ -1,5 +1,7 @@
 mod comp;
+mod rotate;
 mod table_init;
+
 use rwasm_executor::Program;
 use rwasm_machine::utils::setup_logger;
 
@@ -14,6 +16,8 @@ pub fn run_rwasm_prover(mut program: Program) {
 
     tracing::info!("setup elf");
     let (_, pk, vk) = prover.setup_program(&mut program);
+
+    println!("setup_program {:?}", program);
 
     tracing::info!("prove core");
     let stdin = SP1Stdin::new();

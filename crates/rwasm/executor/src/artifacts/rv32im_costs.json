@@ -45,5 +45,6 @@
   "ShaCompress": 506,
   "MemoryInstrs": 93,
   "Secp256k1DoubleAssign": 4564,
-  "Table": 10000
+  "Table": 10000,
+  "Rotate": 256
 }

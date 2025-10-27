@@ -145,6 +145,10 @@ pub enum RwasmAirId {
     Call = 45,
 
     Table = 46,
+
+    /// The rotated left/right chip.
+    #[subenum(CoreAirId)]
+    Rotate = 47,
 }
 
 impl RwasmAirId {
@@ -159,6 +163,7 @@ impl RwasmAirId {
             RwasmAirId::ShiftLeft,
             RwasmAirId::ShiftRight,
             RwasmAirId::DivRem,
+            RwasmAirId::Rotate,
             RwasmAirId::Lt,
             RwasmAirId::Auipc,
             RwasmAirId::MemoryLocal,
