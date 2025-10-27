@@ -9,7 +9,7 @@ use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use rwasm_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
-    ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
+    ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_PC_INC, UNUSED_PC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::MachineAir, Word};
@@ -30,7 +30,7 @@ pub struct RotateCols<T> {
     /// The 32-bit value to be rotated.
     pub b: Word<T>,
     /// The 32-bit rotation amount.
-    pub c: T,
+    pub c: Word<T>,
 
     /// The rotation amount, masked to 5 bits (c & 0x1F).
     pub c_masked: T,
@@ -65,7 +65,7 @@ impl RotateChip {
 
         cols.a = Word::from(event.a);
         cols.b = Word::from(event.b);
-        cols.c = F::from_canonical_u32(event.c);
+        cols.c = Word::from(event.c);
 
         let k = (event.c & 31) as u32; // mask to 5 bits
         let inv = ((32 - k) & 31) as u32;
@@ -170,7 +170,13 @@ where
         //    - Low byte: c_masked[0] = c[0] & 0x1f (via a byte AND lookup)
         //    - Upper bytes of c_masked must be zero
         // ---------------------------------------------------------------------
-        builder.send_byte(and_opcode, local.c_masked, local.c, mask_0x1f.clone(), is_real.clone());
+        builder.send_byte(
+            and_opcode,
+            local.c_masked,
+            local.c[0],
+            mask_0x1f.clone(),
+            is_real.clone(),
+        );
 
         // ---------------------------------------------------------------------
         // 2) The “inverse” (32 - k) is also 5‑bit: inv & 0x1f == inv on the low byte; higher bytes
@@ -185,15 +191,7 @@ where
         );
 
         // ---------------------------------------------------------------------
-        // 3) k + (32 - k) ∈ {0, 32} Using s = c_masked[0] + c_inverse[0], enforce s(s − 32) = 0.
-        //    When k = 0, s = 0; otherwise s = 32.
-        // ---------------------------------------------------------------------
-        let s = local.c_masked + local.c_inverse;
-        let thirty_two = AB::Expr::from_canonical_u32(32);
-        builder.when(is_real.clone()).assert_zero(s.clone() * (s.clone() - thirty_two));
-
-        // ---------------------------------------------------------------------
-        // 4) Decomposition: a = left_shifted OR right_shifted  (byte-wise)
+        // 3) Decomposition: a = left_shifted OR right_shifted  (byte-wise)
         // ---------------------------------------------------------------------
         for i in 0..4 {
             builder.send_byte(
@@ -206,7 +204,7 @@ where
         }
 
         // ---------------------------------------------------------------------
-        // 5) Non‑overlap: (left_shifted & right_shifted) == 0 (byte-wise) This forbids
+        // 4) Non‑overlap: (left_shifted & right_shifted) == 0 (byte-wise) This forbids
         //    double-counting when the OR recombines the two parts.
         // ---------------------------------------------------------------------
         let zero = AB::Expr::zero();
@@ -221,14 +219,87 @@ where
         }
 
         // ---------------------------------------------------------------------
-        // 6) Local range checks for helper words (each is a byte)
+        // 5) Local range checks for helper words (each is a byte)
         // ---------------------------------------------------------------------
         builder.slice_range_check_u8(&local.left_shifted.0, is_real.clone());
         builder.slice_range_check_u8(&local.right_shifted.0, is_real.clone());
 
-        // ---------------------------------------------------------------------
-        // 7) CPU bus: receive the actual rotated opcode and operands. We do not emit synthetic
-        //    SHL/SHR here; only the rotate CPU row.
+        //we have not yet prove that those two words are actually b >> k and b << (32 - k).
+
+        // 6) Bus Checks: send the decomposed shift operations to the bus for verification by the
+        //    ShiftLeftChip and ShiftRightChip.
+
+        let c_masked_word = Word([local.c_masked.into(), zero.clone(), zero.clone(), zero.clone()]);
+        let c_inverse_word =
+            Word([local.c_inverse.into(), zero.clone(), zero.clone(), zero.clone()]);
+
+        let shr_opcode = AB::Expr::from_canonical_u32(Opcode::I32ShrU.code());
+        let shl_opcode = AB::Expr::from_canonical_u32(Opcode::I32Shl.code());
+
+        // For ROTL(b, k), we depend on `b << k` and `b >> (32 - k)`
+        builder.send_instruction(
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNUSED_PC),
+            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
+            AB::Expr::zero(),
+            shl_opcode.clone(),
+            local.right_shifted,
+            local.b,
+            c_masked_word.clone(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.is_rotl,
+        );
+        builder.send_instruction(
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNUSED_PC),
+            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
+            AB::Expr::zero(),
+            shr_opcode.clone(),
+            local.left_shifted,
+            local.b,
+            c_inverse_word.clone(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.is_rotl,
+        );
+
+        // For ROTR(b, k), we depend on `b >> k` and `b << (32 - k)`
+        builder.send_instruction(
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNUSED_PC),
+            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
+            AB::Expr::zero(),
+            shr_opcode.clone(),
+            local.right_shifted,
+            local.b,
+            c_masked_word,
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.is_rotr,
+        );
+        builder.send_instruction(
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNUSED_PC),
+            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
+            AB::Expr::zero(),
+            shl_opcode.clone(),
+            local.left_shifted,
+            local.b,
+            c_inverse_word,
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.is_rotr,
+        );
+
         // ---------------------------------------------------------------------
         let cpu_opcode = local.is_rotl * AB::Expr::from_canonical_u32(Opcode::I32Rotl.code()) +
             local.is_rotr * AB::Expr::from_canonical_u32(Opcode::I32Rotr.code());
@@ -242,7 +313,7 @@ where
             cpu_opcode,
             local.a,
             local.b,
-            Word([local.c.into(), zero.clone(), zero.clone(), zero.clone()]),
+            local.c,
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
