@@ -242,10 +242,7 @@ where
             cpu_opcode,
             local.a,
             local.b,
-            {
-                let zero = AB::Expr::zero();
-                Word([local.c.into(), zero.clone(), zero.clone(), zero.clone()])
-            },
+            Word([local.c.into(), zero.clone(), zero.clone(), zero.clone()]),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
