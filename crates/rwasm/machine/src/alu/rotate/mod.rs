@@ -33,9 +33,9 @@ pub struct RotateCols<T> {
     pub c: Word<T>,
 
     /// The rotation amount, masked to 5 bits (c & 0x1F).
-    pub c_masked: Word<T>,
+    pub c_masked: T,
     /// The inverse rotation amount for the left shift (32 - c_masked).
-    pub c_inverse: Word<T>,
+    pub c_inverse: T,
 
     /// The result of the right shift (contribution from the right side).
     pub right_shifted: Word<T>,
@@ -69,8 +69,8 @@ impl RotateChip {
 
         let k = (event.c & 31) as u32; // mask to 5 bits
         let inv = ((32 - k) & 31) as u32;
-        cols.c_masked = Word::from(k);
-        cols.c_inverse = Word::from(inv);
+        cols.c_masked = F::from_canonical_u32(k);
+        cols.c_inverse = F::from_canonical_u32(inv);
 
         // --- 2) Instruction selectors.
         cols.is_rotl = F::from_bool(event.code == Opcode::I32Rotl.code());
@@ -154,9 +154,9 @@ where
         builder.assert_bool(local.is_rotr);
         builder.assert_bool(is_real.clone());
 
-        // Constrain `c_masked[0] + c_inverse[0]` to be either 0 or 32.
+        // Constrain `c_masked + c_inverse` to be either 0 or 32.
         // This proves that c_inverse is correctly derived from c_masked.
-        let sum = local.c_masked[0] + local.c_inverse[0];
+        let sum = local.c_masked + local.c_inverse;
         let thirty_two = AB::Expr::from_canonical_u32(32);
         builder.when(is_real.clone()).assert_zero(sum.clone() * (sum.clone() - thirty_two));
 
@@ -172,14 +172,11 @@ where
         // ---------------------------------------------------------------------
         builder.send_byte(
             and_opcode,
-            local.c_masked[0],
+            local.c_masked,
             local.c[0],
             mask_0x1f.clone(),
             is_real.clone(),
         );
-        for i in 1..4 {
-            builder.when(is_real.clone()).assert_zero(local.c_masked[i]);
-        }
 
         // ---------------------------------------------------------------------
         // 2) The “inverse” (32 - k) is also 5‑bit: inv & 0x1f == inv on the low byte; higher bytes
@@ -187,20 +184,17 @@ where
         // ---------------------------------------------------------------------
         builder.send_byte(
             and_opcode,
-            local.c_inverse[0],
-            local.c_inverse[0],
+            local.c_inverse,
+            local.c_inverse,
             mask_0x1f.clone(),
             is_real.clone(),
         );
-        for i in 1..4 {
-            builder.when(is_real.clone()).assert_zero(local.c_inverse[i]);
-        }
 
         // ---------------------------------------------------------------------
         // 3) k + (32 - k) ∈ {0, 32} Using s = c_masked[0] + c_inverse[0], enforce s(s − 32) = 0.
         //    When k = 0, s = 0; otherwise s = 32.
         // ---------------------------------------------------------------------
-        let s = local.c_masked[0] + local.c_inverse[0];
+        let s = local.c_masked + local.c_inverse;
         let thirty_two = AB::Expr::from_canonical_u32(32);
         builder.when(is_real.clone()).assert_zero(s.clone() * (s.clone() - thirty_two));
 
@@ -489,9 +483,9 @@ mod tests {
                     let cols: &mut RotateCols<BabyBear> = row.borrow_mut();
 
                     // Maliciously set an upper byte of `c_masked` to a non-zero value.
-                    // This violates the `builder.when(is_real).assert_zero(local.c_masked[i])`
+                    // This violates the `builder.when(is_real).assert_zero(local.c_masked)`
                     // constraint.
-                    cols.c_masked[1] = BabyBear::one();
+                    cols.c_masked = BabyBear::one();
                 }
             }
 
