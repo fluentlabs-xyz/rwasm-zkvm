@@ -3,6 +3,7 @@
 use core::borrow::{Borrow, BorrowMut};
 
 use core::mem::size_of;
+use itertools::izip;
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
@@ -95,8 +96,7 @@ impl RotateChip {
         cols.right_shifted = Word(right_bytes.map(F::from_canonical_u8));
 
         // --- 4) Byte lookups: a = left OR right (byte-wise).
-        for ((a_b, l_b), r_b) in event.a.to_le_bytes().into_iter().zip(left_bytes).zip(right_bytes)
-        {
+        for (a_b, l_b, r_b) in izip!(event.a.to_le_bytes(), left_bytes, right_bytes) {
             let byte_event =
                 ByteLookupEvent { opcode: ByteOpcode::OR, a1: a_b as u16, a2: 0, b: l_b, c: r_b };
             blu.add_byte_lookup_event(byte_event);
@@ -235,21 +235,8 @@ where
         // ---------------------------------------------------------------------
         // 6) Local range checks for helper words (each is a byte)
         // ---------------------------------------------------------------------
-        let left_bytes = [
-            local.left_shifted[0],
-            local.left_shifted[1],
-            local.left_shifted[2],
-            local.left_shifted[3],
-        ];
-        builder.slice_range_check_u8(&left_bytes, is_real.clone());
-
-        let right_bytes = [
-            local.right_shifted[0],
-            local.right_shifted[1],
-            local.right_shifted[2],
-            local.right_shifted[3],
-        ];
-        builder.slice_range_check_u8(&right_bytes, is_real.clone());
+        builder.slice_range_check_u8(&local.left_shifted.0, is_real.clone());
+        builder.slice_range_check_u8(&local.right_shifted.0, is_real.clone());
 
         // ---------------------------------------------------------------------
         // 7) CPU bus: receive the actual rotated opcode and operands. We do not emit synthetic
