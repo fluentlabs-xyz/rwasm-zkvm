@@ -1642,6 +1642,9 @@ impl<'a> Executor<'a> {
                 &mut self.store,
             )
             .step();
+
+            self.postprocess_syscall();
+
             let res = self.execute_cycle(res)?;
             println!("self.record.cpuevent:{:?}", self.record.cpu_events);
             if res {
@@ -1824,6 +1827,26 @@ impl<'a> Executor<'a> {
                     MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record);
                 println!("final_event:{:?}", final_event);
                 memory_finalize_events.push(final_event);
+            }
+        }
+    }
+
+    pub fn postprocess_syscall(&mut self) {
+        if !self.unconstrained && self.executor_mode == ExecutorMode::Trace {
+            // Will need to transfer the existing memory local events in the executor to it's
+            // record, and return all the syscall memory local events.  This is similar
+            // to what `bump_record` does.
+
+            if let Some(op_state) = self.store.tracer.logs.last() {
+                if let Some(FatOpEvent::TableInit(event)) = &op_state.fat_op {
+                    for addr in &event.local_mem_access_addr {
+                        let local_mem_access = self.store.tracer.local_memory_event.remove(addr);
+
+                        if let Some(local_mem_access) = local_mem_access {
+                            self.record.cpu_local_memory_access.push(local_mem_access);
+                        }
+                    }
+                }
             }
         }
     }

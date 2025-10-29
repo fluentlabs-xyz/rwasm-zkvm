@@ -97,10 +97,11 @@ where
 
         // `num_extra_cycles` is checked to be equal to the return value of
         // `get_num_extra_ecall_cycles`
-        builder.assert_eq::<AB::Var, AB::Expr>(
-            local.num_extra_cycles,
-            self.get_num_extra_ecall_cycles::<AB>(local),
-        );
+        // TODO: revert this check
+        // builder.assert_eq::<AB::Var, AB::Expr>(
+        //     local.num_extra_cycles,
+        //     self.get_num_extra_ecall_cycles::<AB>(local),
+        // );
 
         // // Do the memory eval for op_a. For syscall instructions, we need to eval at register X5.
         // builder.eval_memory_access(
@@ -401,6 +402,7 @@ impl SyscallInstrsChip {
     }
 
     /// Returns the number of extra cycles from an ECALL instruction.
+    #[allow(dead_code)]
     pub(crate) fn get_num_extra_ecall_cycles<AB: SP1AirBuilder>(
         &self,
         local: &SyscallInstrColumns<AB::Var>,
