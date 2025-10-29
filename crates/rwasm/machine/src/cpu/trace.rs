@@ -191,7 +191,10 @@ impl CpuChip {
                 _ => unimplemented!(),
             };
             let syscall_id = F::from_canonical_u32(syscall_id);
-            let num_extra_cycles = cols.op_res_access.prev_value[2];
+            let num_extra_cycles = match instruction {
+                Opcode::TableInit(_) => F::from_canonical_u32(2),
+                _ => cols.op_res_access.prev_value[2],
+            };
             cols.is_halt =
                 F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
             cols.num_extra_cycles = num_extra_cycles;

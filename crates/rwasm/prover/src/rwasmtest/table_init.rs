@@ -15,8 +15,9 @@ pub fn test_base_case() {
         Opcode::I32Const(2.into()),
         Opcode::TableInit(0),
         Opcode::TableGet(0),
+        Opcode::I32Const(137.into()),
     ];
-    let elements = vec![5u32, 7u32, 9u32, 12u32];
+    let elements = vec![111u32, 111u32, 111u32, 111u32];
     let program = Program::from_instrs(ops).with_elements(elements);
     run_rwasm_prover(program);
 }
