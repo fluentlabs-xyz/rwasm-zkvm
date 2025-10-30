@@ -16,21 +16,23 @@ mod column;
 mod trace;
 use crate::memory::MemoryCols;
 pub use column::*;
+
 use rwasm::{
     mem_index::{TypedAddress, UNIT},
     N_MAX_TABLE_SIZE,
 };
+
 #[derive(Default)]
-pub struct TableChip {}
-impl<AB> Air<AB> for TableChip
+pub struct TableInitChip {}
+impl<AB> Air<AB> for TableInitChip
 where
     AB: SP1AirBuilder,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let (local, next) = (main.row_slice(0), main.row_slice(1));
-        let local: &TableCols<AB::Var> = (*local).borrow();
-        let next: &TableCols<AB::Var> = (*next).borrow();
+        let local: &TableInitCols<AB::Var> = (*local).borrow();
+        let next: &TableInitCols<AB::Var> = (*next).borrow();
 
         builder.assert_bool(local.is_first);
         builder.assert_bool(local.is_last);
@@ -133,8 +135,12 @@ where
     }
 }
 
-impl TableChip {
-    fn eval_memory_access<AB: SP1AirBuilder>(&self, local: &TableCols<AB::Var>, builder: &mut AB) {
+impl TableInitChip {
+    fn eval_memory_access<AB: SP1AirBuilder>(
+        &self,
+        local: &TableInitCols<AB::Var>,
+        builder: &mut AB,
+    ) {
         let unit = AB::Expr::from_canonical_u32(UNIT);
 
         builder.eval_memory_access(
@@ -187,7 +193,7 @@ impl TableChip {
     }
 }
 
-impl<F> BaseAir<F> for TableChip {
+impl<F> BaseAir<F> for TableInitChip {
     fn width(&self) -> usize {
         NUM_TABLE_INIT_SIZE
     }

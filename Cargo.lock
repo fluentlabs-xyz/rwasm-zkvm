@@ -321,7 +321,7 @@ checksum = "64b728d511962dda67c1bc7ea7c03736ec275ed2cf4c35d9585298ac9ccf3b73"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -408,7 +408,7 @@ dependencies = [
  "proc-macro-error2",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -424,7 +424,7 @@ dependencies = [
  "proc-macro-error2",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
  "syn-solidity",
  "tiny-keccak",
 ]
@@ -441,7 +441,7 @@ dependencies = [
  "macro-string",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
  "syn-solidity",
 ]
 
@@ -736,7 +736,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62945a2f7e6de02a31fe400aa489f0e0f5b2502e69f95f853adb82a96c7a6b60"
 dependencies = [
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -774,7 +774,7 @@ dependencies = [
  "num-traits",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -888,7 +888,7 @@ checksum = "213888f660fddcca0d257e88e54ac05bca01885f258ccdf695bafd77031bb69d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -1086,7 +1086,7 @@ checksum = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -1116,7 +1116,7 @@ checksum = "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -1156,7 +1156,7 @@ checksum = "ffdcb70bdbc4d478427380519163274ac86e52916e10f0a8889adf0f96d3fee7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -1332,7 +1332,7 @@ dependencies = [
  "regex",
  "rustc-hash 1.1.0",
  "shlex",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -1489,7 +1489,7 @@ checksum = "f9abbd1bc6865053c427f7198e6af43bfdedc55ab791faed4fbd361d789575ff"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -1580,16 +1580,16 @@ dependencies = [
  "quote",
  "serde",
  "serde_json",
- "syn 2.0.107",
+ "syn 2.0.108",
  "tempfile",
  "toml",
 ]
 
 [[package]]
 name = "cc"
-version = "1.2.41"
+version = "1.2.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac9fe6cdbb24b6ade63616c0a0688e45bb56732262c158df3c0c4bea4ca47cb7"
+checksum = "739eb0f94557554b3ca9a86d2d37bebd49c5e6d0c1d2bda35ba5bdac830befc2"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1707,7 +1707,7 @@ dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -1879,7 +1879,7 @@ checksum = "dcb25d077389e53838a8158c8e99174c5a9d902dee4904320db714f3c653ffba"
 [[package]]
 name = "cranelift-assembler-x64"
 version = "0.121.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "cranelift-assembler-x64-meta",
 ]
@@ -1887,7 +1887,7 @@ dependencies = [
 [[package]]
 name = "cranelift-assembler-x64-meta"
 version = "0.121.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "cranelift-srcgen",
 ]
@@ -1895,7 +1895,7 @@ dependencies = [
 [[package]]
 name = "cranelift-bforest"
 version = "0.121.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "cranelift-entity",
 ]
@@ -1903,7 +1903,7 @@ dependencies = [
 [[package]]
 name = "cranelift-bitset"
 version = "0.121.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "serde",
  "serde_derive",
@@ -1912,7 +1912,7 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen"
 version = "0.121.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "bumpalo",
  "cranelift-assembler-x64",
@@ -1938,7 +1938,7 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen-meta"
 version = "0.121.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "cranelift-assembler-x64-meta",
  "cranelift-codegen-shared",
@@ -1949,12 +1949,12 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen-shared"
 version = "0.121.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 
 [[package]]
 name = "cranelift-control"
 version = "0.121.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "arbitrary",
 ]
@@ -1962,7 +1962,7 @@ dependencies = [
 [[package]]
 name = "cranelift-entity"
 version = "0.121.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "cranelift-bitset",
  "serde",
@@ -1972,7 +1972,7 @@ dependencies = [
 [[package]]
 name = "cranelift-frontend"
 version = "0.121.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "cranelift-codegen",
  "log",
@@ -1983,12 +1983,12 @@ dependencies = [
 [[package]]
 name = "cranelift-isle"
 version = "0.121.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 
 [[package]]
 name = "cranelift-native"
 version = "0.121.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "cranelift-codegen",
  "libc",
@@ -1998,7 +1998,7 @@ dependencies = [
 [[package]]
 name = "cranelift-srcgen"
 version = "0.121.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 
 [[package]]
 name = "crc"
@@ -2324,9 +2324,9 @@ dependencies = [
 
 [[package]]
 name = "deranged"
-version = "0.5.4"
+version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a41953f86f8a05768a6cda24def994fd2f424b04ec5c719cf89989779f199071"
+checksum = "ececcb659e7ba858fb4f10388c250a7252eb0a27373f1a72b8748afdd248e587"
 dependencies = [
  "powerfmt",
 ]
@@ -2368,7 +2368,7 @@ checksum = "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -2379,7 +2379,7 @@ checksum = "bda628edc44c4bb645fbe0f758797143e4e07926f7ebf4e9bdfbd3d2ce621df3"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
  "unicode-xid",
 ]
 
@@ -2466,7 +2466,7 @@ checksum = "97369cbbc041bc366949bc74d34658d6cda5621039731c6310521892a3a20ae0"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -2525,7 +2525,7 @@ dependencies = [
  "enum-ordinalize",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -2619,7 +2619,7 @@ checksum = "f282cfdfe92516eb26c2af8589c274c7c17681f5ecc03c18255fe741c6aa64eb"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -2639,7 +2639,7 @@ checksum = "0d28318a75d4aead5c4db25382e8ef717932d0346600cacae6357eb5941bc5ff"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -2971,7 +2971,7 @@ checksum = "162ee34ebcb7c64a8abebc059ce0fee27c2262618d7b60ed8faf72fef13c3650"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -3714,7 +3714,7 @@ checksum = "a0eb5a3343abf848c0984fe4604b2b105da9539376e24fc0a3b0007411ae4fd9"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -3797,13 +3797,13 @@ dependencies = [
 
 [[package]]
 name = "is-terminal"
-version = "0.4.16"
+version = "0.4.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e04d7f318608d35d4b61ddd75cbdaee86b023ebe2bd5a66ee0915f0bf93095a9"
+checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4111,7 +4111,7 @@ checksum = "1b27834086c65ec3f9387b096d66e99f221cf081c2b738042aa252bcd41204e3"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -4327,7 +4327,7 @@ checksum = "ed3955f1a9c7c0c15e092f9c887db08b1fc683305fdf6eb6684f22555355e202"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -4435,7 +4435,7 @@ checksum = "ff32365de1b6743cb203b710788263c44a03de03802daf96092f2da4fe6ba4d7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -4523,7 +4523,7 @@ checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -4844,7 +4844,7 @@ dependencies = [
  "proc-macro-crate 3.4.0",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -4970,7 +4970,7 @@ checksum = "6e918e4ff8c4549eb882f14b3a4bc8c8bc93de829416eacf579f1207a8fbf861"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -5120,7 +5120,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
 dependencies = [
  "proc-macro2",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -5181,7 +5181,7 @@ dependencies = [
  "proc-macro-error-attr2",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -5192,9 +5192,9 @@ checksum = "dc375e1527247fe1a97d8b7156678dfe7c1af2fc075c9a4db3690ecd2a148068"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.101"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89ae43fd86e4158d6db51ad8e2b80f313af9cc74f5c0e03ccb87de09998732de"
+checksum = "5ee95bc4ef87b8d5ba32e8b7714ccc834865276eab0aed5c9958d00ec45f49e8"
 dependencies = [
  "unicode-ident",
 ]
@@ -5245,7 +5245,7 @@ dependencies = [
  "prost",
  "prost-types",
  "regex",
- "syn 2.0.107",
+ "syn 2.0.108",
  "tempfile",
 ]
 
@@ -5259,7 +5259,7 @@ dependencies = [
  "itertools 0.14.0",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -5283,7 +5283,7 @@ dependencies = [
 [[package]]
 name = "pulley-interpreter"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "cranelift-bitset",
  "log",
@@ -5294,11 +5294,11 @@ dependencies = [
 [[package]]
 name = "pulley-macros"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -5977,7 +5977,7 @@ dependencies = [
 [[package]]
 name = "rwasm"
 version = "0.0.0"
-source = "git+https://github.com/fluentlabs-xyz/rwasm?branch=devel#e525a3f1f0c741d563b5fb90ebda3adb03109821"
+source = "git+https://github.com/fluentlabs-xyz/rwasm?branch=devel#3326d092e5fb9c0f2eb911b5b237ad651d375b23"
 dependencies = [
  "bincode 2.0.1",
  "bitvec",
@@ -6000,7 +6000,7 @@ dependencies = [
 [[package]]
 name = "rwasm"
 version = "0.0.0"
-source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing#768c4938e13e0299f00fd9bf1eb40b056635dab6"
+source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ftable-grow#7d8cbed780630e0f96b3bafc4111610fd3a9557a"
 dependencies = [
  "anyhow",
  "bincode 2.0.1",
@@ -6052,7 +6052,7 @@ dependencies = [
  "range-set-blaze",
  "rrs-succinct",
  "rustc-demangle",
- "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing)",
+ "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ftable-grow)",
  "serde",
  "serde_json",
  "sp1-curves",
@@ -6104,7 +6104,7 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "rayon-scan",
- "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing)",
+ "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ftable-grow)",
  "rwasm-executor",
  "serde",
  "serde_json",
@@ -6161,7 +6161,7 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "rayon-scan",
- "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing)",
+ "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ftable-grow)",
  "rwasm-executor",
  "rwasm-machine",
  "serde",
@@ -6210,7 +6210,7 @@ dependencies = [
  "p3-symmetric",
  "p3-util",
  "rayon",
- "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing)",
+ "rwasm 0.0.0 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ftable-grow)",
  "rwasm-executor",
  "rwasm-machine",
  "serde",
@@ -6265,7 +6265,7 @@ dependencies = [
  "proc-macro-crate 3.4.0",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -6309,7 +6309,7 @@ checksum = "1783eabc414609e28a5ba76aee5ddd52199f7107a0b24c2e9746a1ecc34a683d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -6449,7 +6449,7 @@ checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -6562,7 +6562,7 @@ checksum = "5d69265a08751de7844521fd15003ae0a888e035773ba05695c5c759a6f89eef"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -7423,7 +7423,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustversion",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -7435,7 +7435,7 @@ dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -7447,7 +7447,7 @@ dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -7522,9 +7522,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.107"
+version = "2.0.108"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a26dbd934e5451d21ef060c018dae56fc073894c5a7896f882928a76e6d081b"
+checksum = "da58917d35242480a05c2897064da0a80589a2a0476c9a3f2fdc83b53502e917"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7540,7 +7540,7 @@ dependencies = [
  "paste",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -7560,7 +7560,7 @@ checksum = "728a70f3dbaf5bab7f0c4b1ac8d7ae5ea60a4b5549c8a5914361c99147a709d2"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -7666,7 +7666,7 @@ checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -7677,7 +7677,7 @@ checksum = "3ff15c8ecd7de3849db632e14d18d2571fa09dfc5ed93479bc4485c7a517c913"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -7836,7 +7836,7 @@ checksum = "af407857209536a95c8e56f8231ef2c2e2aff839b22e07a1ffcbc617e9db9fa5"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -8109,7 +8109,7 @@ checksum = "81383ab64e72a7a8b8e13130c49e3dab29def6d0c7d76a03087b3cf71c5c6903"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -8191,7 +8191,7 @@ checksum = "70977707304198400eb4835a78f6a9f928bf41bba420deb8fdb175cd965d77a7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -8495,7 +8495,7 @@ dependencies = [
  "log",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
  "wasm-bindgen-shared",
 ]
 
@@ -8530,7 +8530,7 @@ checksum = "9f07d2f20d4da7b26400c9f4a0511e6e0345b040694e8a75bd41d578fa4421d7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -8673,7 +8673,7 @@ dependencies = [
 [[package]]
 name = "wasmtime"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "addr2line 0.24.2",
  "anyhow",
@@ -8728,7 +8728,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-asm-macros"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "cfg-if",
 ]
@@ -8736,7 +8736,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-cache"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -8755,12 +8755,12 @@ dependencies = [
 [[package]]
 name = "wasmtime-component-macro"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "anyhow",
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
  "wasmtime-component-util",
  "wasmtime-wit-bindgen",
  "wit-parser",
@@ -8769,12 +8769,12 @@ dependencies = [
 [[package]]
 name = "wasmtime-component-util"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 
 [[package]]
 name = "wasmtime-cranelift"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -8800,7 +8800,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-environ"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "anyhow",
  "cpp_demangle",
@@ -8826,7 +8826,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-fiber"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "anyhow",
  "cc",
@@ -8841,7 +8841,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-jit-debug"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "cc",
  "object 0.36.7",
@@ -8852,7 +8852,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-jit-icache-coherence"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -8863,7 +8863,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-math"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "libm",
 ]
@@ -8871,22 +8871,22 @@ dependencies = [
 [[package]]
 name = "wasmtime-slab"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 
 [[package]]
 name = "wasmtime-versioned-export-macros"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
 name = "wasmtime-winch"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "anyhow",
  "cranelift-codegen",
@@ -8902,7 +8902,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-wit-bindgen"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "anyhow",
  "heck 0.5.0",
@@ -9014,7 +9014,7 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 [[package]]
 name = "winch-codegen"
 version = "34.0.1"
-source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#f0c5b017d2b7d59c84999123338da7634ab0cf1f"
+source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b105b09907133bb877f464889932e00d"
 dependencies = [
  "anyhow",
  "cranelift-assembler-x64",
@@ -9070,7 +9070,7 @@ checksum = "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -9081,7 +9081,7 @@ checksum = "3f316c4a2570ba26bbec722032c4099d8c8bc095efccdc15688708623367e358"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -9451,7 +9451,7 @@ checksum = "38da3c9736e16c5d3c8c597a9aaa5d1fa565d0532ae05e27c24aa62fb32c0ab6"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
  "synstructure",
 ]
 
@@ -9472,7 +9472,7 @@ checksum = "88d2b8d9c68ad2b9e4340d7832716a4d21a22a1154777ad56ea55c51a9cf3831"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -9492,7 +9492,7 @@ checksum = "d71e5d6e06ab090c67b5e44993ec16b72dcbaabc526db883a360057678b48502"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
  "synstructure",
 ]
 
@@ -9513,7 +9513,7 @@ checksum = "ce36e65b0d2999d2aafac989fb249189a141aee1f53c612c1f37d72631959f69"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -9546,7 +9546,7 @@ checksum = "5b96237efa0c878c64bd89c436f661be4e46b2f3eff1ebb976f7ef2321d2f58f"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.107",
+ "syn 2.0.108",
 ]
 
 [[package]]

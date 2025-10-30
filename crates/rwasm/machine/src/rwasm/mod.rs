@@ -19,7 +19,7 @@ use crate::{
     memory::{MemoryChipType, MemoryInstructionsChip, MemoryLocalChip},
     shape::Shapeable,
     syscall::{
-        fat_op::TableChip,
+        fat_op::{table_grow::TableGrowChip, TableInitChip},
         instructions::SyscallInstrsChip,
         precompiles::fptower::{Fp2AddSubAssignChip, Fp2MulAssignChip, FpOpChip},
     },
@@ -165,7 +165,9 @@ pub enum RwasmAir<F: PrimeField32> {
     /// A precompile for BN-254 fp2 addition/subtraction.
     Bn254Fp2AddSub(Fp2AddSubAssignChip<Bn254BaseField>),
 
-    Table(TableChip),
+    TableInit(TableInitChip),
+
+    TableGrow(TableGrowChip),
 }
 
 impl<F: PrimeField32> RwasmAir<F> {
@@ -418,9 +420,13 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(byte.name(), byte.cost());
         chips.push(byte);
 
-        let table = Chip::new(RwasmAir::Table(TableChip::default()));
-        costs.insert(table.name(), table.cost());
-        chips.push(table);
+        let table_init = Chip::new(RwasmAir::TableInit(TableInitChip::default()));
+        costs.insert(table_init.name(), table_init.cost());
+        chips.push(table_init);
+
+        let table_grow = Chip::new(RwasmAir::TableGrow(TableGrowChip::default()));
+        costs.insert(table_grow.name(), table_grow.cost());
+        chips.push(table_grow);
 
         assert_eq!(chips.len(), costs.len(), "chips and costs must have the same length",);
 
@@ -575,7 +581,8 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Bn254Fp => RwasmAirId::Bn254FpOpAssign,
             RwasmAirDiscriminants::Bn254Fp2Mul => RwasmAirId::Bn254Fp2MulAssign,
             RwasmAirDiscriminants::Bn254Fp2AddSub => RwasmAirId::Bn254Fp2AddSubAssign,
-            RwasmAirDiscriminants::Table => RwasmAirId::Table,
+            RwasmAirDiscriminants::TableInit => RwasmAirId::TableInit,
+            RwasmAirDiscriminants::TableGrow => RwasmAirId::TableGrow,
         }
     }
 }

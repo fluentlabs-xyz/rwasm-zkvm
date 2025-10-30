@@ -1,21 +1,21 @@
 use crate::{
     memory::{ElementAddressCols, TableAddressCols},
-    operations::Range16bCols,
+    operations::{Range16bCols, Range8bCols},
 };
-use rwasm::N_MAX_TABLE_SIZE;
+use rwasm::{N_MAX_TABLES, N_MAX_TABLE_SIZE};
 use sp1_derive::AlignedBorrow;
 
 use crate::memory::{MemoryReadCols, MemoryWriteCols};
 
 pub const NUM_TABLE_INIT_SIZE: usize = num_table_cols();
 pub const fn num_table_cols() -> usize {
-    size_of::<TableCols<u8>>()
+    size_of::<TableInitCols<u8>>()
 }
 
 // TODO(Aliaksei): try to place several src → dst pairs in one row
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
-pub struct TableCols<T> {
+pub struct TableInitCols<T> {
     pub sp: T,
     pub shard: T,
     pub clk: T,
@@ -34,6 +34,6 @@ pub struct TableCols<T> {
     pub is_real: T,
 }
 
-pub type TableIdxCols<T> = Range16bCols<T, 0, N_MAX_TABLE_SIZE>;
+pub type TableIdxCols<T> = Range8bCols<T, 0, N_MAX_TABLES>;
 
 pub type LengthCols<T> = Range16bCols<T, 0, N_MAX_TABLE_SIZE>;

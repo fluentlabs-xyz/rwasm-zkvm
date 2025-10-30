@@ -1,5 +1,6 @@
 mod comp;
 mod rotate;
+mod table_grow;
 mod table_init;
 
 use rwasm_executor::Program;
