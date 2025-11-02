@@ -149,6 +149,10 @@ pub enum RwasmAirId {
     /// The rotated left/right chip.
     #[subenum(CoreAirId)]
     Rotate = 47,
+
+    /// Hamming weight.
+    #[subenum(CoreAirId)]
+    Popcnt = 48,
 }
 
 impl RwasmAirId {

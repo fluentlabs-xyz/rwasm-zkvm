@@ -13,6 +13,7 @@ use sp1_stark::{
 use strum_macros::{EnumDiscriminants, EnumIter};
 
 use crate::{
+    alu::PopcntChip,
     bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
     control_flow::{BranchChip, CallChip},
     global::GlobalChip,
@@ -94,6 +95,8 @@ pub enum RwasmAir<F: PrimeField32> {
     ShiftRight(ShiftRightChip),
     /// An AIR for WASM Rotl, Rotr instruction.
     Rotate(RotateChip),
+    /// An AIR for WASM Popcnt instruction.
+    Popcnt(PopcntChip),
     /// An AIR for RISC-V memory instructions.
     Memory(MemoryInstructionsChip),
     /// An AIR for RISC-V branch instructions.
@@ -355,6 +358,10 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(rotate.name(), rotate.cost());
         chips.push(rotate);
 
+        let popcnt = Chip::new(RwasmAir::Popcnt(PopcntChip::default()));
+        costs.insert(popcnt.name(), popcnt.cost());
+        chips.push(popcnt);
+
         let add_sub = Chip::new(RwasmAir::Add(AddSubChip::default()));
         costs.insert(add_sub.name(), add_sub.cost());
         chips.push(add_sub);
@@ -451,6 +458,7 @@ impl<F: PrimeField32> RwasmAir<F> {
             RwasmAir::ShiftLeft(ShiftLeft::default()),
             RwasmAir::ShiftRight(ShiftRightChip::default()),
             RwasmAir::Rotate(RotateChip::default()),
+            RwasmAir::Popcnt(PopcntChip::default()),
             RwasmAir::Memory(MemoryInstructionsChip::default()),
             RwasmAir::Branch(BranchChip::default()),
             RwasmAir::Call(CallChip::default()),
@@ -540,6 +548,7 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::ShiftLeft => RwasmAirId::ShiftLeft,
             RwasmAirDiscriminants::ShiftRight => RwasmAirId::ShiftRight,
             RwasmAirDiscriminants::Rotate => RwasmAirId::Rotate,
+            RwasmAirDiscriminants::Popcnt => RwasmAirId::Popcnt,
             RwasmAirDiscriminants::Memory => RwasmAirId::MemoryInstrs,
             RwasmAirDiscriminants::Branch => RwasmAirId::Branch,
             RwasmAirDiscriminants::Call => RwasmAirId::Call,

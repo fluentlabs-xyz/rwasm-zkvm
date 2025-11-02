@@ -957,6 +957,11 @@ impl<'a> Executor<'a> {
             Opcode::I32Rotl | Opcode::I32Rotr => {
                 self.record.rotate_events.push(event);
             }
+            Opcode::I32Popcnt => {
+                self.record.popcnt_events.push(event);
+
+                println!("I32Popcnt: {:?}", event);
+            }
             _ => unreachable!(),
         }
     }
@@ -5096,5 +5101,17 @@ mod tests {
 
         let top = rt.state.memory.get(rt.state.sp).unwrap().value;
         assert_eq!(top, b, "recovery result mismatch");
+    }
+
+    #[test]
+    fn test_i32popcnt() {
+        let a: u32 = 0x137_137;
+        let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Popcnt]);
+
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+
+        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+        assert_eq!(top, a.count_ones(), "incorrect count ones");
     }
 }

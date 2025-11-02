@@ -49,6 +49,8 @@ pub struct ExecutionRecord {
     pub lt_events: Vec<AluEvent>,
     /// A trace of the Rotl, Rotr events.
     pub rotate_events: Vec<AluEvent>,
+    /// A trace of Popcnt events
+    pub popcnt_events: Vec<AluEvent>,
     /// A trace of the memory opcodes.
     pub memory_instr_events: Vec<MemInstrEvent>,
 

@@ -1,4 +1,5 @@
 mod comp;
+mod popcnt;
 mod rotate;
 mod table_init;
 
@@ -66,6 +67,8 @@ mod tests {
     };
 
     use table_init::*;
+
+    use popcnt::*;
 
     fn build_elf() -> Program {
         let x_value: u32 = 0x11;
