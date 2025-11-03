@@ -272,6 +272,7 @@ impl MachineRecord for ExecutionRecord {
         stats.insert("shift_right_events".to_string(), self.shift_right_events.len());
         stats.insert("divrem_events".to_string(), self.divrem_events.len());
         stats.insert("lt_events".to_string(), self.lt_events.len());
+        stats.insert("rotate_events".to_string(), self.rotate_events.len());
         stats.insert("memory_opcodes_events".to_string(), self.memory_instr_events.len());
         stats.insert("branch_events".to_string(), self.branch_events.len());
         stats.insert("const_events".to_string(), self.const_events.len());
@@ -308,6 +309,7 @@ impl MachineRecord for ExecutionRecord {
         self.shift_right_events.append(&mut other.shift_right_events);
         self.divrem_events.append(&mut other.divrem_events);
         self.lt_events.append(&mut other.lt_events);
+        self.rotate_events.append(&mut other.rotate_events);
         self.memory_instr_events.append(&mut other.memory_instr_events);
         self.branch_events.append(&mut other.branch_events);
         self.const_events.append(&mut other.const_events);
