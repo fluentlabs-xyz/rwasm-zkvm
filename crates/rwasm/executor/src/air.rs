@@ -153,6 +153,9 @@ pub enum RwasmAirId {
     /// Hamming weight.
     #[subenum(CoreAirId)]
     Popcnt = 48,
+
+    #[subenum(CoreAirId)]
+    Trailing = 49,
 }
 
 impl RwasmAirId {
@@ -169,6 +172,8 @@ impl RwasmAirId {
             RwasmAirId::DivRem,
             RwasmAirId::Rotate,
             RwasmAirId::Lt,
+            RwasmAirId::Trailing,
+            RwasmAirId::Popcnt,
             RwasmAirId::Auipc,
             RwasmAirId::MemoryLocal,
             RwasmAirId::MemoryInstrs,

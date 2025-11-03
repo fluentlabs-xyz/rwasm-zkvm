@@ -2,6 +2,7 @@ mod comp;
 mod popcnt;
 mod rotate;
 mod table_init;
+mod trailing;
 
 use rwasm_executor::Program;
 use rwasm_machine::utils::setup_logger;

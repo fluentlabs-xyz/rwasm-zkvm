@@ -947,6 +947,9 @@ impl<'a> Executor<'a> {
                     _ => unreachable!(),
                 }
             }
+            Opcode::I32Ctz | Opcode::I32Clz => {
+                self.record.trailing_events.push(event);
+            }
             Opcode::I32Mul => {
                 self.record.mul_events.push(event);
             }
@@ -5113,5 +5116,28 @@ mod tests {
 
         let top = rt.state.memory.get(rt.state.sp).unwrap().value;
         assert_eq!(top, a.count_ones(), "incorrect count ones");
+    }
+    #[test]
+    fn test_i32clz() {
+        //count leading zeros
+        let a: u32 = 0x137_137;
+        let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Clz]);
+
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+
+        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+        assert_eq!(top, a.leading_zeros(), "incorrect count zeros");
+    }
+    #[test]
+    fn test_i32ctz() {
+        let a: u32 = 0x137_137;
+        let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Ctz]);
+
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+
+        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+        assert_eq!(top, a.trailing_zeros(), "incorrect count zeros");
     }
 }
