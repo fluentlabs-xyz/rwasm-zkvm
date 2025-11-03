@@ -234,7 +234,6 @@ where
         let c_masked_word = Word::extend_var::<AB>(local.c_masked);
         let c_inverse_word = Word::extend_var::<AB>(local.c_inverse);
 
-
         let shr_opcode = AB::Expr::from_canonical_u32(Opcode::I32ShrU.code());
         let shl_opcode = AB::Expr::from_canonical_u32(Opcode::I32Shl.code());
 
