@@ -231,10 +231,9 @@ where
 
         // 6) Bus Checks: send the decomposed shift operations to the bus for verification by the
         //    ShiftLeftChip and ShiftRightChip.
+        let c_masked_word = Word::extend_var::<AB>(local.c_masked);
+        let c_inverse_word = Word::extend_var::<AB>(local.c_inverse);
 
-        let c_masked_word = Word([local.c_masked.into(), zero.clone(), zero.clone(), zero.clone()]);
-        let c_inverse_word =
-            Word([local.c_inverse.into(), zero.clone(), zero.clone(), zero.clone()]);
 
         let shr_opcode = AB::Expr::from_canonical_u32(Opcode::I32ShrU.code());
         let shl_opcode = AB::Expr::from_canonical_u32(Opcode::I32Shl.code());
