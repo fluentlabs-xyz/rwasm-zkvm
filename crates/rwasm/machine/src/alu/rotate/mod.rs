@@ -488,6 +488,8 @@ mod tests {
         let samples: &[(Opcode, u32, u32)] = &[
             // (opcode, b, c)
             (Opcode::I32Rotl, 0x0000_0001, 0),
+            (Opcode::I32Rotl, 0x0000_fffd, 0),
+            (Opcode::I32Rotl, 0x0000_00ff, 0),
             (Opcode::I32Rotl, 0x0000_0001, 122),
             (Opcode::I32Rotl, 0x0000_0001, 722),
             (Opcode::I32Rotl, 0x0000_0001, 822),
@@ -495,6 +497,8 @@ mod tests {
             (Opcode::I32Rotl, 0x0000_0001, 16),
             (Opcode::I32Rotl, 0x0000_0001, 31),
             (Opcode::I32Rotl, 0x2121_2121, 0xffff_ffef), // masked -> 15
+            (Opcode::I32Rotr, 0x0000_00f1, 0),
+            (Opcode::I32Rotr, 0x8000_00f1, 0),
             (Opcode::I32Rotr, 0x8000_0001, 1),
             (Opcode::I32Rotr, 0x2121_2121, 8),
             (Opcode::I32Rotr, 0xffff_ffff, 31),
