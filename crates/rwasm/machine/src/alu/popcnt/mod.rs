@@ -1,4 +1,7 @@
-use crate::{air::SP1CoreAirBuilder, utils::pad_rows_fixed};
+use crate::{
+    air::{SP1CoreAirBuilder, WordAirBuilder},
+    utils::pad_rows_fixed,
+};
 use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
@@ -19,6 +22,7 @@ pub const NUM_POPCNT_COLS: usize = size_of::<PopcntCols<u8>>();
 #[repr(C)]
 pub struct PopcntCols<T> {
     pub pc: T,
+    pub a: Word<T>,
     pub b: [T; 32],
     pub is_real: T,
 }
@@ -39,6 +43,7 @@ impl PopcntChip {
         for i in 0..32 {
             cols.b[i] = F::from_canonical_u32((event.b >> i) & 1);
         }
+        cols.a = event.a.into();
     }
 }
 
@@ -66,6 +71,8 @@ where
         let a = Word::<AB::Expr>::extend_expr::<AB>(
             local.b.iter().copied().fold(AB::Expr::zero(), |acc, var| acc + var),
         );
+        builder.when(local.is_real).assert_word_eq(a, local.a);
+
         builder.receive_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -73,7 +80,7 @@ where
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(Opcode::I32Popcnt.code()),
-            a,
+            local.a,
             b,
             Word::<AB::Expr>::default(),
             AB::Expr::zero(),
@@ -131,20 +138,34 @@ impl<F: PrimeField32> MachineAir<F> for PopcntChip {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::print_stdout)]
+
     use super::{PopcntChip, NUM_POPCNT_COLS};
-    use crate::utils::{uni_stark_prove as prove, uni_stark_verify as verify};
+    use crate::{
+        alu::PopcntCols,
+        io::SP1Stdin,
+        rwasm::RwasmAir,
+        utils::{run_malicious_test, uni_stark_prove as prove, uni_stark_verify as verify},
+    };
+    use core::borrow::BorrowMut;
     use p3_baby_bear::BabyBear;
     use p3_matrix::{dense::RowMajorMatrix, Matrix};
-    use rwasm_executor::{events::AluEvent, ExecutionRecord, Opcode};
-    use sp1_stark::{air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, StarkGenericConfig};
+    use rand::{thread_rng, Rng};
+    use rwasm_executor::{
+        events::{AluEvent, MemoryRecordEnum},
+        ExecutionRecord, Opcode, Program,
+    };
+    use sp1_stark::{
+        air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
+        MachineProver, StarkGenericConfig,
+    };
 
     #[test]
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
         let b: u32 = 0x137_137;
         let a = b.count_ones();
-        shard.rotate_events =
-            vec![AluEvent::new(0, Opcode::I32Rotl, a, b, 0, Opcode::I32Popcnt.code())];
+        shard.popcnt_events =
+            vec![AluEvent::new(0, Opcode::I32Popcnt, a, b, 0, Opcode::I32Popcnt.code())];
         let chip = PopcntChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
@@ -175,16 +196,97 @@ mod tests {
             events.push(AluEvent::new(0, Opcode::I32Popcnt, a, b, 0, Opcode::I32Popcnt.code()));
         }
         // Pad to ~1000 rows
-        events.resize_with(1000, || {
+        /*  events.resize_with(1000, || {
             AluEvent::new(0, Opcode::I32Popcnt, 0, 0, 0, Opcode::I32Popcnt.code())
-        });
+        });*/
         let mut shard = ExecutionRecord::default();
-        shard.rotate_events = events;
+        shard.popcnt_events = events;
         let chip = PopcntChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
         let proof = prove::<BabyBearPoseidon2, PopcntChip>(&config, &chip, &mut challenger, trace);
         let mut challenger = config.challenger();
         verify(&config, &chip, &mut challenger, &proof).unwrap();
+    }
+
+    #[test]
+    fn test_malicious_popcnt() {
+        type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
+        const NUM_TESTS: usize = 1;
+
+        let mut rng = thread_rng();
+        let opcode = Opcode::I32Popcnt;
+        for _ in 0..NUM_TESTS {
+            let op_b: u32 = rng.gen();
+            let correct: u32 = op_b.count_ones();
+
+            let op_a = correct.wrapping_add(1); // wrong value
+            assert_ne!(op_a, correct);
+
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(524u32.into()),
+                Opcode::I32Const(3u32.into()),
+                Opcode::I32Const(22u32.into()),
+                Opcode::I32Const(op_b.into()),
+                opcode,
+            ]);
+            let stdin = SP1Stdin::new();
+
+            let malicious = move |prover: &P, record: &mut ExecutionRecord| {
+                let mut malicious_record = record.clone();
+
+                // forge CPU result cell + memory write
+                if malicious_record.cpu_events.len() > 4 {
+                    malicious_record.cpu_events[4].res = op_a as u32;
+                    if let Some(MemoryRecordEnum::Write(mut write_record)) =
+                        malicious_record.cpu_events[4].res_record
+                    {
+                        write_record.value = op_a as u32;
+                    }
+                }
+
+                // also forge the PopcntChip chip’s `a` column to match the bad value
+                let chip = chip_name!(PopcntChip, BabyBear);
+                let mut traces = prover.generate_traces(&malicious_record);
+                if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == chip) {
+                    let row = trace.row_mut(0);
+                    let row: &mut PopcntCols<BabyBear> = row.borrow_mut();
+                    row.a = op_a.into();
+                }
+
+                traces
+            };
+
+            let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
+            let chip = chip_name!(PopcntChip, BabyBear);
+            assert!(result.is_err() && result.unwrap_err().is_constraints_failing(&chip));
+        }
+    }
+    #[test]
+    fn test_malicious_popcnt_event() {
+        let config = BabyBearPoseidon2::new();
+        let mut challenger = config.challenger();
+
+        // Create a malicious event: popcnt(13) is 3, but we claim it's 5.
+        let b = 0b1101;
+        let malicious_a = 5;
+        let event =
+            AluEvent::new(0, Opcode::I32Popcnt, malicious_a, b, 0, Opcode::I32Popcnt.code());
+
+        let mut shard = ExecutionRecord::default();
+        shard.popcnt_events.push(event);
+
+        let chip = PopcntChip::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        // The trace itself is generated correctly based on `b`, but the `a` in the event is a lie.
+        // The prover will prove a statement about a trace derived from `b`, but the verifier
+        // should check this against the public inputs (the event), which contains the incorrect
+        // `a`. This inconsistency should cause verification to fail.
+        let proof = prove::<BabyBearPoseidon2, PopcntChip>(&config, &chip, &mut challenger, trace);
+        let mut verifier_challenger = config.challenger();
+        let result = verify(&config, &chip, &mut verifier_challenger, &proof);
+        assert!(result.is_err(), "verification should fail for malicious popcnt result");
     }
 }
