@@ -290,56 +290,62 @@ mod tests {
     }
 
     #[test]
-    fn test_malicious_ctz() {
+    fn test_malicious_trailing() {
         type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
         const NUM_TESTS: usize = 1;
 
         let mut rng = thread_rng();
-        let opcode = Opcode::I32Ctz;
-        for _ in 0..NUM_TESTS {
-            let op_b: u32 = rng.gen();
-            let correct: u32 = op_b.trailing_zeros();
+        let opcodes = [Opcode::I32Ctz, Opcode::I32Clz];
+        for opcode in opcodes {
+            for _ in 0..NUM_TESTS {
+                let op_b: u32 = rng.gen();
+                let correct: u32 = if opcode == Opcode::I32Ctz {
+                    op_b.trailing_zeros()
+                } else {
+                    op_b.leading_zeros()
+                };
 
-            let op_a = correct.wrapping_add(1); // wrong value
-            assert_ne!(op_a, correct);
+                let op_a = correct.wrapping_add(1); // wrong value
+                assert_ne!(op_a, correct);
 
-            let program = Program::from_instrs(vec![
-                Opcode::I32Const(524u32.into()),
-                Opcode::I32Const(3u32.into()),
-                Opcode::I32Const(22u32.into()),
-                Opcode::I32Const(op_b.into()),
-                opcode,
-            ]);
-            let stdin = SP1Stdin::new();
+                let program = Program::from_instrs(vec![
+                    Opcode::I32Const(524u32.into()),
+                    Opcode::I32Const(3u32.into()),
+                    Opcode::I32Const(22u32.into()),
+                    Opcode::I32Const(op_b.into()),
+                    opcode,
+                ]);
+                let stdin = SP1Stdin::new();
 
-            let malicious = move |prover: &P, record: &mut ExecutionRecord| {
-                let mut malicious_record = record.clone();
+                let malicious = move |prover: &P, record: &mut ExecutionRecord| {
+                    let mut malicious_record = record.clone();
 
-                // forge CPU result cell + memory write
-                if malicious_record.cpu_events.len() > 4 {
-                    malicious_record.cpu_events[4].res = op_a as u32;
-                    if let Some(MemoryRecordEnum::Write(mut write_record)) =
-                        malicious_record.cpu_events[4].res_record
-                    {
-                        write_record.value = op_a as u32;
+                    // forge CPU result cell + memory write
+                    if malicious_record.cpu_events.len() > 4 {
+                        malicious_record.cpu_events[4].res = op_a as u32;
+                        if let Some(MemoryRecordEnum::Write(mut write_record)) =
+                            malicious_record.cpu_events[4].res_record
+                        {
+                            write_record.value = op_a as u32;
+                        }
                     }
-                }
 
-                // also forge the chip’s `a` column to match the bad value
+                    // also forge the chip’s `a` column to match the bad value
+                    let chip = chip_name!(TrailingChip, BabyBear);
+                    let mut traces = prover.generate_traces(&malicious_record);
+                    if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == chip) {
+                        let row = trace.row_mut(0);
+                        let row: &mut TrailingCols<BabyBear> = row.borrow_mut();
+                        row.a = op_a.into();
+                    }
+
+                    traces
+                };
+
+                let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
                 let chip = chip_name!(TrailingChip, BabyBear);
-                let mut traces = prover.generate_traces(&malicious_record);
-                if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == chip) {
-                    let row = trace.row_mut(0);
-                    let row: &mut TrailingCols<BabyBear> = row.borrow_mut();
-                    row.a = op_a.into();
-                }
-
-                traces
-            };
-
-            let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
-            let chip = chip_name!(TrailingChip, BabyBear);
-            assert!(result.is_err() && result.unwrap_err().is_constraints_failing(&chip));
+                assert!(result.is_err() && result.unwrap_err().is_constraints_failing(&chip));
+            }
         }
     }
     #[test]
