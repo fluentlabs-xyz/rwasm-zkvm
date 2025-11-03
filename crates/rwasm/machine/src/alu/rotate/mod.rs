@@ -149,9 +149,9 @@ where
         let local = main.row_slice(0);
         let local: &RotateCols<AB::Var> = (*local).borrow();
 
-        // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------\
         // 0) Flags & real-row selector
-        // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------\
         let is_real = local.is_rotl + local.is_rotr;
         builder.assert_bool(local.is_rotl);
         builder.assert_bool(local.is_rotr);
@@ -168,11 +168,11 @@ where
         let or_opcode = ByteOpcode::OR.as_field::<AB::F>();
         let mask_0x1f = AB::Expr::from_canonical_u8(0x1f);
 
-        // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------\
         // 1) Masking of the rotation amount (k = c & 31)
         //    - Low byte: c_masked[0] = c[0] & 0x1f (via a byte AND lookup)
         //    - Upper bytes of c_masked must be zero
-        // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------\
         builder.send_byte(
             and_opcode,
             local.c_masked,
@@ -181,10 +181,10 @@ where
             is_real.clone(),
         );
 
-        // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------\
         // 2) The “inverse” (32 - k) is also 5‑bit: inv & 0x1f == inv on the low byte; higher bytes
         //    are zero.
-        // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------\
         builder.send_byte(
             and_opcode,
             local.c_inverse,
@@ -193,9 +193,9 @@ where
             is_real.clone(),
         );
 
-        // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------\
         // 3) Decomposition: a = left_shifted OR right_shifted  (byte-wise)
-        // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------\
         for i in 0..4 {
             builder.send_byte(
                 or_opcode,
@@ -206,10 +206,10 @@ where
             );
         }
 
-        // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------\
         // 4) Non‑overlap: (left_shifted & right_shifted) == 0 (byte-wise) This forbids
         //    double-counting when the OR recombines the two parts.
-        // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------\
         let zero = AB::Expr::zero();
         for i in 0..4 {
             builder.send_byte(
@@ -221,9 +221,9 @@ where
             );
         }
 
-        // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------\
         // 5) Local range checks for helper words (each is a byte)
-        // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------\
         builder.slice_range_check_u8(&local.left_shifted.0, is_real.clone());
         builder.slice_range_check_u8(&local.right_shifted.0, is_real.clone());
 
@@ -303,7 +303,7 @@ where
             local.is_rotr,
         );
 
-        // ---------------------------------------------------------------------
+        // ---------------------------------------------------------------------\
         let cpu_opcode = local.is_rotl * AB::Expr::from_canonical_u32(Opcode::I32Rotl.code()) +
             local.is_rotr * AB::Expr::from_canonical_u32(Opcode::I32Rotr.code());
 
@@ -336,10 +336,6 @@ impl<F: PrimeField32> MachineAir<F> for RotateChip {
 
     fn name(&self) -> String {
         "Rotate".to_string()
-    }
-
-    fn local_only(&self) -> bool {
-        true
     }
 
     fn generate_trace(
@@ -437,6 +433,10 @@ impl<F: PrimeField32> MachineAir<F> for RotateChip {
     fn included(&self, shard: &Self::Record) -> bool {
         // This is correct. The chip is only included if there are rotate events.
         !shard.rotate_events.is_empty()
+    }
+
+    fn local_only(&self) -> bool {
+        true
     }
 }
 
