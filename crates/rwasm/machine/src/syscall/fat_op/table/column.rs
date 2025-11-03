@@ -2,7 +2,10 @@ use crate::{
     memory::{ElementAddressCols, TableAddressCols},
     operations::{Range16bCols, Range8bCols},
 };
-use rwasm::{N_MAX_TABLES, N_MAX_TABLE_SIZE};
+use rwasm::{
+    mem_index::{SP_END, UNIT},
+    N_MAX_TABLES, N_MAX_TABLE_SIZE,
+};
 use sp1_derive::AlignedBorrow;
 
 use crate::memory::{MemoryReadCols, MemoryWriteCols};
@@ -16,7 +19,7 @@ pub const fn num_table_cols() -> usize {
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
 pub struct TableInitCols<T> {
-    pub sp: T,
+    pub sp: StackAddressCols<T>,
     pub shard: T,
     pub clk: T,
     pub table_idx: TableIdxCols<T>,
@@ -37,3 +40,6 @@ pub struct TableInitCols<T> {
 pub type TableIdxCols<T> = Range8bCols<T, 0, N_MAX_TABLES>;
 
 pub type LengthCols<T> = Range16bCols<T, 0, N_MAX_TABLE_SIZE>;
+
+const SP_START: u32 = rwasm::mem_index::SP_START - 2 * UNIT;
+pub type StackAddressCols<T> = Range16bCols<T, SP_END, SP_START>;

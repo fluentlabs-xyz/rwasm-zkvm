@@ -115,11 +115,11 @@ impl TableGrowChip {
     /// execution scenarios (failure, zero-delta, or successful growth).
     ///
     /// # Arguments
-    /// * `populate_accesses` - Whether to perform byte lookups for range checks
+    /// * `populate_range_check` - Whether to perform byte lookups for range checks
     /// * `blu` - Byte lookup record for collecting range check events
     /// * `event` - The TableGrowEvent containing execution data
     fn create_base_row<F: PrimeField32>(
-        populate_accesses: bool,
+        populate_range_check: bool,
         blu: &mut impl ByteRecord,
         event: &TableGrowEvent,
     ) -> [F; NUM_TABLE_GROW_SIZE] {
@@ -131,13 +131,18 @@ impl TableGrowChip {
         local.delta_access.populate(event.stack_access[1], blu);
 
         // Populate table index with range check
-        local.table_idx.populate(event.table_idx, blu);
+        if populate_range_check {
+            local.table_idx.populate(event.table_idx, blu);
+            local.sp.populate(event.sp, blu);
+        } else {
+            local.table_idx.populate_value(event.table_idx);
+            local.sp.populate_value(event.sp);
+        }
 
         // Populate the current table size read
         local.table_size_read_access.populate(event.table_size_read_acess, blu);
 
         // Set execution context metadata
-        local.sp = F::from_canonical_u32(event.sp);
         local.is_real = F::one();
         local.shard = F::from_canonical_u32(event.shard);
         local.clk = F::from_canonical_u32(event.clk);
@@ -207,7 +212,12 @@ impl TableGrowChip {
         // Each iteration handles one new table entry initialization
         for idx in 0..event.delta as usize {
             // Create base row, performing byte lookups only on the first iteration
-            let mut row = Self::create_base_row(idx == 0, blu, event);
+            let mut row = if idx == 0 {
+                Self::create_base_row(true, blu, event)
+            } else {
+                Self::create_base_row(false, &mut Vec::new(), event)
+            };
+
             let local: &mut TableGrowCols<F> = row.as_mut_slice().borrow_mut();
 
             // First row: mark as first and write the result (old table size) to stack

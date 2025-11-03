@@ -62,8 +62,6 @@ impl<F: PrimeField32> MachineAir<F> for TableInitChip {
         println!("table events:{:?}", events);
         let chunk_size = 1usize;
 
-        println!("%%%%%%%%%%");
-
         let blu_batches = events
             .par_chunks(chunk_size)
             .map(|events| {
@@ -116,12 +114,14 @@ impl TableInitChip {
 
                 local.table_idx.populate(event.table_idx, blu);
                 local.length.populate(event.n, blu);
+                local.sp.populate(event.sp, blu);
             } else {
                 local.dst_access.populate(event.stack_access[0], &mut Vec::new());
                 local.src_access.populate(event.stack_access[1], &mut Vec::new());
                 local.length_access.populate(event.stack_access[2], &mut Vec::new());
 
                 local.table_idx.populate_value(event.table_idx);
+                local.sp.populate_value(event.sp);
             }
 
             // populate address
@@ -137,7 +137,6 @@ impl TableInitChip {
                 local.is_non_zero_length = F::one();
             }
 
-            local.sp = F::from_canonical_u32(event.sp);
             local.is_real = F::one();
             local.shard = F::from_canonical_u32(event.shard);
             local.clk = F::from_canonical_u32(event.clk);

@@ -2,7 +2,7 @@ use crate::{
     air::{MemoryAirBuilder, WordAirBuilder},
     memory::{MemoryCols, TableAddressCols},
     syscall::fat_op::{
-        table_grow::column::{DeltaCols, TableGrowCols, NUM_TABLE_GROW_SIZE},
+        table_grow::column::{DeltaCols, StackAddressCols, TableGrowCols, NUM_TABLE_GROW_SIZE},
         TableIdxCols,
     },
 };
@@ -153,6 +153,9 @@ where
             local.dst_address.value::<AB>(),
         );
 
+        StackAddressCols::<AB::Var>::range_check(builder, local.sp);
+        builder.when(local.is_first).assert_one(local.sp.is_real::<AB>());
+
         // Range check destination address to ensure it fits in table address space
         TableAddressCols::<AB::Var>::range_check(builder, local.dst_address);
         builder
@@ -220,7 +223,7 @@ impl TableGrowChip {
         builder.eval_memory_access(
             local.shard,
             local.clk,
-            local.sp,
+            local.sp.value::<AB>(),
             &local.delta_access.clone(),
             local.is_first,
         );
@@ -229,7 +232,7 @@ impl TableGrowChip {
         builder.eval_memory_access(
             local.shard,
             local.clk,
-            local.sp + AB::Expr::from_canonical_u32(UNIT),
+            local.sp.value::<AB>() + AB::Expr::from_canonical_u32(UNIT),
             &local.init_access.clone(),
             local.is_first,
         );
@@ -282,7 +285,7 @@ impl TableGrowChip {
         builder.eval_memory_access(
             local.shard,
             local.clk + AB::Expr::from_canonical_u32(1),
-            local.sp,
+            local.sp.value::<AB>(),
             &local.result_write_access.clone(),
             local.should_update_result,
         );

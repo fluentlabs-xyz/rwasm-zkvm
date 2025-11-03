@@ -3,7 +3,10 @@ use crate::{
     memory::{MemoryReadCols, MemoryWriteCols, TableAddressCols},
     operations::Range16bCols,
 };
-use rwasm::N_MAX_TABLE_SIZE;
+use rwasm::{
+    mem_index::{SP_END, UNIT},
+    N_MAX_TABLE_SIZE,
+};
 use sp1_derive::AlignedBorrow;
 
 /// Total size of a TableGrow trace row in field elements.
@@ -26,7 +29,7 @@ pub const fn num_table_cols() -> usize {
 #[repr(C)]
 pub struct TableGrowCols<T> {
     /// Stack pointer at the time of execution
-    pub sp: T,
+    pub sp: StackAddressCols<T>,
     /// Shard identifier for this execution
     pub shard: T,
     /// Clock cycle when the operation executes
@@ -74,3 +77,6 @@ pub struct TableGrowCols<T> {
 
 /// Type alias for delta range check columns (16-bit decomposition).
 pub type DeltaCols<T> = Range16bCols<T, 0, N_MAX_TABLE_SIZE>;
+
+const SP_START: u32 = rwasm::mem_index::SP_START - UNIT;
+pub type StackAddressCols<T> = Range16bCols<T, SP_END, SP_START>;

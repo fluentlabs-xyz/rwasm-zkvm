@@ -107,6 +107,9 @@ where
             .when(local.is_first)
             .assert_eq(local.dst_access.value().reduce::<AB>(), local.dst_address.value::<AB>());
 
+        StackAddressCols::<AB::Var>::range_check(builder, local.sp);
+        builder.when(local.is_first).assert_one(local.sp.is_real::<AB>());
+
         ElementAddressCols::<AB::Var>::range_check(builder, local.src_address);
         builder.when(local.is_first).assert_one(local.src_address.is_real::<AB>());
         builder.when(local.is_last).assert_one(local.src_address.is_real::<AB>());
@@ -146,7 +149,7 @@ impl TableInitChip {
         builder.eval_memory_access(
             local.shard,
             local.clk,
-            local.sp,
+            local.sp.value::<AB>(),
             &local.length_access.clone(),
             local.is_first,
         );
@@ -154,7 +157,7 @@ impl TableInitChip {
         builder.eval_memory_access(
             local.shard,
             local.clk,
-            local.sp + AB::Expr::from_canonical_u32(UNIT),
+            local.sp.value::<AB>() + AB::Expr::from_canonical_u32(UNIT),
             &local.src_access.clone(),
             local.is_first,
         );
@@ -162,7 +165,7 @@ impl TableInitChip {
         builder.eval_memory_access(
             local.shard,
             local.clk,
-            local.sp + AB::Expr::from_canonical_u32(2 * UNIT),
+            local.sp.value::<AB>() + AB::Expr::from_canonical_u32(2 * UNIT),
             &local.dst_access.clone(),
             local.is_first,
         );
