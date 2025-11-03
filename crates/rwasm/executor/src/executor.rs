@@ -905,22 +905,17 @@ impl<'a> Executor<'a> {
                     }
                 };
 
-                let lt_comp_event = AluEvent {
+                let make_lt = |a, b, c| AluEvent {
                     pc: UNUSED_PC,
                     opcode: cmp_opcode,
-                    a: lt_res,
-                    b: event.b,
-                    c: event.c,
+                    a,
+                    b,
+                    c,
                     code: cmp_opcode.code(),
                 };
-                let gt_comp_event = AluEvent {
-                    pc: UNUSED_PC,
-                    opcode: cmp_opcode,
-                    a: gt_res,
-                    b: event.c,
-                    c: event.b,
-                    code: cmp_opcode.code(),
-                };
+
+                let lt_comp_event = make_lt(lt_res, event.b, event.c);
+                let gt_comp_event = make_lt(gt_res, event.c, event.b);
 
                 match opcode {
                     // Opcodes that only need a "less than" check.
