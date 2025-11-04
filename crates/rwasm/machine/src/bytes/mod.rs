@@ -99,21 +99,23 @@ impl<F: Field> ByteChip<F> {
                         col.value_u16 = F::from_canonical_u32(v);
                         ByteLookupEvent::new(*opcode, v as u16, 0, 0, 0)
                     }
-                    ByteOpcode::CTZ => {
-                        let ctz = b.trailing_zeros() as u8;
-                        col.ctz = F::from_canonical_u8(ctz);
-                        ByteLookupEvent::new(*opcode, ctz as u16, 0, b, 0)
-                    }
-                    ByteOpcode::CLZ => {
-                        let clz = b.leading_zeros() as u8;
-                        col.clz = F::from_canonical_u8(clz);
-                        ByteLookupEvent::new(*opcode, clz as u16, 0, b, 0)
-                    }
                     ByteOpcode::U16POPCNT => {
                         let u16_val = ((b as u16) << 8) + c as u16;
                         let popcnt = u16_val.count_ones() as u8;
                         col.u16_popcnt = F::from_canonical_u8(popcnt);
                         ByteLookupEvent::new(*opcode, popcnt as u16, 0, b, c)
+                    }
+                    ByteOpcode::U16CTZ => {
+                        let u16_val = ((b as u16) << 8) + c as u16;
+                        let ctz = u16_val.trailing_zeros() as u8;
+                        col.u16_ctz = F::from_canonical_u8(ctz);
+                        ByteLookupEvent::new(*opcode, ctz as u16, 0, b, c)
+                    }
+                    ByteOpcode::U16CLZ => {
+                        let u16_val = ((b as u16) << 8) + c as u16;
+                        let clz = u16_val.leading_zeros() as u8;
+                        col.u16_clz = F::from_canonical_u8(clz);
+                        ByteLookupEvent::new(*opcode, clz as u16, 0, b, c)
                     }
                 };
             }
