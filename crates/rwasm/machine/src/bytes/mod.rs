@@ -21,7 +21,7 @@ use self::{
 use crate::{bytes::trace::NUM_ROWS, utils::zeroed_f_vec};
 
 /// The number of different byte operations.
-pub const NUM_BYTE_OPS: usize = 9;
+pub const NUM_BYTE_OPS: usize = 10;
 
 /// A chip for computing byte operations.
 ///
@@ -98,6 +98,11 @@ impl<F: Field> ByteChip<F> {
                         let v = ((b as u32) << 8) + c as u32;
                         col.value_u16 = F::from_canonical_u32(v);
                         ByteLookupEvent::new(*opcode, v as u16, 0, 0, 0)
+                    }
+                    ByteOpcode::PopcntOpcode => {
+                        let v = ((b as u32) << 8) + c as u32;
+                        col.popcnt_u16_result = F::from_canonical_u32(v.count_ones());
+                        ByteLookupEvent::new(*opcode, v.count_ones() as u16, 0, b, c)
                     }
                 };
             }

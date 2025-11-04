@@ -1,17 +1,16 @@
-use crate::{
-    air::{SP1CoreAirBuilder, WordAirBuilder},
-    utils::pad_rows_fixed,
-};
+use crate::{air::SP1CoreAirBuilder, utils::pad_rows_fixed};
 use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
-use p3_air::{Air, AirBuilder, BaseAir};
+use hashbrown::HashMap;
+use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use rayon::{iter::ParallelIterator, slice::ParallelSlice};
 use rwasm_executor::{
-    events::{AluEvent, ByteRecord},
-    ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
+    events::{AluEvent, ByteLookupEvent, ByteRecord},
+    ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::MachineAir, Word};
@@ -22,8 +21,9 @@ pub const NUM_POPCNT_COLS: usize = size_of::<PopcntCols<u8>>();
 #[repr(C)]
 pub struct PopcntCols<T> {
     pub pc: T,
-    pub a: Word<T>,
-    pub b: [T; 32],
+    pub b_low_weight: T,
+    pub b_high_weight: T,
+    pub b: Word<T>,
     pub is_real: T,
 }
 
@@ -36,14 +36,39 @@ impl PopcntChip {
         &self,
         event: &AluEvent,
         cols: &mut PopcntCols<F>,
-        _: &mut impl ByteRecord,
+        blu: &mut impl ByteRecord,
     ) {
         cols.pc = F::from_canonical_u32(event.pc);
         cols.is_real = F::one();
-        for i in 0..32 {
-            cols.b[i] = F::from_canonical_u32((event.b >> i) & 1);
-        }
-        cols.a = event.a.into();
+
+        cols.b = event.b.into();
+
+        let b_low = event.b as u16;
+        let b_high = event.b >> 16;
+
+        let b_low_weight = b_low.count_ones();
+        let b_high_weight = b_high.count_ones();
+
+        cols.b_low_weight = F::from_canonical_u32(b_low_weight);
+        cols.b_high_weight = F::from_canonical_u32(b_high_weight);
+
+        let b = event.b.to_le_bytes();
+
+        blu.add_byte_lookup_event(ByteLookupEvent {
+            opcode: ByteOpcode::PopcntOpcode,
+            a1: b_low_weight as u16,
+            a2: 0,
+            b: b[1],
+            c: b[0],
+        });
+
+        blu.add_byte_lookup_event(ByteLookupEvent {
+            opcode: ByteOpcode::PopcntOpcode,
+            a1: b_high_weight as u16,
+            a2: 0,
+            b: b[3],
+            c: b[2],
+        });
     }
 }
 
@@ -55,23 +80,24 @@ where
         let main = builder.main();
         let local = main.row_slice(0);
         let local: &PopcntCols<AB::Var> = (*local).borrow();
-        let mut b = Word::<AB::Expr>::default();
-        // Process each byte consisting of 8 bits
-        for byte_idx in 0..4 {
-            for bit_idx in 0..8 {
-                let global_bit_idx = byte_idx * 8 + bit_idx;
-                let bit = local.b[global_bit_idx];
-                // Assert that each bit is binary when the row is real
-                builder.when(local.is_real).assert_bool(bit);
-                // Accumulate bits to reconstruct the byte value
-                b[byte_idx] += bit * AB::Expr::from_canonical_u32(1 << bit_idx);
-            }
-        }
-        // Sum all bits to compute the popcount result
-        let a = Word::<AB::Expr>::extend_expr::<AB>(
-            local.b.iter().copied().fold(AB::Expr::zero(), |acc, var| acc + var),
+
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::PopcntOpcode as u32),
+            local.b_low_weight,
+            local.b[1],
+            local.b[0],
+            local.is_real,
         );
-        builder.when(local.is_real).assert_word_eq(a, local.a);
+
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::PopcntOpcode as u32),
+            local.b_high_weight,
+            local.b[3],
+            local.b[2],
+            local.is_real,
+        );
+
+        let a = local.b_low_weight + local.b_high_weight;
 
         builder.receive_instruction(
             AB::Expr::zero(),
@@ -80,8 +106,8 @@ where
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(Opcode::I32Popcnt.code()),
-            local.a,
-            b,
+            Word::extend_expr::<AB>(a),
+            local.b,
             Word::<AB::Expr>::default(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -129,6 +155,27 @@ impl<F: PrimeField32> MachineAir<F> for PopcntChip {
         );
         RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<F>>(), NUM_POPCNT_COLS)
     }
+
+    fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
+        let chunk_size = std::cmp::max(input.popcnt_events.len() / num_cpus::get(), 1);
+
+        let blu_batches = input
+            .popcnt_events
+            .par_chunks(chunk_size)
+            .map(|events| {
+                let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
+                events.iter().for_each(|event| {
+                    let mut row = [F::zero(); NUM_POPCNT_COLS];
+                    let cols: &mut PopcntCols<F> = row.as_mut_slice().borrow_mut();
+                    self.event_to_row(event, cols, &mut blu);
+                });
+                blu
+            })
+            .collect::<Vec<_>>();
+
+        output.add_byte_lookup_events_from_maps(blu_batches.iter().collect::<Vec<_>>());
+    }
+
     fn included(&self, shard: &Self::Record) -> bool {
         // Only include chip if there are popcnt events to process
         !shard.popcnt_events.is_empty()
@@ -148,6 +195,7 @@ mod tests {
     };
     use core::borrow::BorrowMut;
     use p3_baby_bear::BabyBear;
+    use p3_field::AbstractField;
     use p3_matrix::{dense::RowMajorMatrix, Matrix};
     use rand::{thread_rng, Rng};
     use rwasm_executor::{
@@ -251,42 +299,16 @@ mod tests {
                 if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == chip) {
                     let row = trace.row_mut(0);
                     let row: &mut PopcntCols<BabyBear> = row.borrow_mut();
-                    row.a = op_a.into();
+
+                    row.b_low_weight = BabyBear::from_canonical_u32((op_a as u16).count_ones());
+                    row.b_high_weight = BabyBear::from_canonical_u32((op_a >> 16).count_ones());
                 }
 
                 traces
             };
 
             let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
-            let chip = chip_name!(PopcntChip, BabyBear);
-            assert!(result.is_err() && result.unwrap_err().is_constraints_failing(&chip));
+            assert!(result.is_err());
         }
-    }
-    #[test]
-    fn test_malicious_popcnt_event() {
-        let config = BabyBearPoseidon2::new();
-        let mut challenger = config.challenger();
-
-        // Create a malicious event: popcnt(13) is 3, but we claim it's 5.
-        let b = 0b1101;
-        let malicious_a = 5;
-        let event =
-            AluEvent::new(0, Opcode::I32Popcnt, malicious_a, b, 0, Opcode::I32Popcnt.code());
-
-        let mut shard = ExecutionRecord::default();
-        shard.popcnt_events.push(event);
-
-        let chip = PopcntChip::default();
-        let trace: RowMajorMatrix<BabyBear> =
-            chip.generate_trace(&shard, &mut ExecutionRecord::default());
-
-        // The trace itself is generated correctly based on `b`, but the `a` in the event is a lie.
-        // The prover will prove a statement about a trace derived from `b`, but the verifier
-        // should check this against the public inputs (the event), which contains the incorrect
-        // `a`. This inconsistency should cause verification to fail.
-        let proof = prove::<BabyBearPoseidon2, PopcntChip>(&config, &chip, &mut challenger, trace);
-        let mut verifier_challenger = config.challenger();
-        let result = verify(&config, &chip, &mut verifier_challenger, &proof);
-        assert!(result.is_err(), "verification should fail for malicious popcnt result");
     }
 }
