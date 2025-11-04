@@ -195,7 +195,7 @@ mod tests {
     };
     use core::borrow::BorrowMut;
     use p3_baby_bear::BabyBear;
-    use p3_field::{AbstractField, PrimeField};
+    use p3_field::AbstractField;
     use p3_matrix::{dense::RowMajorMatrix, Matrix};
     use rwasm_executor::{events::AluEvent, ExecutionRecord, Opcode, Program};
     use sp1_stark::{
