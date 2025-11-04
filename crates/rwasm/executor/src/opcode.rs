@@ -28,6 +28,12 @@ pub enum ByteOpcode {
     MSB = 7,
     /// Unsigned 16-bit Range Check.
     U16Range = 8,
+    /// Count Trailing Zeros.
+    CTZ = 9,
+    /// Count Leading Zeros.
+    CLZ = 10,
+    /// Population Count.
+    POPCNT = 11,
 }
 
 pub type Opcode = rwasm::Opcode;
