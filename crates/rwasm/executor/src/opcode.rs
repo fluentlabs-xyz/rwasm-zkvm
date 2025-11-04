@@ -32,8 +32,8 @@ pub enum ByteOpcode {
     CTZ = 9,
     /// Count Leading Zeros.
     CLZ = 10,
-    /// Population Count.
-    POPCNT = 11,
+    /// Unsigned 16-bit Population Count.
+    U16POPCNT = 11,
 }
 
 pub type Opcode = rwasm::Opcode;

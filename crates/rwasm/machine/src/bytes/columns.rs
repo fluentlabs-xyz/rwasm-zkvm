@@ -51,6 +51,9 @@ pub struct BytePreprocessedCols<T> {
 
     /// The result of the `POPCNT` operation on `b`.
     pub popcnt: T,
+
+    /// The result of the `U16POPCNT` operation on `value_u16`.
+    pub u16_popcnt: T,
 }
 
 /// For each byte operation in the preprocessed table, a corresponding ByteMultCols row tracks the
