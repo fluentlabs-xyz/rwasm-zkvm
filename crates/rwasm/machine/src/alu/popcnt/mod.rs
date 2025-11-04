@@ -81,6 +81,8 @@ where
         let local = main.row_slice(0);
         let local: &PopcntCols<AB::Var> = (*local).borrow();
 
+        builder.assert_bool(local.is_real);
+
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::PopcntOpcode as u32),
             local.b_low_weight,
