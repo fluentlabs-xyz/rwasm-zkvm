@@ -21,7 +21,7 @@ pub const NUM_POPCNT_COLS: usize = size_of::<PopcntCols<u8>>();
 #[repr(C)]
 pub struct PopcntCols<T> {
     pub pc: T,
-    pub b_bytes: [T; 4],
+    pub b_bytes: Word<T>,
     pub half_word_popcnts: [T; 2],
     pub is_real: T,
 }
@@ -41,9 +41,12 @@ impl PopcntChip {
 
         let b_val = event.b;
         let b_bytes = b_val.to_le_bytes();
-        for i in 0..4 {
-            cols.b_bytes[i] = F::from_canonical_u8(b_bytes[i]);
-        }
+        cols.b_bytes = Word([
+            F::from_canonical_u8(b_bytes[0]),
+            F::from_canonical_u8(b_bytes[1]),
+            F::from_canonical_u8(b_bytes[2]),
+            F::from_canonical_u8(b_bytes[3]),
+        ]);
 
         for i in 0..2 {
             let half_word = (b_val >> (i * 16)) & 0xFFFF;

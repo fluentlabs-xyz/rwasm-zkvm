@@ -1,5 +1,4 @@
 mod comp;
-mod popcnt;
 mod rotate;
 mod table_init;
 mod trailing;
@@ -68,9 +67,7 @@ mod tests {
     };
 
     use table_init::*;
-
-    use popcnt::*;
-
+    use trailing::*;
     fn build_elf() -> Program {
         let x_value: u32 = 0x11;
         let y_value: u32 = 0x23;

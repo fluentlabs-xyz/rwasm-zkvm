@@ -947,7 +947,7 @@ impl<'a> Executor<'a> {
                     _ => unreachable!(),
                 }
             }
-            Opcode::I32Ctz | Opcode::I32Clz => {
+            Opcode::I32Ctz | Opcode::I32Clz | Opcode::I32Popcnt => {
                 self.record.trailing_events.push(event);
             }
             Opcode::I32Mul => {
@@ -959,9 +959,6 @@ impl<'a> Executor<'a> {
             }
             Opcode::I32Rotl | Opcode::I32Rotr => {
                 self.record.rotate_events.push(event);
-            }
-            Opcode::I32Popcnt => {
-                self.record.popcnt_events.push(event);
             }
             _ => unreachable!(),
         }

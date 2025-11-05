@@ -7,7 +7,7 @@ use hashbrown::HashMap;
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use rwasm::Opcode::{I32Clz, I32Ctz};
+use rwasm::Opcode::{I32Clz, I32Ctz, I32Popcnt};
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord},
     ByteOpcode, ExecutionRecord, Program, DEFAULT_PC_INC,
@@ -29,6 +29,7 @@ pub struct TrailingCols<T> {
     pub half_word_z: [T; 2],
     pub is_ctz: T,
     pub is_clz: T,
+    pub is_popcnt: T,
     // Minimal boolean flags (no inverse witnesses)
     pub z0_is_16: T, // 1 iff half_word_z[0] == 16 (CTZ: low16, CLZ: high16)
 }
@@ -47,6 +48,7 @@ impl TrailingChip {
         cols.a = F::from_canonical_u32(event.a);
         cols.is_ctz = F::from_bool(event.opcode == I32Ctz);
         cols.is_clz = F::from_bool(event.opcode == I32Clz);
+        cols.is_popcnt = F::from_bool(event.opcode == I32Popcnt);
 
         let b_val = event.b;
         let b_bytes = b_val.to_le_bytes();
@@ -64,7 +66,6 @@ impl TrailingChip {
         let ctz_high16 = high_half.trailing_zeros();
         let clz_low16 = low_half.leading_zeros();
         let clz_high16 = high_half.leading_zeros();
-
         if event.opcode == I32Ctz {
             // CTZ rows
             cols.half_word_z =
@@ -85,7 +86,7 @@ impl TrailingChip {
                 b_bytes[3],
                 b_bytes[2],
             ));
-        } else {
+        } else if event.opcode == I32Clz {
             // CLZ rows
             cols.half_word_z =
                 [F::from_canonical_u32(clz_high16), F::from_canonical_u32(clz_low16)];
@@ -105,6 +106,29 @@ impl TrailingChip {
                 b_bytes[1],
                 b_bytes[0],
             ));
+        } else {
+            // POPCNT rows
+            let pop_low16 = low_half.count_ones();
+            let pop_high16 = high_half.count_ones();
+            cols.half_word_z =
+                [F::from_canonical_u32(pop_low16), F::from_canonical_u32(pop_high16)];
+            cols.z0_is_16 = F::zero(); // unused for popcnt
+
+            // byte lookups: low then high
+            blu.add_byte_lookup_event(ByteLookupEvent::new(
+                ByteOpcode::U16POPCNT,
+                pop_low16 as u16,
+                0,
+                b_bytes[1],
+                b_bytes[0],
+            ));
+            blu.add_byte_lookup_event(ByteLookupEvent::new(
+                ByteOpcode::U16POPCNT,
+                pop_high16 as u16,
+                0,
+                b_bytes[3],
+                b_bytes[2],
+            ));
         }
     }
 }
@@ -120,8 +144,9 @@ where
 
         builder.assert_bool(local.is_ctz);
         builder.assert_bool(local.is_clz);
+        builder.assert_bool(local.is_popcnt);
         // CTZ or CLZ can be active in a row.
-        let is_real = local.is_ctz + local.is_clz;
+        let is_real = local.is_ctz + local.is_clz + local.is_popcnt;
         builder.assert_bool(is_real.clone());
 
         // Send gated byte lookups via unified halves.
@@ -155,6 +180,21 @@ where
             local.b_bytes.0[0],
             local.is_clz,
         );
+        // POPCNT (low then high)
+        builder.send_byte(
+            ByteOpcode::U16POPCNT.as_field::<AB::F>(),
+            local.half_word_z[0],
+            local.b_bytes.0[1],
+            local.b_bytes.0[0],
+            local.is_popcnt,
+        );
+        builder.send_byte(
+            ByteOpcode::U16POPCNT.as_field::<AB::F>(),
+            local.half_word_z[1],
+            local.b_bytes.0[3],
+            local.b_bytes.0[2],
+            local.is_popcnt,
+        );
 
         // Reconstruct the 32-bit operand `b`.
         let reconstructed_b = Word([
@@ -181,6 +221,9 @@ where
 
         builder.when(local.is_ctz).assert_zero(local.a - a_any.clone());
         builder.when(local.is_clz).assert_zero(local.a - a_any);
+        builder
+            .when(local.is_popcnt)
+            .assert_zero(local.a - (local.half_word_z[0] + local.half_word_z[1]));
 
         builder.receive_instruction(
             AB::Expr::zero(),
@@ -189,7 +232,8 @@ where
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
             AB::Expr::zero(),
             local.is_ctz * AB::Expr::from_canonical_u32(I32Ctz.code()) +
-                local.is_clz * AB::Expr::from_canonical_u32(I32Clz.code()),
+                local.is_clz * AB::Expr::from_canonical_u32(I32Clz.code()) +
+                local.is_popcnt * AB::Expr::from_canonical_u32(I32Popcnt.code()),
             Word::extend_expr::<AB>(local.a.into()),
             reconstructed_b,
             Word::<AB::Expr>::default(),
@@ -254,7 +298,6 @@ impl<F: PrimeField32> MachineAir<F> for TrailingChip {
                 blu
             })
             .collect::<Vec<_>>();
-
         output.add_byte_lookup_events_from_maps(blu_batches.iter().collect::<Vec<_>>());
     }
     fn included(&self, shard: &Self::Record) -> bool {
@@ -270,6 +313,7 @@ impl<F: PrimeField32> MachineAir<F> for TrailingChip {
 mod tests {
     #![allow(clippy::print_stdout)]
 
+    use num::PrimInt;
     use super::{TrailingChip, NUM_TRAILING_COLS};
     use crate::{
         alu::TrailingCols,
@@ -292,13 +336,14 @@ mod tests {
         let mut output = ExecutionRecord::default();
         let b: u32 = 0x137_137;
         shard.trailing_events = vec![
+            AluEvent::new(0, Opcode::I32Popcnt, b.count_ones(), b, 0, Opcode::I32Popcnt.code()),
             AluEvent::new(0, Opcode::I32Ctz, b.trailing_zeros(), b, 0, Opcode::I32Ctz.code()),
             AluEvent::new(0, Opcode::I32Clz, b.leading_zeros(), b, 0, Opcode::I32Clz.code()),
         ];
         let chip = TrailingChip::default();
         let trace: RowMajorMatrix<BabyBear> = chip.generate_trace(&shard, &mut output);
         assert_eq!(trace.width(), NUM_TRAILING_COLS);
-        assert_eq!(output.byte_lookups.len(), 4);
+        assert_eq!(output.byte_lookups.len(), 6);
     }
 
     #[test]
@@ -309,14 +354,44 @@ mod tests {
         let mut output = ExecutionRecord::default();
 
         let samples = vec![
-            0b00000000_00000000_00000000_00000000u32,
-            0b11111111_11111111_11111111_11111111u32,
-            0b00000000_00000000_00000000_00000001u32,
-            0b10000000_00000000_00000000_00000000u32,
-            0b00000000_11111111_00000000_11111111u32,
+            0b00000000_00000000_00000000_00000000u32, // all zeros
+            0b11111111_11111111_11111111_11111111u32, // all ones
+            0b00000000_00000000_00000000_00000001u32, // LSB set
+            0b10000000_00000000_00000000_00000000u32, // MSB set
+            0b00000000_11111111_00000000_11111111u32, // byte-wise pattern
+
+            // --- Added 20 more edge-case samples ---
+            0x0000_FFFFu32, // low half all ones, high half zero
+            0xFFFF_0000u32, // high half all ones, low half zero
+            0x0001_0000u32, // bit 16 set (low half zero -> CTZ low16 = 16)
+            0x0000_8000u32, // low half highest bit set
+            0x8000_8000u32, // highest bit set in both halves
+            0x0000_0002u32, // CTZ(low) = 1
+            0x0000_0100u32, // CTZ(low) = 8
+            0x0100_0000u32, // high half non-zero, low half zero
+            0x00FF_FF00u32, // middle two bytes 0xFF, edges 0x00
+            0xFF00_00FFu32, // inverse of above across halves
+            0xF0F0_F0F0u32, // alternating nibbles (11110000 pattern)
+            0x0F0F_0F0Fu32, // alternating nibbles (00001111 pattern)
+            0x3333_CCCCu32, // mixed half-word densities
+            0xCCCC_3333u32, // swapped halves
+            0x0000_00FFu32, // low byte ones
+            0xFF00_FF00u32, // byte stripes across halves
+            0x7FFF_0000u32, // high half just below 0x8000
+            0x0000_7FFFu32, // low half just below 0x8000
+            0x8000_0001u32, // MSB and LSB set
+            0x0001_8000u32, // split bits across halves
         ];
 
         for b in samples.into_iter() {
+            shard.trailing_events.push(AluEvent::new(
+                0,
+                Opcode::I32Popcnt,
+                b.count_ones(),
+                b,
+                0,
+                Opcode::I32Popcnt.code(),
+            ));
             shard.trailing_events.push(AluEvent::new(
                 0,
                 Opcode::I32Ctz,
@@ -343,7 +418,7 @@ mod tests {
         verify(&config, &chip, &mut challenger, &proof).unwrap();
     }
     #[test]
-    fn test_malicious_popcnt_ctz() {
+    fn test_malicious_trailing() {
         use core::borrow::BorrowMut;
         let config = BabyBearPoseidon2::new();
         let challenger = config.challenger();
@@ -351,40 +426,47 @@ mod tests {
 
         // Create a valid event.
         let op_b = 0b01001101u32;
-        let op_c = 0b00001101u32;
-        let opcode = Opcode::I32Ctz;
+        let op_c = 0b01101101u32;
+        let opcodes = [Opcode::I32Popcnt, Opcode::I32Clz, Opcode::I32Ctz];
+        for opcode in opcodes {
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(op_b.into()),
+                Opcode::I32Const(op_c.into()),
+                opcode,
+            ]);
 
-        let program = Program::from_instrs(vec![
-            Opcode::I32Const(op_b.into()),
-            Opcode::I32Const(op_c.into()),
-            opcode,
-        ]);
+            let stdin = SP1Stdin::new();
+            // Define a malicious action that forges the trace *after* it's generated.
+            let malicious = move |prover: &P, record: &mut ExecutionRecord| {
+                // First, generate the honest traces.
+                let mut traces = prover.generate_traces(record);
+                let chip = chip_name!(TrailingChip, BabyBear);
 
-        let stdin = SP1Stdin::new();
-        // Define a malicious action that forges the trace *after* it's generated.
-        let malicious = move |prover: &P, record: &mut ExecutionRecord| {
-            // First, generate the honest traces.
-            let mut traces = prover.generate_traces(record);
-            let chip = chip_name!(TrailingChip, BabyBear);
+                // Find the TrailingChip's trace and forge it.
+                if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == chip) {
+                    if trace.height() > 0 {
+                        // TrailingChip's internal sum constraint will pass.
+                        let row = trace.row_mut(0);
+                        let cols: &mut TrailingCols<BabyBear> = row.borrow_mut();
 
-            // Find the TrailingChip's trace and forge it.
-            if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == chip) {
-                if trace.height() > 0 {
-                    // TrailingChip's internal sum constraint will pass.
-                    let row = trace.row_mut(0);
-                    let cols: &mut TrailingCols<BabyBear> = row.borrow_mut();
-
-                    // Keep byte-lookup inputs intact so cross-table lookups remain consistent.
-                    // Instead, forge the local witness to trigger a chip-level constraint failure.
-                    cols.z0_is_16 = BabyBear::one();
+                        // Keep byte-lookup inputs intact so cross-table lookups remain consistent.
+                        // Instead, forge the local witness to trigger a chip-level constraint
+                        // failure.
+                        cols.half_word_z[0] = BabyBear::from_canonical_u32(8);
+                        cols.half_word_z[1] = BabyBear::from_canonical_u32(12);
+                    }
                 }
-            }
 
-            traces
-        };
-        let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
-        let chip = chip_name!(TrailingChip, BabyBear);
-        println!("result.is_err =  {}", result.is_err());
-        assert!(result.is_err() && result.unwrap_err().is_constraints_failing(&chip));
+                traces
+            };
+            let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
+            let chip = chip_name!(TrailingChip, BabyBear);
+            println!(
+                "test_malicious_trailing of opcode {:?} result.is_err =  {}",
+                opcode,
+                result.is_err()
+            );
+            assert!(result.is_err() && result.unwrap_err().is_constraints_failing(&chip));
+        }
     }
 }
