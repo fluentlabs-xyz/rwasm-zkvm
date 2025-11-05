@@ -30,8 +30,9 @@ pub struct TrailingCols<T> {
     pub is_ctz: T,
     pub is_clz: T,
     pub is_popcnt: T,
-    // Minimal boolean flags (no inverse witnesses)
-    pub z0_is_16: T, // 1 iff half_word_z[0] == 16 (CTZ: low16, CLZ: high16)
+    // Minimal boolean flag
+    pub z0_is_16: T,        // 1 iff half_word_z[0] == 16 (CTZ: low16, CLZ: high16)
+    pub z0_minus_16_inv: T, // inverse witness for isZero(half_word_z[0] - 16) on CTZ/CLZ rows
 }
 
 #[derive(Default)]
@@ -71,6 +72,12 @@ impl TrailingChip {
             cols.half_word_z =
                 [F::from_canonical_u32(ctz_low16), F::from_canonical_u32(ctz_high16)];
             cols.z0_is_16 = F::from_bool(ctz_low16 == 16);
+            if ctz_low16 == 16 {
+                cols.z0_minus_16_inv = F::zero();
+            } else {
+                let diff = F::from_canonical_u32(ctz_low16) - F::from_canonical_u32(16);
+                cols.z0_minus_16_inv = diff.inverse();
+            }
             // byte lookups: low then high
             blu.add_byte_lookup_event(ByteLookupEvent::new(
                 ByteOpcode::U16CTZ,
@@ -91,6 +98,12 @@ impl TrailingChip {
             cols.half_word_z =
                 [F::from_canonical_u32(clz_high16), F::from_canonical_u32(clz_low16)];
             cols.z0_is_16 = F::from_bool(clz_high16 == 16);
+            if clz_high16 == 16 {
+                cols.z0_minus_16_inv = F::zero();
+            } else {
+                let diff = F::from_canonical_u32(clz_high16) - F::from_canonical_u32(16);
+                cols.z0_minus_16_inv = diff.inverse();
+            }
             // byte lookups: high then low
             blu.add_byte_lookup_event(ByteLookupEvent::new(
                 ByteOpcode::U16CLZ,
@@ -113,6 +126,7 @@ impl TrailingChip {
             cols.half_word_z =
                 [F::from_canonical_u32(pop_low16), F::from_canonical_u32(pop_high16)];
             cols.z0_is_16 = F::zero(); // unused for popcnt
+            cols.z0_minus_16_inv = F::zero();
 
             // byte lookups: low then high
             blu.add_byte_lookup_event(ByteLookupEvent::new(
@@ -205,15 +219,27 @@ where
         ]);
 
         let sixteen = AB::Expr::from_canonical_u32(16);
+        let one = AB::Expr::from_canonical_u32(1);
+        let is_ctz_or_clz = local.is_ctz + local.is_clz;
 
-        // Minimal boolean constraint (no inverse witnesses)
+        // Flag is boolean.
         builder.assert_bool(local.z0_is_16);
 
-        // Gate the equality by is_real *and* the unified flag
+        // isZero gadget for "z0_is_16 <=> (half_word_z[0] == 16)", gated off on POPCNT rows:
+        // 1) (z - 16) * z0_is_16 = 0            (if flag is 1, z must be 16)
         builder
-            .when(is_real.clone())
-            .when(local.z0_is_16)
-            .assert_eq(local.half_word_z[0], sixteen.clone());
+            .when(is_ctz_or_clz.clone())
+            .assert_zero((local.half_word_z[0] - sixteen.clone()) * local.z0_is_16);
+        // 2) (z - 16) * inv - (1 - z0_is_16) = 0  (if z != 16, inv enforces flag=0; if z == 16,
+        //    forces flag=1)
+        builder.when(is_ctz_or_clz.clone()).assert_zero(
+            (local.half_word_z[0] - sixteen.clone()) * local.z0_minus_16_inv -
+                (one.clone() - local.z0_is_16),
+        );
+
+        // Ensure the flag is never set on POPCNT rows (keeps the constraint inactive for POPCNT).
+        // Quadratic: z0_is_16 * is_popcnt = 0
+        builder.assert_zero(local.z0_is_16 * local.is_popcnt);
 
         // Unified result formula: z0 + flag*(16 + z1 - z0)
         let a_any = local.half_word_z[0] +
