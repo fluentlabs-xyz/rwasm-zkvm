@@ -245,11 +245,9 @@ where
         let a_any = local.half_word_z[0] +
             local.z0_is_16 * (sixteen.clone() + local.half_word_z[1] - local.half_word_z[0]);
 
-        builder.when(local.is_ctz).assert_zero(local.a - a_any.clone());
-        builder.when(local.is_clz).assert_zero(local.a - a_any);
-        builder
-            .when(local.is_popcnt)
-            .assert_zero(local.a - (local.half_word_z[0] + local.half_word_z[1]));
+        let popcnt_result = local.half_word_z[0] + local.half_word_z[1];
+        let result = a_any.clone() + local.is_popcnt * (popcnt_result - a_any);
+        builder.assert_zero(local.a - result);
 
         builder.receive_instruction(
             AB::Expr::zero(),
