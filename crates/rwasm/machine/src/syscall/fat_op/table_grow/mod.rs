@@ -127,6 +127,7 @@ where
 
         // Zero-delta successful operations must have zero in delta memory access
         // (not_successful_result exempts failure cases which may have non-zero delta)
+        builder.when(local.not_successful_result).assert_zero(local.is_non_zero_length);
         builder
             .when(local.is_first)
             .when_not(local.is_non_zero_length + local.not_successful_result)
