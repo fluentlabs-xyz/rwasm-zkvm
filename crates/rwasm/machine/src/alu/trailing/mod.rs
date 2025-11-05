@@ -26,15 +26,15 @@ pub struct TrailingCols<T> {
     pub pc: T,
     pub a: Word<T>,
     pub b_bytes: [T; 4],
-    pub half_word_ctz: [T; 2],
-    pub half_word_clz: [T; 2],
+    // Unified per-op halves:
+    //  - CTZ rows:  [ctz_low16,  ctz_high16]
+    //  - CLZ rows:  [clz_high16, clz_low16]
+    pub half_word_z: [T; 2],
     pub is_ctz: T,
     pub is_clz: T,
-    // Witness columns for the conditional logic.
-    pub ctz_low_is_16: T,
-    pub ctz_low_diff_inv: T,
-    pub clz_high_is_16: T,
-    pub clz_high_diff_inv: T,
+    // Minimal boolean flags (no inverse witnesses)
+    pub ctz_low_is_16: T,  // used only on CTZ rows
+    pub clz_high_is_16: T, // used only on CLZ rows
 }
 
 #[derive(Default)]
@@ -58,50 +58,56 @@ impl TrailingChip {
             cols.b_bytes[i] = F::from_canonical_u8(b_bytes[i]);
         }
 
-        for i in 0..2 {
-            let half_word = ((b_val >> (i * 16)) & 0xFFFF) as u16;
-            let ctz = half_word.trailing_zeros();
-            let clz = half_word.leading_zeros();
-            cols.half_word_ctz[i] = F::from_canonical_u32(ctz);
-            cols.half_word_clz[i] = F::from_canonical_u32(clz);
+        // halves
+        let low_half: u16 = (b_val & 0xFFFF) as u16;
+        let high_half: u16 = ((b_val >> 16) & 0xFFFF) as u16;
+        let ctz_low16 = low_half.trailing_zeros();
+        let ctz_high16 = high_half.trailing_zeros();
+        let clz_low16 = low_half.leading_zeros();
+        let clz_high16 = high_half.leading_zeros();
 
-            if i == 0 {
-                // Low half-word for ctz
-                cols.ctz_low_is_16 = F::from_bool(ctz == 16);
-                if ctz != 16 {
-                    let diff = F::from_canonical_u32(ctz) - F::from_canonical_u32(16);
-                    cols.ctz_low_diff_inv = diff.inverse();
-                }
-            }
-            if i == 1 {
-                // High half-word for clz
-                cols.clz_high_is_16 = F::from_bool(clz == 16);
-                if clz != 16 {
-                    let diff = F::from_canonical_u32(clz) - F::from_canonical_u32(16);
-                    cols.clz_high_diff_inv = diff.inverse();
-                }
-            }
-
-            let high_byte = ((half_word >> 8) & 0xFF) as u8;
-            let low_byte = (half_word & 0xFF) as u8;
-
-            if cols.is_ctz == F::one() {
-                blu.add_byte_lookup_event(ByteLookupEvent::new(
-                    ByteOpcode::U16CTZ,
-                    ctz as u16,
-                    0,
-                    high_byte,
-                    low_byte,
-                ));
-            } else {
-                blu.add_byte_lookup_event(ByteLookupEvent::new(
-                    ByteOpcode::U16CLZ,
-                    clz as u16,
-                    0,
-                    high_byte,
-                    low_byte,
-                ));
-            }
+        if cols.is_ctz == F::one() {
+            // CTZ rows
+            cols.half_word_z =
+                [F::from_canonical_u32(ctz_low16), F::from_canonical_u32(ctz_high16)];
+            cols.ctz_low_is_16 = F::from_bool(ctz_low16 == 16);
+            cols.clz_high_is_16 = F::zero();
+            // byte lookups: low then high
+            blu.add_byte_lookup_event(ByteLookupEvent::new(
+                ByteOpcode::U16CTZ,
+                ctz_low16 as u16,
+                0,
+                b_bytes[1],
+                b_bytes[0],
+            ));
+            blu.add_byte_lookup_event(ByteLookupEvent::new(
+                ByteOpcode::U16CTZ,
+                ctz_high16 as u16,
+                0,
+                b_bytes[3],
+                b_bytes[2],
+            ));
+        } else {
+            // CLZ rows
+            cols.half_word_z =
+                [F::from_canonical_u32(clz_high16), F::from_canonical_u32(clz_low16)];
+            cols.clz_high_is_16 = F::from_bool(clz_high16 == 16);
+            cols.ctz_low_is_16 = F::zero();
+            // byte lookups: high then low
+            blu.add_byte_lookup_event(ByteLookupEvent::new(
+                ByteOpcode::U16CLZ,
+                clz_high16 as u16,
+                0,
+                b_bytes[3],
+                b_bytes[2],
+            ));
+            blu.add_byte_lookup_event(ByteLookupEvent::new(
+                ByteOpcode::U16CLZ,
+                clz_low16 as u16,
+                0,
+                b_bytes[1],
+                b_bytes[0],
+            ));
         }
     }
 }
@@ -121,33 +127,35 @@ where
         builder.assert_zero(local.is_ctz * local.is_clz);
         let is_real = local.is_ctz + local.is_clz;
 
-        // Send the byte lookups for each half-word of `b`.
+        // Send gated byte lookups via unified halves.
+        // CTZ (low then high)
         builder.send_byte(
             ByteOpcode::U16CTZ.as_field::<AB::F>(),
-            local.half_word_ctz[0],
+            local.half_word_z[0],
             local.b_bytes[1],
             local.b_bytes[0],
             local.is_ctz,
         );
         builder.send_byte(
             ByteOpcode::U16CTZ.as_field::<AB::F>(),
-            local.half_word_ctz[1],
+            local.half_word_z[1],
             local.b_bytes[3],
             local.b_bytes[2],
             local.is_ctz,
         );
+        // CLZ (high then low)
         builder.send_byte(
             ByteOpcode::U16CLZ.as_field::<AB::F>(),
-            local.half_word_clz[0],
-            local.b_bytes[1],
-            local.b_bytes[0],
+            local.half_word_z[0],
+            local.b_bytes[3],
+            local.b_bytes[2],
             local.is_clz,
         );
         builder.send_byte(
             ByteOpcode::U16CLZ.as_field::<AB::F>(),
-            local.half_word_clz[1],
-            local.b_bytes[3],
-            local.b_bytes[2],
+            local.half_word_z[1],
+            local.b_bytes[1],
+            local.b_bytes[0],
             local.is_clz,
         );
 
@@ -161,35 +169,26 @@ where
 
         let sixteen = AB::Expr::from_canonical_u32(16);
 
-        // Constrain the ctz_low_is_16 witness.
-        let ctz_low_diff = local.half_word_ctz[0] - sixteen.clone();
+        // Minimal boolean constraints (no inverse witnesses)
         builder.assert_bool(local.ctz_low_is_16);
-        builder.when(local.is_ctz).assert_zero(ctz_low_diff.clone() * local.ctz_low_is_16);
-        builder.when(local.is_ctz).assert_eq(
-            ctz_low_diff * local.ctz_low_diff_inv,
-            AB::Expr::one() - local.ctz_low_is_16,
-        );
-
-        // Constrain the clz_high_is_16 witness.
-        let clz_high_diff = local.half_word_clz[1] - sixteen.clone();
         builder.assert_bool(local.clz_high_is_16);
-        builder.when(local.is_clz).assert_zero(clz_high_diff.clone() * local.clz_high_is_16);
-        builder.when(local.is_clz).assert_eq(
-            clz_high_diff * local.clz_high_diff_inv,
-            AB::Expr::one() - local.clz_high_is_16,
-        );
 
-        // Now, use the constrained witnesses as selectors.
-        let ctz_low_is_16_expr = local.ctz_low_is_16.into();
-        let ctz_result = (AB::Expr::one() - ctz_low_is_16_expr.clone()) * local.half_word_ctz[0] +
-            ctz_low_is_16_expr * (sixteen.clone() + local.half_word_ctz[1]);
+        // If a flag is 1, the corresponding half must equal 16
+        builder
+            .when(local.is_ctz)
+            .assert_zero((local.half_word_z[0] - sixteen.clone()) * local.ctz_low_is_16);
+        builder
+            .when(local.is_clz)
+            .assert_zero((local.half_word_z[0] - sixteen.clone()) * local.clz_high_is_16);
 
-        let clz_high_is_16_expr = local.clz_high_is_16.into();
-        let clz_result = (AB::Expr::one() - clz_high_is_16_expr.clone()) * local.half_word_clz[1] +
-            clz_high_is_16_expr * (sixteen + local.half_word_clz[0]);
+        // Unified result formulas: z0 + flag*(16 + z1 - z0)
+        let a_ctz = local.half_word_z[0] +
+            local.ctz_low_is_16 * (sixteen.clone() + local.half_word_z[1] - local.half_word_z[0]);
+        let a_clz = local.half_word_z[0] +
+            local.clz_high_is_16 * (sixteen + local.half_word_z[1] - local.half_word_z[0]);
 
-        builder.when(local.is_ctz).assert_word_eq(local.a, Word::extend_expr::<AB>(ctz_result));
-        builder.when(local.is_clz).assert_word_eq(local.a, Word::extend_expr::<AB>(clz_result));
+        builder.when(local.is_ctz).assert_word_eq(local.a, Word::extend_expr::<AB>(a_ctz));
+        builder.when(local.is_clz).assert_word_eq(local.a, Word::extend_expr::<AB>(a_clz));
 
         builder.receive_instruction(
             AB::Expr::zero(),
@@ -271,7 +270,7 @@ impl<F: PrimeField32> MachineAir<F> for TrailingChip {
     }
 
     fn local_only(&self) -> bool {
-        false
+        true
     }
 }
 
@@ -386,7 +385,6 @@ mod tests {
                     // Keep byte-lookup inputs intact so cross-table lookups remain consistent.
                     // Instead, forge the local witness to trigger a chip-level constraint failure.
                     cols.ctz_low_is_16 = BabyBear::one();
-                    cols.ctz_low_diff_inv = BabyBear::zero();
                 }
             }
 
