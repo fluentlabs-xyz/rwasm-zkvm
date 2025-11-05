@@ -476,7 +476,7 @@ mod tests {
         let x_value: u32 = 0x7;
         let y_value: u32 = 0x2;
         let z_value: u32 = 0x1;
-        let mut functions = vec![0, 24];
+        let functions = vec![0, 24];
 
         let opcodes = vec![
             Opcode::I32Const(x_value.into()),
