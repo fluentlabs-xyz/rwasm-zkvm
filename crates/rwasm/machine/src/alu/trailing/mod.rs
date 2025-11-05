@@ -22,7 +22,7 @@ pub const NUM_TRAILING_COLS: usize = size_of::<TrailingCols<u8>>();
 pub struct TrailingCols<T> {
     pub pc: T,
     pub a: T,
-    pub b_bytes: Word<T>,
+    pub b: Word<T>,
     // Unified per-op halves:
     //  - CTZ rows:  [ctz_low16,  ctz_high16]
     //  - CLZ rows:  [clz_high16, clz_low16]
@@ -53,7 +53,7 @@ impl TrailingChip {
 
         let b_val = event.b;
         let b_bytes = b_val.to_le_bytes();
-        cols.b_bytes = Word([
+        cols.b = Word([
             F::from_canonical_u8(b_bytes[0]),
             F::from_canonical_u8(b_bytes[1]),
             F::from_canonical_u8(b_bytes[2]),
@@ -168,55 +168,47 @@ where
         builder.send_byte(
             ByteOpcode::U16CTZ.as_field::<AB::F>(),
             local.half_word_z[0],
-            local.b_bytes.0[1],
-            local.b_bytes.0[0],
+            local.b.0[1],
+            local.b.0[0],
             local.is_ctz,
         );
         builder.send_byte(
             ByteOpcode::U16CTZ.as_field::<AB::F>(),
             local.half_word_z[1],
-            local.b_bytes.0[3],
-            local.b_bytes.0[2],
+            local.b.0[3],
+            local.b.0[2],
             local.is_ctz,
         );
         // CLZ (high then low)
         builder.send_byte(
             ByteOpcode::U16CLZ.as_field::<AB::F>(),
             local.half_word_z[0],
-            local.b_bytes.0[3],
-            local.b_bytes.0[2],
+            local.b.0[3],
+            local.b.0[2],
             local.is_clz,
         );
         builder.send_byte(
             ByteOpcode::U16CLZ.as_field::<AB::F>(),
             local.half_word_z[1],
-            local.b_bytes.0[1],
-            local.b_bytes.0[0],
+            local.b.0[1],
+            local.b.0[0],
             local.is_clz,
         );
         // POPCNT (low then high)
         builder.send_byte(
             ByteOpcode::U16POPCNT.as_field::<AB::F>(),
             local.half_word_z[0],
-            local.b_bytes.0[1],
-            local.b_bytes.0[0],
+            local.b.0[1],
+            local.b.0[0],
             local.is_popcnt,
         );
         builder.send_byte(
             ByteOpcode::U16POPCNT.as_field::<AB::F>(),
             local.half_word_z[1],
-            local.b_bytes.0[3],
-            local.b_bytes.0[2],
+            local.b.0[3],
+            local.b.0[2],
             local.is_popcnt,
         );
-
-        // Reconstruct the 32-bit operand `b`.
-        let reconstructed_b = Word([
-            local.b_bytes.0[0].into(),
-            local.b_bytes.0[1].into(),
-            local.b_bytes.0[2].into(),
-            local.b_bytes.0[3].into(),
-        ]);
 
         let sixteen = AB::Expr::from_canonical_u32(16);
         let one = AB::Expr::from_canonical_u32(1);
@@ -259,7 +251,7 @@ where
                 local.is_clz * AB::Expr::from_canonical_u32(I32Clz.code()) +
                 local.is_popcnt * AB::Expr::from_canonical_u32(I32Popcnt.code()),
             Word::extend_expr::<AB>(local.a.into()),
-            reconstructed_b,
+            local.b,
             Word::<AB::Expr>::default(),
             AB::Expr::zero(),
             AB::Expr::zero(),
