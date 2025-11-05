@@ -2227,7 +2227,7 @@ mod tests {
 
     // ---  LtS vs LtU should diverge for (-1, 1) ---
     #[test]
-    fn test_ltU() {
+    fn test_lt_u() {
         let x = 5u32;
         let y = 10u32;
         let opcodes = vec![
@@ -4638,8 +4638,8 @@ mod tests {
         let pb = base + 4; // ptr B
         let acc = base + 8; // accumulator
         let rem = base + 12; // remaining
-        let arrA = base + 64; // A[8]
-        let arrB = base + 64 + 8 * 4; // B[8]
+        let arr_a = base + 64; // A[8]
+        let arr_b = base + 64 + 8 * 4; // B[8]
 
         // step():
         //   acc = acc + (*pa * *pb)
@@ -4703,10 +4703,10 @@ mod tests {
 
         // init pointers
         ops.push(Opcode::I32Const(pa.into()));
-        ops.push(Opcode::I32Const(arrA.into()));
+        ops.push(Opcode::I32Const(arr_a.into()));
         ops.push(Opcode::I32Store(0u32));
         ops.push(Opcode::I32Const(pb.into()));
-        ops.push(Opcode::I32Const(arrB.into()));
+        ops.push(Opcode::I32Const(arr_b.into()));
         ops.push(Opcode::I32Store(0u32));
         // acc=0, rem=8
         ops.push(Opcode::I32Const(acc.into()));
@@ -4718,13 +4718,13 @@ mod tests {
 
         // write arrays
         for (i, v) in a_vals.iter().enumerate() {
-            let addr = arrA + (i as u32) * 4;
+            let addr = arr_a + (i as u32) * 4;
             ops.push(Opcode::I32Const(addr.into()));
             ops.push(Opcode::I32Const((*v).into()));
             ops.push(Opcode::I32Store(0u32));
         }
         for (i, v) in b_vals.iter().enumerate() {
-            let addr = arrB + (i as u32) * 4;
+            let addr = arr_b + (i as u32) * 4;
             ops.push(Opcode::I32Const(addr.into()));
             ops.push(Opcode::I32Const((*v).into()));
             ops.push(Opcode::I32Store(0u32));

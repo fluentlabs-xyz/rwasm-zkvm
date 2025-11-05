@@ -313,7 +313,6 @@ impl<F: PrimeField32> MachineAir<F> for TrailingChip {
 mod tests {
     #![allow(clippy::print_stdout)]
 
-    use num::PrimInt;
     use super::{TrailingChip, NUM_TRAILING_COLS};
     use crate::{
         alu::TrailingCols,
@@ -321,6 +320,7 @@ mod tests {
         rwasm::RwasmAir,
         utils::{run_malicious_test, uni_stark_prove as prove, uni_stark_verify as verify},
     };
+    use num::PrimInt;
     use p3_baby_bear::BabyBear;
     use p3_field::AbstractField;
     use p3_matrix::{dense::RowMajorMatrix, Matrix};
@@ -359,7 +359,6 @@ mod tests {
             0b00000000_00000000_00000000_00000001u32, // LSB set
             0b10000000_00000000_00000000_00000000u32, // MSB set
             0b00000000_11111111_00000000_11111111u32, // byte-wise pattern
-
             // --- Added 20 more edge-case samples ---
             0x0000_FFFFu32, // low half all ones, high half zero
             0xFFFF_0000u32, // high half all ones, low half zero

@@ -45,29 +45,12 @@ pub fn run_rwasm_prover(mut program: Program) {
 }
 #[cfg(test)]
 mod tests {
-
     use super::super::*;
 
-    use hashbrown::HashMap;
-
-    use rwasm::BranchOffset;
     use rwasm_executor::{Opcode, Program, SP_START};
-    use rwasm_machine::{program, utils::setup_logger};
 
     use super::{super::*, *};
-    use anyhow::Result;
-    use build::try_build_plonk_bn254_artifacts_dev;
-    use p3_field::PrimeField32;
-    use serde::{Deserialize, Serialize};
-    use serial_test::serial;
-    use sp1_stark::SP1CoreOpts;
-    use std::{
-        fs::File,
-        io::{Read, Write},
-    };
 
-    use table_init::*;
-    use trailing::*;
     fn build_elf() -> Program {
         let x_value: u32 = 0x11;
         let y_value: u32 = 0x23;

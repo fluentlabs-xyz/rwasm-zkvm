@@ -13,7 +13,7 @@ use sp1_stark::{
 use strum_macros::{EnumDiscriminants, EnumIter};
 
 use crate::{
-    alu::{TrailingChip},
+    alu::TrailingChip,
     bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
     control_flow::{BranchChip, CallChip},
     global::GlobalChip,
