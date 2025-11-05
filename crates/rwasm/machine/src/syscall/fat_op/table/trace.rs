@@ -1,7 +1,7 @@
 use std::borrow::BorrowMut;
 
 use crate::{
-    syscall::fat_op::table::{TableCols, NUM_TABLE_INIT_SIZE},
+    syscall::fat_op::table::{TableInitCols, NUM_TABLE_INIT_SIZE},
     utils::pad_rows_fixed,
 };
 use hashbrown::HashMap;
@@ -17,14 +17,14 @@ use rwasm_executor::{
 };
 use sp1_stark::air::MachineAir;
 
-use super::TableChip;
-impl<F: PrimeField32> MachineAir<F> for TableChip {
+use super::TableInitChip;
+impl<F: PrimeField32> MachineAir<F> for TableInitChip {
     type Record = ExecutionRecord;
 
     type Program = Program;
 
     fn name(&self) -> String {
-        "Table".to_string()
+        "TableInit".to_string()
     }
 
     fn generate_trace(
@@ -90,20 +90,16 @@ impl<F: PrimeField32> MachineAir<F> for TableChip {
     }
 }
 
-impl TableChip {
+impl TableInitChip {
     fn event_to_rows<F: PrimeField32>(
         &self,
         event: &TableInitEvent,
         rows: &mut Option<Vec<[F; NUM_TABLE_INIT_SIZE]>>,
         blu: &mut impl ByteRecord,
     ) {
-        println!("table_init_+event:{:?}", event);
-
-        let idx = 0;
-
         for idx in 0..=event.n as usize {
             let mut row = [F::zero(); NUM_TABLE_INIT_SIZE];
-            let local: &mut TableCols<F> = row.as_mut_slice().borrow_mut();
+            let local: &mut TableInitCols<F> = row.as_mut_slice().borrow_mut();
 
             if idx == event.n as usize && event.n > 0 {
                 break;
@@ -118,12 +114,14 @@ impl TableChip {
 
                 local.table_idx.populate(event.table_idx, blu);
                 local.length.populate(event.n, blu);
+                local.sp.populate(event.sp, blu);
             } else {
                 local.dst_access.populate(event.stack_access[0], &mut Vec::new());
                 local.src_access.populate(event.stack_access[1], &mut Vec::new());
                 local.length_access.populate(event.stack_access[2], &mut Vec::new());
 
                 local.table_idx.populate_value(event.table_idx);
+                local.sp.populate_value(event.sp);
             }
 
             // populate address
@@ -139,7 +137,6 @@ impl TableChip {
                 local.is_non_zero_length = F::one();
             }
 
-            local.sp = F::from_canonical_u32(event.sp);
             local.is_real = F::one();
             local.shard = F::from_canonical_u32(event.shard);
             local.clk = F::from_canonical_u32(event.clk);
