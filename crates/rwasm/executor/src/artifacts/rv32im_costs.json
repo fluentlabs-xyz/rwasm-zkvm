@@ -47,6 +47,5 @@
   "Secp256k1DoubleAssign": 4564,
   "Table": 10000,
   "Rotate": 256,
-  "Popcnt": 256,
   "Trailing": 256
 }

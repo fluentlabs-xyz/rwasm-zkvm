@@ -13,7 +13,7 @@ use sp1_stark::{
 use strum_macros::{EnumDiscriminants, EnumIter};
 
 use crate::{
-    alu::{PopcntChip, TrailingChip},
+    alu::{TrailingChip},
     bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
     control_flow::{BranchChip, CallChip},
     global::GlobalChip,
@@ -95,9 +95,7 @@ pub enum RwasmAir<F: PrimeField32> {
     ShiftRight(ShiftRightChip),
     /// An AIR for WASM Rotl, Rotr instruction.
     Rotate(RotateChip),
-    /// An AIR for WASM Popcnt instruction.
-    Popcnt(PopcntChip),
-    /// An AIR for WASM Trailing instructions.
+    /// An AIR for WASM Trailing and Popcnt instructions.
     Trailing(TrailingChip),
     /// An AIR for RISC-V memory instructions.
     Memory(MemoryInstructionsChip),
@@ -360,10 +358,6 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(rotate.name(), rotate.cost());
         chips.push(rotate);
 
-        let popcnt = Chip::new(RwasmAir::Popcnt(PopcntChip::default()));
-        costs.insert(popcnt.name(), popcnt.cost());
-        chips.push(popcnt);
-
         let trailing = Chip::new(RwasmAir::Trailing(TrailingChip::default()));
         costs.insert(trailing.name(), trailing.cost());
         chips.push(trailing);
@@ -464,7 +458,6 @@ impl<F: PrimeField32> RwasmAir<F> {
             RwasmAir::ShiftLeft(ShiftLeft::default()),
             RwasmAir::ShiftRight(ShiftRightChip::default()),
             RwasmAir::Rotate(RotateChip::default()),
-            RwasmAir::Popcnt(PopcntChip::default()),
             RwasmAir::Trailing(TrailingChip::default()),
             RwasmAir::Memory(MemoryInstructionsChip::default()),
             RwasmAir::Branch(BranchChip::default()),
@@ -554,9 +547,6 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Lt => RwasmAirId::Lt,
             RwasmAirDiscriminants::ShiftLeft => RwasmAirId::ShiftLeft,
             RwasmAirDiscriminants::ShiftRight => RwasmAirId::ShiftRight,
-            RwasmAirDiscriminants::Rotate => RwasmAirId::Rotate,
-            RwasmAirDiscriminants::Popcnt => RwasmAirId::Popcnt,
-            RwasmAirDiscriminants::Trailing => RwasmAirId::Trailing,
             RwasmAirDiscriminants::Memory => RwasmAirId::MemoryInstrs,
             RwasmAirDiscriminants::Branch => RwasmAirId::Branch,
             RwasmAirDiscriminants::Call => RwasmAirId::Call,
@@ -592,6 +582,8 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Bn254Fp => RwasmAirId::Bn254FpOpAssign,
             RwasmAirDiscriminants::Bn254Fp2Mul => RwasmAirId::Bn254Fp2MulAssign,
             RwasmAirDiscriminants::Bn254Fp2AddSub => RwasmAirId::Bn254Fp2AddSubAssign,
+            RwasmAirDiscriminants::Rotate => RwasmAirId::Rotate,
+            RwasmAirDiscriminants::Trailing => RwasmAirId::Trailing,
             RwasmAirDiscriminants::Table => RwasmAirId::Table,
         }
     }
