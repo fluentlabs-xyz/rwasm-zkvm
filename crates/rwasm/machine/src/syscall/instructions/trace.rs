@@ -86,16 +86,18 @@ impl SyscallInstrsChip {
         cols.is_real = F::one();
         cols.pc = F::from_canonical_u32(event.pc);
         cols.next_pc = F::from_canonical_u32(event.next_pc);
+
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
         #[allow(clippy::match_like_matches_macro)]
         let is_fat_op = match event.syscall_code {
-            SyscallCode::TABLE_INIT => true,
+            SyscallCode::TABLE_INIT | SyscallCode::TABLE_GROW => true,
             _ => false,
         };
         cols.is_fat_op = F::from_bool(is_fat_op);
         let fat_opcode = match event.syscall_code {
             SyscallCode::TABLE_INIT => Opcode::TableInit(0u32).code(),
+            SyscallCode::TABLE_GROW => Opcode::TableGrow(0u16).code(),
             _ => Opcode::Unreachable.code(),
         };
         cols.fat_opcode = F::from_canonical_u32(fat_opcode);
@@ -103,6 +105,7 @@ impl SyscallInstrsChip {
         // cols.op_a_access.populate(MemoryRecordEnum::Write(event.a_record), blu);
         cols.op_b_value = event.arg1.into();
         cols.op_c_value = event.arg2.into();
+
         cols.syscall_code = (event.syscall_code as u32).into();
         let syscall_id = F::from_canonical_u32(event.syscall_id);
         println!("code :{}should send:{}", event.syscall_code, event.syscall_code.should_send());

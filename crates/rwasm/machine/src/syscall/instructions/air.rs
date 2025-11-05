@@ -92,7 +92,7 @@ where
         // `next_pc` is constrained for the case where `is_halt` is false to be `pc + 4`
         builder
             .when(local.is_real)
-            .when(AB::Expr::one() - local.is_halt)
+            .when(AB::Expr::one() - local.is_halt - local.is_fat_op)
             .assert_eq(local.next_pc, local.pc + AB::Expr::from_canonical_u32(2));
 
         // `num_extra_cycles` is checked to be equal to the return value of
