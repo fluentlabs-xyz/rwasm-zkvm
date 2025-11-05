@@ -55,7 +55,7 @@ impl PopcntChip {
         let b = event.b.to_le_bytes();
 
         blu.add_byte_lookup_event(ByteLookupEvent {
-            opcode: ByteOpcode::U16Popcnt,
+            opcode: ByteOpcode::U16POPCNT,
             a1: b_low_weight as u16,
             a2: 0,
             b: b[1],
@@ -63,7 +63,7 @@ impl PopcntChip {
         });
 
         blu.add_byte_lookup_event(ByteLookupEvent {
-            opcode: ByteOpcode::U16Popcnt,
+            opcode: ByteOpcode::U16POPCNT,
             a1: b_high_weight as u16,
             a2: 0,
             b: b[3],
@@ -84,7 +84,7 @@ where
         builder.assert_bool(local.is_real);
 
         builder.send_byte(
-            AB::Expr::from_canonical_u32(ByteOpcode::U16Popcnt as u32),
+            AB::Expr::from_canonical_u32(ByteOpcode::U16POPCNT as u32),
             local.b_low_weight,
             local.b[1],
             local.b[0],
@@ -92,7 +92,7 @@ where
         );
 
         builder.send_byte(
-            AB::Expr::from_canonical_u32(ByteOpcode::U16Popcnt as u32),
+            AB::Expr::from_canonical_u32(ByteOpcode::U16POPCNT as u32),
             local.b_high_weight,
             local.b[3],
             local.b[2],

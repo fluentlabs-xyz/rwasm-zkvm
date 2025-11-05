@@ -29,7 +29,7 @@ pub enum ByteOpcode {
     /// Unsigned 16-bit Range Check.
     U16Range = 8,
     /// 16-bit Hamming weight
-    U16Popcnt = 9,
+    U16POPCNT = 9,
 }
 
 pub type Opcode = rwasm::Opcode;

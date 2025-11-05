@@ -170,7 +170,7 @@ impl ByteOpcode {
             ByteOpcode::LTU,
             ByteOpcode::MSB,
             ByteOpcode::U16Range,
-            ByteOpcode::U16Popcnt,
+            ByteOpcode::U16POPCNT,
         ];
         debug_assert_eq!(opcodes.len(), NUM_BYTE_OPS);
         opcodes
