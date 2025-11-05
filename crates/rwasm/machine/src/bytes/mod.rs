@@ -99,10 +99,11 @@ impl<F: Field> ByteChip<F> {
                         col.value_u16 = F::from_canonical_u32(v);
                         ByteLookupEvent::new(*opcode, v as u16, 0, 0, 0)
                     }
-                    ByteOpcode::PopcntOpcode => {
+                    ByteOpcode::U16Popcnt => {
                         let v = ((b as u32) << 8) + c as u32;
-                        col.popcnt_u16_result = F::from_canonical_u32(v.count_ones());
-                        ByteLookupEvent::new(*opcode, v.count_ones() as u16, 0, b, c)
+                        let count = v.count_ones();
+                        col.u16popcnt = F::from_canonical_u32(count);
+                        ByteLookupEvent::new(*opcode, count as u16, 0, b, c)
                     }
                 };
             }

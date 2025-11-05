@@ -55,7 +55,7 @@ impl PopcntChip {
         let b = event.b.to_le_bytes();
 
         blu.add_byte_lookup_event(ByteLookupEvent {
-            opcode: ByteOpcode::PopcntOpcode,
+            opcode: ByteOpcode::U16Popcnt,
             a1: b_low_weight as u16,
             a2: 0,
             b: b[1],
@@ -63,7 +63,7 @@ impl PopcntChip {
         });
 
         blu.add_byte_lookup_event(ByteLookupEvent {
-            opcode: ByteOpcode::PopcntOpcode,
+            opcode: ByteOpcode::U16Popcnt,
             a1: b_high_weight as u16,
             a2: 0,
             b: b[3],
@@ -84,7 +84,7 @@ where
         builder.assert_bool(local.is_real);
 
         builder.send_byte(
-            AB::Expr::from_canonical_u32(ByteOpcode::PopcntOpcode as u32),
+            AB::Expr::from_canonical_u32(ByteOpcode::U16Popcnt as u32),
             local.b_low_weight,
             local.b[1],
             local.b[0],
@@ -92,7 +92,7 @@ where
         );
 
         builder.send_byte(
-            AB::Expr::from_canonical_u32(ByteOpcode::PopcntOpcode as u32),
+            AB::Expr::from_canonical_u32(ByteOpcode::U16Popcnt as u32),
             local.b_high_weight,
             local.b[3],
             local.b[2],
@@ -245,10 +245,6 @@ mod tests {
             let a = b.count_ones();
             events.push(AluEvent::new(0, Opcode::I32Popcnt, a, b, 0, Opcode::I32Popcnt.code()));
         }
-        // Pad to ~1000 rows
-        /*  events.resize_with(1000, || {
-            AluEvent::new(0, Opcode::I32Popcnt, 0, 0, 0, Opcode::I32Popcnt.code())
-        });*/
         let mut shard = ExecutionRecord::default();
         shard.popcnt_events = events;
         let chip = PopcntChip::default();
@@ -284,16 +280,6 @@ mod tests {
 
             let malicious = move |prover: &P, record: &mut ExecutionRecord| {
                 let mut malicious_record = record.clone();
-
-                // forge CPU result cell + memory write
-                if malicious_record.cpu_events.len() > 4 {
-                    malicious_record.cpu_events[4].res = op_a as u32;
-                    if let Some(MemoryRecordEnum::Write(mut write_record)) =
-                        malicious_record.cpu_events[4].res_record
-                    {
-                        write_record.value = op_a as u32;
-                    }
-                }
 
                 // also forge the PopcntChip chip’s `a` column to match the bad value
                 let chip = chip_name!(PopcntChip, BabyBear);

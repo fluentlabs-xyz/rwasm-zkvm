@@ -44,7 +44,7 @@ pub struct BytePreprocessedCols<T> {
     pub value_u16: T,
 
     /// 16-bit Hamming weight
-    pub popcnt_u16_result: T,
+    pub u16popcnt: T,
 }
 
 /// For each byte operation in the preprocessed table, a corresponding ByteMultCols row tracks the
