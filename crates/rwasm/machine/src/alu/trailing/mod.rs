@@ -117,8 +117,9 @@ where
 
         builder.assert_bool(local.is_ctz);
         builder.assert_bool(local.is_clz);
+        // At most one of CTZ or CLZ can be active in a row.
+        builder.assert_zero(local.is_ctz * local.is_clz);
         let is_real = local.is_ctz + local.is_clz;
-        builder.assert_bool(is_real.clone());
 
         // Send the byte lookups for each half-word of `b`.
         builder.send_byte(
