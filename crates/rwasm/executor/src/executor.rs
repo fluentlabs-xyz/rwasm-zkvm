@@ -962,8 +962,6 @@ impl<'a> Executor<'a> {
             }
             Opcode::I32Popcnt => {
                 self.record.popcnt_events.push(event);
-
-                println!("I32Popcnt: {:?}", event);
             }
             _ => unreachable!(),
         }
