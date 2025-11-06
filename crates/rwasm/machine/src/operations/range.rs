@@ -270,7 +270,6 @@ impl<
     }
 }
 
-
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Range8bCols<T, const START: u32, const END: u32> {
