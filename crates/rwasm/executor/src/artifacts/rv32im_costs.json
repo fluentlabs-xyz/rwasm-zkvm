@@ -47,6 +47,6 @@
   "Secp256k1DoubleAssign": 4564,
   "Rotate": 256,
   "TableInit": 10000,
-  "TableGrow": 10000
-  
+  "TableGrow": 10000,
+  "Trailing": 256
 }

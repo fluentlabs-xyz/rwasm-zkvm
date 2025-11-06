@@ -42,6 +42,15 @@ pub struct BytePreprocessedCols<T> {
 
     /// A u16 value used for `U16Range`.
     pub value_u16: T,
+
+    /// The result of the `U16POPCNT` operation on `value_u16`.
+    pub u16_popcnt: T,
+
+    /// The result of the `U16CTZ` operation on `value_u16`.
+    pub u16_ctz: T,
+
+    /// The result of the `U16CLZ` operation on `value_u16`.
+    pub u16_clz: T,
 }
 
 /// For each byte operation in the preprocessed table, a corresponding ByteMultCols row tracks the
