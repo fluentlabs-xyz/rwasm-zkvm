@@ -157,6 +157,9 @@ pub enum SyscallCode {
     /// Executes the `SECP256R1_DECOMPRESS` precompile.
     SECP256R1_DECOMPRESS = 0x00_00_01_2E,
 
+    /// Executes the `TableGrow` FatOp.
+    TABLE_GROW = 0x00_00_01_91,
+
     /// Executes the `TableInit` FatOp.
     TABLE_INIT = 0x00_02_01_96,
 }
@@ -205,6 +208,7 @@ impl SyscallCode {
             0x00_01_01_2C => SyscallCode::SECP256R1_ADD,
             0x00_00_01_2D => SyscallCode::SECP256R1_DOUBLE,
             0x00_00_01_2E => SyscallCode::SECP256R1_DECOMPRESS,
+            0x00_00_01_91 => SyscallCode::TABLE_GROW,
             0x00_02_01_96 => SyscallCode::TABLE_INIT,
             _ => panic!("invalid syscall number: {value}"),
         }
@@ -279,7 +283,8 @@ impl SyscallCode {
             SyscallCode::SECP256R1_ADD => RwasmAirId::Secp256r1AddAssign,
             SyscallCode::SECP256R1_DOUBLE => RwasmAirId::Secp256r1DoubleAssign,
             SyscallCode::SECP256R1_DECOMPRESS => RwasmAirId::Secp256r1Decompress,
-            SyscallCode::TABLE_INIT => RwasmAirId::Table,
+            SyscallCode::TABLE_INIT => RwasmAirId::TableInit,
+            SyscallCode::TABLE_GROW => RwasmAirId::TableGrow,
             SyscallCode::HALT |
             SyscallCode::WRITE |
             SyscallCode::ENTER_UNCONSTRAINED |

@@ -759,14 +759,15 @@ impl<'a> Executor<'a> {
         } else if opcode.is_ecall_instruction() {
             let syscall_code = match opcode {
                 Opcode::TableInit(_) => SyscallCode::TABLE_INIT,
+                Opcode::TableGrow(_) => SyscallCode::TABLE_GROW,
                 _ => syscall_code,
             };
             self.emit_syscall_event(
                 clk,
                 record.arg1_record,
                 syscall_code,
+                arg1,
                 arg2,
-                res,
                 next_pc,
                 fat_op,
             );
@@ -1103,6 +1104,19 @@ impl<'a> Executor<'a> {
                     syscall_event,
                     PrecompileEvent::TableInit(table_init_event),
                 ),
+                _ => {
+                    unreachable!();
+                }
+            },
+            SyscallCode::TABLE_GROW => match fat_op.unwrap() {
+                FatOpEvent::TableGrow(table_grow_event) => self.record.precompile_events.add_event(
+                    SyscallCode::TABLE_GROW,
+                    syscall_event,
+                    PrecompileEvent::TableGrow(table_grow_event),
+                ),
+                _ => {
+                    unreachable!();
+                }
             },
         }
     }
@@ -1833,13 +1847,17 @@ impl<'a> Executor<'a> {
             // to what `bump_record` does.
 
             if let Some(op_state) = self.store.tracer.logs.last() {
-                if let Some(FatOpEvent::TableInit(event)) = &op_state.fat_op {
-                    for addr in &event.local_mem_access_addr {
-                        let local_mem_access = self.store.tracer.local_memory_event.remove(addr);
+                let addrs = match &op_state.fat_op {
+                    Some(FatOpEvent::TableInit(event)) => &event.local_mem_access_addr,
+                    Some(FatOpEvent::TableGrow(event)) => &event.local_mem_access_addr,
+                    _ => &Vec::new(),
+                };
 
-                        if let Some(local_mem_access) = local_mem_access {
-                            self.record.cpu_local_memory_access.push(local_mem_access);
-                        }
+                for addr in addrs {
+                    let local_mem_access = self.store.tracer.local_memory_event.remove(addr);
+
+                    if let Some(local_mem_access) = local_mem_access {
+                        self.record.cpu_local_memory_access.push(local_mem_access);
                     }
                 }
             }

@@ -93,7 +93,6 @@ impl<F: PrimeField> InstructionCols<F> {
             }
             _ => (),
         }
-        let aux_vale = opcode.aux_value();
 
         if opcode.is_alu_instruction() {
             match opcode {

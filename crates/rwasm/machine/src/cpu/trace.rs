@@ -188,6 +188,7 @@ impl CpuChip {
             let syscall_id = match instruction {
                 Opcode::Call(_) => instruction.aux_value(),
                 Opcode::TableInit(_) => SyscallCode::TABLE_INIT.syscall_id(),
+                Opcode::TableGrow(_) => SyscallCode::TABLE_GROW.syscall_id(),
                 _ => unimplemented!(),
             };
             let syscall_id = F::from_canonical_u32(syscall_id);
