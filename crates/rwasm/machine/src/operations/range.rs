@@ -10,8 +10,8 @@ use sp1_stark::air::SP1AirBuilder;
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Range16bCols<T, const START: u32, const END: u32> {
-    hi_16bits: T,
-    low_16bits: T,
+    hi_8bits: T,
+    low_8bits: T,
     pub hi_is_zero: T,
     pub hi_is_not_edge: T,
     pub hi_is_eq_ub_hi: T,
@@ -30,8 +30,8 @@ impl<F: PrimeField32, const START: u32, const END: u32> Range16bCols<F, START, E
 
         let hi_8bits: u8 = (shifted_value >> 8) as u8;
         let low_8bits: u8 = shifted_value as u8;
-        self.hi_16bits = F::from_canonical_u8(hi_8bits);
-        self.low_16bits = F::from_canonical_u8(low_8bits);
+        self.hi_8bits = F::from_canonical_u8(hi_8bits);
+        self.low_8bits = F::from_canonical_u8(low_8bits);
     }
 
     pub fn populate(&mut self, value: u32, output: &mut impl ByteRecord) {
@@ -45,8 +45,8 @@ impl<F: PrimeField32, const START: u32, const END: u32> Range16bCols<F, START, E
 
         let hi_8bits: u8 = (shifted_value >> 8) as u8;
         let low_8bits: u8 = shifted_value as u8;
-        self.hi_16bits = F::from_canonical_u8(hi_8bits);
-        self.low_16bits = F::from_canonical_u8(low_8bits);
+        self.hi_8bits = F::from_canonical_u8(hi_8bits);
+        self.low_8bits = F::from_canonical_u8(low_8bits);
 
         let hi_is_eq_ub_hi = hi_8bits == Self::UB_HI_8BITS_SHIFTED;
         self.hi_is_eq_ub_hi = F::from_bool(hi_is_eq_ub_hi);
@@ -89,8 +89,8 @@ impl<T: Copy, const START: u32, const END: u32> Range16bCols<T, START, END> {
     where
         T: Into<AB::Expr>,
     {
-        let hi = self.hi_16bits.into();
-        let low = self.low_16bits.into();
+        let hi = self.hi_8bits.into();
+        let low = self.low_8bits.into();
         hi * AB::Expr::from_canonical_u32(1 << 8) + low + AB::Expr::from_canonical_u32(START)
     }
 
@@ -113,25 +113,25 @@ impl<T: Copy, const START: u32, const END: u32> Range16bCols<T, START, END> {
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::U8Range as u32),
             AB::Expr::zero(),
-            cols.hi_16bits,
-            cols.low_16bits,
+            cols.hi_8bits,
+            cols.low_8bits,
             is_real.clone(),
         );
 
         // check edge cases of hi_8bits
-        builder.when(is_real.clone()).when(cols.hi_is_zero).assert_zero(cols.hi_16bits);
+        builder.when(is_real.clone()).when(cols.hi_is_zero).assert_zero(cols.hi_8bits);
 
         builder
             .when(is_real)
             .when(cols.hi_is_eq_ub_hi)
-            .assert_eq(cols.hi_16bits, AB::Expr::from_canonical_u8(Self::UB_HI_8BITS_SHIFTED));
+            .assert_eq(cols.hi_8bits, AB::Expr::from_canonical_u8(Self::UB_HI_8BITS_SHIFTED));
 
         // If it's not an edge case, we check that hi_8bits is located within the space between
         // the edges
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
             AB::Expr::from_bool(true),
-            cols.hi_16bits,
+            cols.hi_8bits,
             AB::Expr::from_canonical_u8(Self::UB_HI_8BITS_SHIFTED),
             cols.hi_is_not_edge,
         );
@@ -140,7 +140,7 @@ impl<T: Copy, const START: u32, const END: u32> Range16bCols<T, START, END> {
         builder.send_byte(
             AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
             AB::Expr::from_bool(true),
-            cols.low_16bits,
+            cols.low_8bits,
             AB::Expr::from_canonical_u8(Self::UB_LOW_8BITS_SHIFTED),
             cols.hi_is_eq_ub_hi,
         );
