@@ -171,7 +171,7 @@ impl<
     pub fn populate(&mut self, value: u32, output: &mut impl ByteRecord, do_check: bool) {
         // We subtract the START to work with the value that is in the range [0..END -
         // START]
-        let start = START_HI16 << (16 + START_LOW16);
+        let start = Self::START;
         let (shifted_value, overflow) = value.overflowing_sub(start);
 
         assert!(!overflow);
