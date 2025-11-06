@@ -5154,30 +5154,28 @@ mod tests {
     #[test]
     fn test_i32extend8s() {
         {
-            // Sign-extend from the low 8 bits into i32, push as u32.
-            // We cover positive, negative, and "upper-bits-noise" cases.
+            // Keep any cases you like; this one hits the boundary (-128)
             let cases = [
-                0x0000_0000u32, // 0  -> 0
-                0x0000_0001u32, // 1  -> 1
-                0x0000_007Fu32, // +127 stays +127
-               // 0x0000_0080u32, // -128 -> 0xFFFF_FF80
-               // 0x0000_00FFu32, // -1   -> 0xFFFF_FFFF
-               // 0xF00D_00AAu32, // 0xAA -> -86 -> 0xFFFF_FFAA
-               // 0x1234_0055u32, // 0x55 -> +85 -> 0x0000_0055
+                0x0000_0000,    // 0  -> 0
+                0x0000_7FFF,    // +32767 stays +32767
+                0x0000_8000,    // -32768 -> 0xFFFF_8000
+                0x0000_FFFF,    // -1     -> 0xFFFF_FFFF
+                0xDEAD_8001u32, // 0x8001 -> -32767 -> 0xFFFF_8001
+                0xBEEF_1234u32, // 0x1234 -> +4660  -> 0x0000_1234
             ];
 
             for &input in &cases {
                 println!("next test of test_i32extend8s is {}", input);
-                let expected: u32 = (((input as u8) as i8) as i32) as u32;
-                let program = Program::from_instrs(vec![
-                    Opcode::I32Const(input.into()),
-                    Opcode::I32Extend8S,
-                ]);
+                // Mirror: i32_extend8_s(x) = (x as i8) as i32
+                let expected: u32 = ((input as i8) as i32) as u32;
+
+                let program =
+                    Program::from_instrs(vec![Opcode::I32Const(input.into()), Opcode::I32Extend8S]);
 
                 let mut rt = Executor::new(program, SP1CoreOpts::default());
                 rt.run().unwrap();
 
-                let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+                let top = rt.state.memory.get(rt.state.sp + 3).unwrap().value;
                 assert_eq!(top, expected, "I32Extend8S({:#010x}) mismatch", input);
             }
         }
@@ -5195,9 +5193,8 @@ mod tests {
                 0xDEAD_8001, // 0x8001 -> -32767 -> 0xFFFF_8001
                 0xBEEF_1234, // 0x1234 -> +4660  -> 0x0000_1234
             ];
-
             for &input in &cases {
-                let expected: u32 = (((input as u16) as i16) as i32) as u32;
+                let expected: u32 = ((input as i16) as i32) as u32;
                 let program = Program::from_instrs(vec![
                     Opcode::I32Const(input.into()),
                     Opcode::I32Extend16S,

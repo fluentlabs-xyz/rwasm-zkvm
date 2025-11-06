@@ -30,8 +30,8 @@ use crate::{
 pub(crate) mod rwasm_chips {
     pub use crate::{
         alu::{
-            AddSubChip, BitwiseChip, DivRemChip, LtChip, MulChip, RotateChip, ShiftLeft,
-            ShiftRightChip,ExtendChip,
+            AddSubChip, BitwiseChip, DivRemChip, ExtendChip, LtChip, MulChip, RotateChip,
+            ShiftLeft, ShiftRightChip,
         },
         bytes::ByteChip,
         cpu::CpuChip,

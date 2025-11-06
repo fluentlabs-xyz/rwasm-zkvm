@@ -158,7 +158,6 @@ pub enum RwasmAirId {
 
     #[subenum(CoreAirId)]
     Extend = 50,
-
 }
 
 impl RwasmAirId {
