@@ -301,7 +301,6 @@ where
             local.is_rotr,
         );
 
-        // ---------------------------------------------------------------------\
         let cpu_opcode = local.is_rotl * AB::Expr::from_canonical_u32(Opcode::I32Rotl.code()) +
             local.is_rotr * AB::Expr::from_canonical_u32(Opcode::I32Rotr.code());
 
