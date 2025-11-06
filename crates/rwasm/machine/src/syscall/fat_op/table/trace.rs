@@ -112,25 +112,25 @@ impl TableInitChip {
                 local.src_access.populate(event.stack_access[1], blu);
                 local.length_access.populate(event.stack_access[2], blu);
 
-                local.table_idx.populate(event.table_idx, blu);
-                local.length.populate(event.n, blu);
-                local.sp.populate(event.sp, blu);
+                local.table_idx.populate(event.table_idx, blu, true);
+                local.length.populate(event.n, blu, true);
+                local.sp.populate(event.sp, blu, true);
             } else {
                 local.dst_access.populate(event.stack_access[0], &mut Vec::new());
                 local.src_access.populate(event.stack_access[1], &mut Vec::new());
                 local.length_access.populate(event.stack_access[2], &mut Vec::new());
 
-                local.table_idx.populate_value(event.table_idx);
-                local.sp.populate_value(event.sp);
+                local.table_idx.populate(event.table_idx, blu, false);
+                local.sp.populate(event.sp, blu, false);
             }
 
             // populate address
             if idx == 0 || idx == event.n as usize - 1 {
-                local.src_address.populate(event.s + idx as u32, blu);
-                local.dst_address.populate(event.d + idx as u32, blu);
+                local.src_address.populate(event.s + idx as u32, blu, true);
+                local.dst_address.populate(event.d + idx as u32, blu, true);
             } else {
-                local.src_address.populate_value(event.s + idx as u32);
-                local.dst_address.populate_value(event.d + idx as u32);
+                local.src_address.populate(event.s + idx as u32, blu, false);
+                local.dst_address.populate(event.d + idx as u32, blu, false);
             }
 
             if event.n != 0 {
