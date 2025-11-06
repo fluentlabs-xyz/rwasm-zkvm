@@ -82,8 +82,8 @@ impl<F: PrimeField32, const START: u32, const END: u32> Range16bCols<F, START, E
 }
 
 impl<T: Copy, const START: u32, const END: u32> Range16bCols<T, START, END> {
-    const UB_LOW_8BITS_SHIFTED: u8 = (END - START + 1u32) as u8;
-    const UB_HI_8BITS_SHIFTED: u8 = ((END - START + 1u32) >> 8) as u8;
+    const UB_LOW_8BITS_SHIFTED: u8 = (END - START + UNIT) as u8;
+    const UB_HI_8BITS_SHIFTED: u8 = ((END - START + UNIT) >> 8) as u8;
 
     pub fn value<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
     where
@@ -245,9 +245,9 @@ impl<
     const START: u32 = (START_HI16 << 16 + START_LOW16);
     const END: u32 = (END_HI16 << 16 + END_LOW16);
     const UB_LOW_16BITS_SHIFTED: u16 =
-        ((END_HI16 << 16 + END_LOW16) - (START_HI16 << 16 + START_LOW16) + 1) as u16;
+        ((END_HI16 << 16 + END_LOW16) - (START_HI16 << 16 + START_LOW16) + UNIT) as u16;
     const UB_HI_16BITS_SHIFTED: u16 =
-        (((END_HI16 << 16 + END_LOW16) - (START_HI16 << 16 + START_LOW16) + 1) >> 16) as u16;
+        (((END_HI16 << 16 + END_LOW16) - (START_HI16 << 16 + START_LOW16) + UNIT) >> 16) as u16;
 
     pub fn value<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
     where
