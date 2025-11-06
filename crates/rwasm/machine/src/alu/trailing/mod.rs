@@ -53,12 +53,7 @@ impl TrailingChip {
 
         let b_val = event.b;
         let b_bytes = b_val.to_le_bytes();
-        cols.b = Word([
-            F::from_canonical_u8(b_bytes[0]),
-            F::from_canonical_u8(b_bytes[1]),
-            F::from_canonical_u8(b_bytes[2]),
-            F::from_canonical_u8(b_bytes[3]),
-        ]);
+        cols.b = event.b.into();
 
         // halves
         let low_half: u16 = b_val as u16;
@@ -211,7 +206,7 @@ where
         );
 
         let sixteen = AB::Expr::from_canonical_u32(16);
-        let one = AB::Expr::from_canonical_u32(1);
+        let one = AB::Expr::one();
         let is_ctz_or_clz = local.is_ctz + local.is_clz;
 
         // Flag is boolean.
