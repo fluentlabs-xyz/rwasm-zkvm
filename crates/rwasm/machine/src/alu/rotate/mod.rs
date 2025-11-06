@@ -63,7 +63,7 @@ impl RotateChip {
         cols: &mut RotateCols<F>,
         blu: &mut impl ByteRecord,
     ) {
-        // --- 1) Basic columns: copy CPU operands/results into the trace row.
+        // 1) Basic columns: copy CPU operands/results into the trace row.
         cols.pc = F::from_canonical_u32(event.pc);
 
         cols.a = Word::from(event.a);
@@ -75,11 +75,11 @@ impl RotateChip {
         cols.c_masked = F::from_canonical_u32(k);
         cols.c_inverse = F::from_canonical_u32(inv);
 
-        // --- 2) Instruction selectors.
+        // 2) Instruction selectors.
         cols.is_rotl = F::from_bool(event.code == Opcode::I32Rotl.code());
         cols.is_rotr = F::from_bool(event.code == Opcode::I32Rotr.code());
 
-        // --- 3) Decomposition: precompute the two contributions (left/right) from the executor.
+        // 3) Decomposition: precompute the two contributions (left/right) from the executor.
         // For real rows, we will constrain in AIR that: a = left OR right and (left & right) == 0.
         // For ROTR(k): left = b << (32 - k), right = b >> k
         // For ROTL(k): left = b >> (32 - k), right = b << k
@@ -98,21 +98,21 @@ impl RotateChip {
         cols.left_shifted = Word(left_bytes.map(F::from_canonical_u8));
         cols.right_shifted = Word(right_bytes.map(F::from_canonical_u8));
 
-        // --- 4) Byte lookups: a = left OR right (byte-wise).
+        // 4) Byte lookups: a = left OR right (byte-wise).
         for (a_b, l_b, r_b) in izip!(event.a.to_le_bytes(), left_bytes, right_bytes) {
             let byte_event =
                 ByteLookupEvent { opcode: ByteOpcode::OR, a1: a_b as u16, a2: 0, b: l_b, c: r_b };
             blu.add_byte_lookup_event(byte_event);
         }
 
-        // --- 5) Byte lookups used in AIR non-overlap: (left & right) == 0 (byte-wise).
+        // 5) Byte lookups used in AIR non-overlap: (left & right) == 0 (byte-wise).
         for (l_b, r_b) in left_bytes.iter().copied().zip(right_bytes.iter().copied()) {
             let byte_event =
                 ByteLookupEvent { opcode: ByteOpcode::AND, a1: 0, a2: 0, b: l_b, c: r_b };
             blu.add_byte_lookup_event(byte_event);
         }
 
-        // --- 6) Masking checks wired via AND lookups on low byte.
+        // 6) Masking checks wired via AND lookups on low byte.
         // c_masked = c & 0x1f  and  c_inverse is 5-bit: (inv & 0x1f) = inv.
         let c0 = (event.c & 0xff) as u8;
         let k0 = (k & 0xff) as u8;
@@ -134,7 +134,7 @@ impl RotateChip {
             c: 0x1f,
         });
 
-        // --- 7) Range checks for helper words.
+        // 7) Range checks for helper words.
         blu.add_u8_range_checks(&left_bytes);
         blu.add_u8_range_checks(&right_bytes);
     }
@@ -149,9 +149,7 @@ where
         let local = main.row_slice(0);
         let local: &RotateCols<AB::Var> = (*local).borrow();
 
-        // ---------------------------------------------------------------------
         // 0) Flags & real-row selector
-        // ---------------------------------------------------------------------
         let is_real = local.is_rotl + local.is_rotr;
         builder.assert_bool(local.is_rotl);
         builder.assert_bool(local.is_rotr);
@@ -168,11 +166,9 @@ where
         let or_opcode = ByteOpcode::OR.as_field::<AB::F>();
         let mask_0x1f = AB::Expr::from_canonical_u8(0x1f);
 
-        // ---------------------------------------------------------------------
         // 1) Masking of the rotation amount (k = c & 31)
         //    - Low byte: c_masked[0] = c[0] & 0x1f (via a byte AND lookup)
         //    - Upper bytes of c_masked must be zero
-        // ---------------------------------------------------------------------
         builder.send_byte(
             and_opcode,
             local.c_masked,
@@ -181,10 +177,8 @@ where
             is_real.clone(),
         );
 
-        // ---------------------------------------------------------------------
         // 2) The “inverse” (32 - k) is also 5‑bit: inv & 0x1f == inv on the low byte; higher bytes
         //    are zero.
-        // ---------------------------------------------------------------------
         builder.send_byte(
             and_opcode,
             local.c_inverse,
@@ -193,9 +187,7 @@ where
             is_real.clone(),
         );
 
-        // ---------------------------------------------------------------------
         // 3) Decomposition: a = left_shifted OR right_shifted  (byte-wise)
-        // ---------------------------------------------------------------------
         for i in 0..4 {
             builder.send_byte(
                 or_opcode,
@@ -206,10 +198,8 @@ where
             );
         }
 
-        // ---------------------------------------------------------------------
         // 4) Non‑overlap: (left_shifted & right_shifted) == 0 (byte-wise) This forbids
         //    double-counting when the OR recombines the two parts.
-        // ---------------------------------------------------------------------
         let zero = AB::Expr::zero();
         for i in 0..4 {
             builder.send_byte(
@@ -221,9 +211,7 @@ where
             );
         }
 
-        // ---------------------------------------------------------------------
         // 5) Local range checks for helper words (each is a byte)
-        // ---------------------------------------------------------------------
         builder.slice_range_check_u8(&local.left_shifted.0, is_real.clone());
         builder.slice_range_check_u8(&local.right_shifted.0, is_real.clone());
 
@@ -231,10 +219,8 @@ where
 
         // 6) Bus Checks: send the decomposed shift operations to the bus for verification by the
         //    ShiftLeftChip and ShiftRightChip.
-
-        let c_masked_word = Word([local.c_masked.into(), zero.clone(), zero.clone(), zero.clone()]);
-        let c_inverse_word =
-            Word([local.c_inverse.into(), zero.clone(), zero.clone(), zero.clone()]);
+        let c_masked_word = Word::extend_var::<AB>(local.c_masked);
+        let c_inverse_word = Word::extend_var::<AB>(local.c_inverse);
 
         let shr_opcode = AB::Expr::from_canonical_u32(Opcode::I32ShrU.code());
         let shl_opcode = AB::Expr::from_canonical_u32(Opcode::I32Shl.code());
@@ -303,7 +289,6 @@ where
             local.is_rotr,
         );
 
-        // ---------------------------------------------------------------------
         let cpu_opcode = local.is_rotl * AB::Expr::from_canonical_u32(Opcode::I32Rotl.code()) +
             local.is_rotr * AB::Expr::from_canonical_u32(Opcode::I32Rotr.code());
 
@@ -336,10 +321,6 @@ impl<F: PrimeField32> MachineAir<F> for RotateChip {
 
     fn name(&self) -> String {
         "Rotate".to_string()
-    }
-
-    fn local_only(&self) -> bool {
-        true
     }
 
     fn generate_trace(
@@ -438,6 +419,10 @@ impl<F: PrimeField32> MachineAir<F> for RotateChip {
         // This is correct. The chip is only included if there are rotate events.
         !shard.rotate_events.is_empty()
     }
+
+    fn local_only(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
@@ -488,6 +473,8 @@ mod tests {
         let samples: &[(Opcode, u32, u32)] = &[
             // (opcode, b, c)
             (Opcode::I32Rotl, 0x0000_0001, 0),
+            (Opcode::I32Rotl, 0x0000_fffd, 0),
+            (Opcode::I32Rotl, 0x0000_00ff, 0),
             (Opcode::I32Rotl, 0x0000_0001, 122),
             (Opcode::I32Rotl, 0x0000_0001, 722),
             (Opcode::I32Rotl, 0x0000_0001, 822),
@@ -495,6 +482,8 @@ mod tests {
             (Opcode::I32Rotl, 0x0000_0001, 16),
             (Opcode::I32Rotl, 0x0000_0001, 31),
             (Opcode::I32Rotl, 0x2121_2121, 0xffff_ffef), // masked -> 15
+            (Opcode::I32Rotr, 0x0000_00f1, 0),
+            (Opcode::I32Rotr, 0x8000_00f1, 0),
             (Opcode::I32Rotr, 0x8000_0001, 1),
             (Opcode::I32Rotr, 0x2121_2121, 8),
             (Opcode::I32Rotr, 0xffff_ffff, 31),

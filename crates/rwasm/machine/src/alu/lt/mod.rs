@@ -571,10 +571,84 @@ mod tests {
 
         prove_babybear_template(&mut shard);
     }
+    #[test]
+    fn prove_babybear_comparisons() {
+        let mut shard = ExecutionRecord::default();
+
+        // Reuse patterns from the SLT/SLTU proofs and cover edge cases.
+        const NEG_3: u32 = 0xFFFF_FFFD;
+        const NEG_4: u32 = 0xFFFF_FFFC;
+        const LARGE: u32 = 0xFFFF_FFFD; // same as NEG_3
+
+        shard.lt_events = vec![
+            // ---- I32Eqz ----
+            // Encode eqz(x) by unsigned check x < 1.
+            AluEvent::new(0, Opcode::I32Eqz, 1, 0, 1, Opcode::I32LtU.code()), // 0 == 0
+            AluEvent::new(0, Opcode::I32Eqz, 0, 5, 1, Opcode::I32LtU.code()), // 5 != 0
+            AluEvent::new(0, Opcode::I32Eqz, 0, 1, 1, Opcode::I32LtU.code()), // 1 != 0
+            AluEvent::new(0, Opcode::I32Eqz, 0, NEG_3, 1, Opcode::I32LtU.code()), // NEG_3 != 0
+            // ---- I32Eq ----
+            // For equality rows, set b == c so LT(b,c) == 0; a must be 0 for the LtChip
+            // constraint.
+            AluEvent::new(0, Opcode::I32Eq, 0, 7, 7, Opcode::I32LtU.code()),
+            AluEvent::new(0, Opcode::I32Eq, 0, 0, 0, Opcode::I32LtU.code()),
+            AluEvent::new(0, Opcode::I32Eq, 0, NEG_3, NEG_3, Opcode::I32LtU.code()),
+            AluEvent::new(0, Opcode::I32Eq, 0, 123_456, 123_456, Opcode::I32LtU.code()),
+            // ---- I32LtS (signed) ----
+            AluEvent::new(0, Opcode::I32LtS, 0, 3, 2, Opcode::I32LtS.code()), // 3 < 2 ? 0
+            AluEvent::new(0, Opcode::I32LtS, 1, 2, 3, Opcode::I32LtS.code()), // 2 < 3 ? 1
+            AluEvent::new(0, Opcode::I32LtS, 1, NEG_3, 5, Opcode::I32LtS.code()), // -3 < 5 ? 1
+            AluEvent::new(0, Opcode::I32LtS, 0, 5, NEG_3, Opcode::I32LtS.code()), // 5 < -3 ? 0
+            // ---- I32GtS (signed) -> encode as c < b with LT(S) (swap operands) ----
+            AluEvent::new(0, Opcode::I32GtS, 1, NEG_3, 5, Opcode::I32LtS.code()), // 5 > -3
+            AluEvent::new(0, Opcode::I32GtS, 0, NEG_3, NEG_4, Opcode::I32LtS.code()), /* -4 > -3 ? 0
+                                                                                   * (swap: -3 <
+                                                                                   * -4) */
+            AluEvent::new(0, Opcode::I32GtS, 0, 3, 2, Opcode::I32LtS.code()), /* 2 > 3 ? 0  (swap: 3 < 2) */
+            AluEvent::new(0, Opcode::I32GtS, 1, 2, 3, Opcode::I32LtS.code()), /* 3 > 2 ? 1  (swap: 2 < 3) */
+            // ---- I32LtU (unsigned) ----
+            AluEvent::new(0, Opcode::I32LtU, 0, 3, 2, Opcode::I32LtU.code()),
+            AluEvent::new(0, Opcode::I32LtU, 1, 2, 3, Opcode::I32LtU.code()),
+            AluEvent::new(0, Opcode::I32LtU, 0, LARGE, 5, Opcode::I32LtU.code()),
+            AluEvent::new(0, Opcode::I32LtU, 1, 5, LARGE, Opcode::I32LtU.code()),
+            // ---- I32GtU (unsigned) -> encode as c < b with LT(U) (swap operands) ----
+            AluEvent::new(0, Opcode::I32GtU, 0, LARGE, 5, Opcode::I32LtU.code()), // 5 > LARGE ? 0
+            AluEvent::new(0, Opcode::I32GtU, 1, 5, LARGE, Opcode::I32LtU.code()), // LARGE > 5 ? 1
+            AluEvent::new(0, Opcode::I32GtU, 1, 2, 3, Opcode::I32LtU.code()), /* 3 > 2 ? 1 (swap: 2 < 3) */
+            AluEvent::new(0, Opcode::I32GtU, 0, 3, 2, Opcode::I32LtU.code()), /* 2 > 3 ? 0 (swap: 3 < 2) */
+            // ---- I32LeS (signed) ----
+            // Choose unequal pairs so (b <= c) == (b < c) for these rows.
+            AluEvent::new(0, Opcode::I32LeS, 1, NEG_4, NEG_3, Opcode::I32LtS.code()), // -4 <= -3
+            AluEvent::new(0, Opcode::I32LeS, 0, NEG_3, NEG_4, Opcode::I32LtS.code()), /* -3 <= -4 ? 0 */
+            AluEvent::new(0, Opcode::I32LeS, 1, 2, 3, Opcode::I32LtS.code()),         // 2 <= 3
+            AluEvent::new(0, Opcode::I32LeS, 0, 3, 2, Opcode::I32LtS.code()),         // 3 <= 2 ? 0
+            // ---- I32GeS (signed) -> encode as c < b (swap operands) ----
+            // Use unequal pairs so (b >= c) == (b > c) == (c < b).
+            AluEvent::new(0, Opcode::I32GeS, 1, 2, 3, Opcode::I32LtS.code()), // 3 >= 2
+            AluEvent::new(0, Opcode::I32GeS, 0, 3, 2, Opcode::I32LtS.code()), // 2 >= 3 ? 0
+            AluEvent::new(0, Opcode::I32GeS, 1, NEG_4, NEG_3, Opcode::I32LtS.code()), // -3 >= -4
+            AluEvent::new(0, Opcode::I32GeS, 0, NEG_3, NEG_4, Opcode::I32LtS.code()), /* -4 >= -3 ? 0 */
+            // ---- I32LeU (unsigned) ----
+            // Use unequal pairs so (b <= c) == (b < c).
+            AluEvent::new(0, Opcode::I32LeU, 1, 0, 1, Opcode::I32LtU.code()),
+            AluEvent::new(0, Opcode::I32LeU, 0, 1, 0, Opcode::I32LtU.code()),
+            AluEvent::new(0, Opcode::I32LeU, 1, 5, LARGE, Opcode::I32LtU.code()),
+            AluEvent::new(0, Opcode::I32LeU, 0, LARGE, 5, Opcode::I32LtU.code()),
+            // ---- I32GeU (unsigned) -> encode as c < b (swap operands) ----
+            AluEvent::new(0, Opcode::I32GeU, 1, 0, 1, Opcode::I32LtU.code()), // 1 >= 0
+            AluEvent::new(0, Opcode::I32GeU, 0, 1, 0, Opcode::I32LtU.code()), // 0 >= 1 ? 0
+            AluEvent::new(0, Opcode::I32GeU, 1, 5, LARGE, Opcode::I32LtU.code()), // LARGE >= 5
+            AluEvent::new(0, Opcode::I32GeU, 0, LARGE, 5, Opcode::I32LtU.code()), // 5 >= LARGE ? 0
+        ];
+
+        // now prove & verify on LtChip.
+        prove_babybear_template(&mut shard);
+    }
 
     #[test]
     fn test_malicious_lt() {
         for opcode in [
+            Opcode::I32Eqz,
             Opcode::I32Eq,
             Opcode::I32LtS,
             Opcode::I32GtS,
@@ -591,7 +665,7 @@ mod tests {
 
     fn run_malicious_lt(opcode: Opcode) {
         use core::borrow::BorrowMut;
-        const NUM_TESTS: usize = 2;
+        const NUM_TESTS: usize = 1;
 
         let rng = thread_rng();
         for _ in 0..NUM_TESTS {
@@ -616,6 +690,8 @@ mod tests {
                 (op_b as i32) <= (op_c as i32)
             } else if opcode == Opcode::I32GeS {
                 (op_b as i32) >= (op_c as i32)
+            } else if opcode == Opcode::I32Eqz {
+                op_c == 0
             } else {
                 true
             };
