@@ -171,7 +171,7 @@ impl<
     pub fn populate(&mut self, value: u32, output: &mut impl ByteRecord, do_check: bool) {
         // We subtract the START to work with the value that is in the range [0..END -
         // START]
-        let start = START_HI16 << 16 + START_LOW16;
+        let start = START_HI16 << (16 + START_LOW16);
         let (shifted_value, overflow) = value.overflowing_sub(start);
 
         assert!(!overflow);
@@ -204,8 +204,8 @@ impl<
         const END_LOW16: u32,
     > Range32bCols<T, START_HI16, START_LOW16, END_HI16, END_LOW16>
 {
-    const START: u32 = (START_HI16 << 16 + START_LOW16);
-    const END: u32 = (END_HI16 << 16 + END_LOW16);
+    const START: u32 = (START_HI16 << 16) + START_LOW16;
+    const END: u32 = (END_HI16 << 16) + END_LOW16;
     const UB_HI_16BITS_SHIFTED: u16 = ((Self::END - Self::START + UNIT) >> 16) as u16;
 
     pub fn value<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
@@ -269,6 +269,7 @@ impl<
         );
     }
 }
+
 
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
