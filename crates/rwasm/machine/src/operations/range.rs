@@ -270,13 +270,6 @@ impl<
     }
 }
 
-const fn hi_16_bits(x: u32) -> u32 {
-    x >> 16
-}
-
-const fn low_16_bits(x: u32) -> u32 {
-    x as u16 as u32
-}
 
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
