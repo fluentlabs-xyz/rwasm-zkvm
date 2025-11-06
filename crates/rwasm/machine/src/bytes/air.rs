@@ -66,6 +66,15 @@ impl<AB: SP1AirBuilder + PairBuilder> Air<AB> for ByteChip<AB::F> {
                     AB::F::zero(),
                     mult,
                 ),
+                ByteOpcode::U16POPCNT => {
+                    builder.receive_byte(field_op, local.u16_popcnt, local.b, local.c, mult)
+                }
+                ByteOpcode::U16CTZ => {
+                    builder.receive_byte(field_op, local.u16_ctz, local.b, local.c, mult)
+                }
+                ByteOpcode::U16CLZ => {
+                    builder.receive_byte(field_op, local.u16_clz, local.b, local.c, mult)
+                }
             }
         }
     }

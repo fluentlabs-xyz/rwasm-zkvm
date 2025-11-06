@@ -49,9 +49,10 @@ pub struct ExecutionRecord {
     pub lt_events: Vec<AluEvent>,
     /// A trace of the Rotl, Rotr events.
     pub rotate_events: Vec<AluEvent>,
+    /// A trace of Clz and Ctz events
+    pub trailing_events: Vec<AluEvent>,
     /// A trace of the memory opcodes.
     pub memory_instr_events: Vec<MemInstrEvent>,
-
     /// A trace of the branch events.
     pub branch_events: Vec<BranchEvent>,
     /// A trace of the constant events.
@@ -272,6 +273,8 @@ impl MachineRecord for ExecutionRecord {
         stats.insert("shift_right_events".to_string(), self.shift_right_events.len());
         stats.insert("divrem_events".to_string(), self.divrem_events.len());
         stats.insert("lt_events".to_string(), self.lt_events.len());
+        stats.insert("rotate_events".to_string(), self.rotate_events.len());
+        stats.insert("trailing_events".to_string(), self.trailing_events.len());
         stats.insert("memory_opcodes_events".to_string(), self.memory_instr_events.len());
         stats.insert("branch_events".to_string(), self.branch_events.len());
         stats.insert("const_events".to_string(), self.const_events.len());
@@ -308,6 +311,8 @@ impl MachineRecord for ExecutionRecord {
         self.shift_right_events.append(&mut other.shift_right_events);
         self.divrem_events.append(&mut other.divrem_events);
         self.lt_events.append(&mut other.lt_events);
+        self.rotate_events.append(&mut other.rotate_events);
+        self.trailing_events.append(&mut other.trailing_events);
         self.memory_instr_events.append(&mut other.memory_instr_events);
         self.branch_events.append(&mut other.branch_events);
         self.const_events.append(&mut other.const_events);

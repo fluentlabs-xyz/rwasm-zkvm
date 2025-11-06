@@ -190,7 +190,7 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                     );
                     for allowed_log2_height in allowed_log2_heights {
                         let allowed_height = 1 << allowed_log2_height;
-                        if height <= allowed_height {
+                        if height as u32 <= allowed_height as u32 {
                             for shape in self.get_precompile_shapes(
                                 air,
                                 *memory_events_per_row,
@@ -437,7 +437,7 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
 
     pub fn estimate_lde_size(&self, shape: &Shape<RwasmAirId>) -> usize {
         // println!("shape:{:?},",shape);
-        shape.iter().map(|(air, height)| self.costs[air] * (1 << height)).sum()
+        shape.iter().map(|(air, height)| self.costs[air] * (1 << height) as usize).sum()
     }
 
     // TODO: cleanup..
@@ -597,6 +597,9 @@ fn derive_cluster_from_maximal_shape(shape: &Shape<RwasmAirId>) -> ShapeCluster<
 
     let rotate_log_height = shape.log2_height(&RwasmAirId::Rotate);
     maybe_log2_heights.insert(RwasmAirId::Rotate, heuristic(rotate_log_height, 1));
+
+    let trialing_log_height = shape.log2_height(&RwasmAirId::Trailing);
+    maybe_log2_heights.insert(RwasmAirId::Trailing, heuristic(trialing_log_height, 1));
 
     let mul_log_height = shape.log2_height(&RwasmAirId::Mul);
     maybe_log2_heights.insert(RwasmAirId::Mul, heuristic(mul_log_height, 1));

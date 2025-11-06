@@ -152,6 +152,9 @@ pub enum RwasmAirId {
 
     /// The TableGrow Chip
     TableGrow = 48,
+
+    #[subenum(CoreAirId)]
+    Trailing = 49,
 }
 
 impl RwasmAirId {
@@ -168,6 +171,7 @@ impl RwasmAirId {
             RwasmAirId::DivRem,
             RwasmAirId::Rotate,
             RwasmAirId::Lt,
+            RwasmAirId::Trailing,
             RwasmAirId::Auipc,
             RwasmAirId::MemoryLocal,
             RwasmAirId::MemoryInstrs,

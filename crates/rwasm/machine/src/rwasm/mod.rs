@@ -13,6 +13,7 @@ use sp1_stark::{
 use strum_macros::{EnumDiscriminants, EnumIter};
 
 use crate::{
+    alu::TrailingChip,
     bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
     control_flow::{BranchChip, CallChip},
     global::GlobalChip,
@@ -94,6 +95,8 @@ pub enum RwasmAir<F: PrimeField32> {
     ShiftRight(ShiftRightChip),
     /// An AIR for WASM Rotl, Rotr instruction.
     Rotate(RotateChip),
+    /// An AIR for WASM Trailing and Popcnt instructions.
+    Trailing(TrailingChip),
     /// An AIR for RISC-V memory instructions.
     Memory(MemoryInstructionsChip),
     /// An AIR for RISC-V branch instructions.
@@ -357,6 +360,10 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(rotate.name(), rotate.cost());
         chips.push(rotate);
 
+        let trailing = Chip::new(RwasmAir::Trailing(TrailingChip::default()));
+        costs.insert(trailing.name(), trailing.cost());
+        chips.push(trailing);
+
         let add_sub = Chip::new(RwasmAir::Add(AddSubChip::default()));
         costs.insert(add_sub.name(), add_sub.cost());
         chips.push(add_sub);
@@ -457,6 +464,7 @@ impl<F: PrimeField32> RwasmAir<F> {
             RwasmAir::ShiftLeft(ShiftLeft::default()),
             RwasmAir::ShiftRight(ShiftRightChip::default()),
             RwasmAir::Rotate(RotateChip::default()),
+            RwasmAir::Trailing(TrailingChip::default()),
             RwasmAir::Memory(MemoryInstructionsChip::default()),
             RwasmAir::Branch(BranchChip::default()),
             RwasmAir::Call(CallChip::default()),
@@ -545,7 +553,6 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Lt => RwasmAirId::Lt,
             RwasmAirDiscriminants::ShiftLeft => RwasmAirId::ShiftLeft,
             RwasmAirDiscriminants::ShiftRight => RwasmAirId::ShiftRight,
-            RwasmAirDiscriminants::Rotate => RwasmAirId::Rotate,
             RwasmAirDiscriminants::Memory => RwasmAirId::MemoryInstrs,
             RwasmAirDiscriminants::Branch => RwasmAirId::Branch,
             RwasmAirDiscriminants::Call => RwasmAirId::Call,
@@ -583,6 +590,8 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Bn254Fp2AddSub => RwasmAirId::Bn254Fp2AddSubAssign,
             RwasmAirDiscriminants::TableInit => RwasmAirId::TableInit,
             RwasmAirDiscriminants::TableGrow => RwasmAirId::TableGrow,
+            RwasmAirDiscriminants::Rotate => RwasmAirId::Rotate,
+            RwasmAirDiscriminants::Trailing => RwasmAirId::Trailing,
         }
     }
 }
@@ -603,7 +612,7 @@ pub mod tests {
     use itertools::Itertools;
     use p3_baby_bear::BabyBear;
     use rwasm_executor::RwasmAirId;
-    use sp1_stark::{air::MachineAir, CpuProver, MachineProver};
+    use sp1_stark::{air::MachineAir, CpuProver};
     use strum::IntoEnumIterator;
 
     //TODO(Aliaksei): fix ignored tests
