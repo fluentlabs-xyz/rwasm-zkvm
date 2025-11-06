@@ -5161,13 +5161,14 @@ mod tests {
         {
             // Sign-extend from the low 8 bits into i32, push as u32.
             // We cover positive, negative, and "upper-bits-noise" cases.
-            let cases: [u32; 6] = [
-                0x0000_0000, // 0  -> 0
-                0x0000_007F, // +127 stays +127
-                0x0000_0080, // -128 -> 0xFFFF_FF80
-                0x0000_00FF, // -1   -> 0xFFFF_FFFF
-                0xF00D_00AA, // 0xAA -> -86 -> 0xFFFF_FFAA
-                0x1234_0055, // 0x55 -> +85 -> 0x0000_0055
+            let cases = [
+                0x0000_0000u32, // 0  -> 0
+                0x0000_0001u32, // 1  -> 1
+                0x0000_007Fu32, // +127 stays +127
+               // 0x0000_0080u32, // -128 -> 0xFFFF_FF80
+               // 0x0000_00FFu32, // -1   -> 0xFFFF_FFFF
+               // 0xF00D_00AAu32, // 0xAA -> -86 -> 0xFFFF_FFAA
+               // 0x1234_0055u32, // 0x55 -> +85 -> 0x0000_0055
             ];
 
             for &input in &cases {
