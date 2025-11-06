@@ -7,6 +7,8 @@ pub mod rotate;
 pub mod sll;
 pub mod sr;
 pub mod trailing;
+pub mod extend;
+
 pub use add_sub::*;
 pub use bitwise::*;
 pub use divrem::*;
@@ -16,3 +18,4 @@ pub use rotate::*;
 pub use sll::*;
 pub use sr::*;
 pub use trailing::*;
+pub use extend::*;
