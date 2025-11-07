@@ -49,7 +49,7 @@ impl ExtendChip {
 
         // Emit one lookup per active opcode and set the unified `msb` column.
         if event.opcode == Opcode::I32Extend8S {
-            let msb = (b_bytes[0] >> 7) & 1;
+            let msb = b_bytes[0] >> 7;
             cols.msb = F::from_canonical_u32(msb as u32);
             blu.add_byte_lookup_event(ByteLookupEvent::new(
                 ByteOpcode::MSB,
@@ -59,7 +59,7 @@ impl ExtendChip {
                 0,
             ));
         } else if event.opcode == Opcode::I32Extend16S {
-            let msb = (b_bytes[1] >> 7) & 1;
+            let msb = b_bytes[1] >> 7;
             cols.msb = F::from_canonical_u32(msb as u32);
             blu.add_byte_lookup_event(ByteLookupEvent::new(
                 ByteOpcode::MSB,
@@ -89,37 +89,34 @@ where
         builder.assert_bool(is_real.clone());
 
         let ff = AB::Expr::from_canonical_u32(0xFF);
-        let a = &local.a.0;
-        let b = &local.b.0;
-
         // Constrain the unified `msb` column depending on the active opcode.
         // The correct MSB is certified by the corresponding lookup.
         builder.send_byte(
             ByteOpcode::MSB.as_field::<AB::F>(),
             local.msb,         // Certified result
-            b[0],              // op1: byte being checked
+            local.b[0],              // op1: byte being checked
             AB::Expr::zero(),  // op2
             local.is_extend8s, // Multiplicity
         );
         builder.send_byte(
             ByteOpcode::MSB.as_field::<AB::F>(),
             local.msb,          // Certified result
-            b[1],               // op1: byte being checked
+            local.b[1],               // op1: byte being checked
             AB::Expr::zero(),   // op2
             local.is_extend16s, // Multiplicity
         );
 
         // i32.extend8_s result bytes
-        builder.when(local.is_extend8s).assert_zero(a[0] - b[0]);
-        builder.when(local.is_extend8s).assert_zero(a[1] - local.msb * ff.clone());
-        builder.when(local.is_extend8s).assert_zero(a[2] - local.msb * ff.clone());
-        builder.when(local.is_extend8s).assert_zero(a[3] - local.msb * ff.clone());
+        builder.when(local.is_extend8s).assert_eq(local.a[0], local.b[0]);
+        builder.when(local.is_extend8s).assert_eq(local.a[1], local.msb * ff.clone());
+        builder.when(local.is_extend8s).assert_eq(local.a[2], local.msb * ff.clone());
+        builder.when(local.is_extend8s).assert_eq(local.a[3], local.msb * ff.clone());
 
         // i32.extend16_s result bytes
-        builder.when(local.is_extend16s).assert_zero(a[0] - b[0]);
-        builder.when(local.is_extend16s).assert_zero(a[1] - b[1]);
-        builder.when(local.is_extend16s).assert_zero(a[2] - local.msb * ff.clone());
-        builder.when(local.is_extend16s).assert_zero(a[3] - local.msb * ff.clone());
+        builder.when(local.is_extend16s).assert_eq(local.a[0],  local.b[0]);
+        builder.when(local.is_extend16s).assert_eq(local.a[1],  local.b[1]);
+        builder.when(local.is_extend16s).assert_eq(local.a[2],  local.msb * ff.clone());
+        builder.when(local.is_extend16s).assert_eq(local.a[3],  local.msb * ff.clone());
 
         // Ensure that `msb` is zero when no extend operation is active.
         builder.assert_zero(local.msb * (is_real.clone() - AB::Expr::one()));
