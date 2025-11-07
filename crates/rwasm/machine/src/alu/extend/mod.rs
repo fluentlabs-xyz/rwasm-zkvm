@@ -94,14 +94,14 @@ where
         builder.send_byte(
             ByteOpcode::MSB.as_field::<AB::F>(),
             local.msb,         // Certified result
-            local.b[0],              // op1: byte being checked
+            local.b[0],        // op1: byte being checked
             AB::Expr::zero(),  // op2
             local.is_extend8s, // Multiplicity
         );
         builder.send_byte(
             ByteOpcode::MSB.as_field::<AB::F>(),
             local.msb,          // Certified result
-            local.b[1],               // op1: byte being checked
+            local.b[1],         // op1: byte being checked
             AB::Expr::zero(),   // op2
             local.is_extend16s, // Multiplicity
         );
@@ -113,10 +113,10 @@ where
         builder.when(local.is_extend8s).assert_eq(local.a[3], local.msb * ff.clone());
 
         // i32.extend16_s result bytes
-        builder.when(local.is_extend16s).assert_eq(local.a[0],  local.b[0]);
-        builder.when(local.is_extend16s).assert_eq(local.a[1],  local.b[1]);
-        builder.when(local.is_extend16s).assert_eq(local.a[2],  local.msb * ff.clone());
-        builder.when(local.is_extend16s).assert_eq(local.a[3],  local.msb * ff.clone());
+        builder.when(local.is_extend16s).assert_eq(local.a[0], local.b[0]);
+        builder.when(local.is_extend16s).assert_eq(local.a[1], local.b[1]);
+        builder.when(local.is_extend16s).assert_eq(local.a[2], local.msb * ff.clone());
+        builder.when(local.is_extend16s).assert_eq(local.a[3], local.msb * ff.clone());
 
         // Ensure that `msb` is zero when no extend operation is active.
         builder.assert_zero(local.msb * (is_real.clone() - AB::Expr::one()));
