@@ -1,81 +1,84 @@
-| Instruction | Type | Status|V4Exec|V4Circuit|Comment|
-| ------------|-------------|--|--|--|--|
-| LocalGet(LocalDepth) |Local| :heavy_check_mark:|||
-| LocalSet(LocalDepth) |Local| :heavy_check_mark:|||
-LocalTee(LocalDepth) |Local| :heavy_check_mark:|||
-Br(BranchOffset),|Branching| :heavy_check_mark:|:heavy_check_mark:||
-BrIfEqz(BranchOffset),|Branching | :heavy_check_mark:|:heavy_check_mark:||
-BrIfNez(BranchOffset),|Branching | :heavy_check_mark:|:heavy_check_mark:||
-BrAdjust(BranchOffset), // without dropkeep => drop ||||
-BrAdjustIfNez(BranchOffset), // without dropkeep => drop|||
-BrTable(BranchTableTargets), // drop? how? |||
-Unreachable,| |  |
-ConsumeFuel(BlockFuel),| |  |
-Return(DropKeep), |Call| WIP|
-ReturnIfNez(DropKeep), // not sure| |  |
-ReturnCallInternal(CompiledFunc), // not sure| |  |
-ReturnCall(FuncIdx), // not sure| |  |
-ReturnCallIndirect(SignatureIdx), // not sure| |  |
-CallInternal(CompiledFunc), |Call|WIP|
-Call(FuncIdx),| |  |
-CallIndirect(SignatureIdx), // not sure| |  |
-SignatureCheck(SignatureIdx),| |  |
-Drop,| |  |
-Select,| |  |
-GlobalGet(GlobalIdx),| |  |
-GlobalSet(GlobalIdx),| |  |
-I32Load(AddressOffset), | Memory| :heavy_check_mark:|:heavy_check_mark:||
-I32Load8S(AddressOffset),| Memory| :heavy_check_mark:|:heavy_check_mark:||
-I32Load8U(AddressOffset),| Memory| :heavy_check_mark:|:heavy_check_mark:||
-I32Load16S(AddressOffset),| Memory| :heavy_check_mark:|:heavy_check_mark:||
-I32Load16U(AddressOffset),| Memory| :heavy_check_mark:|:heavy_check_mark:||
-I32Store(AddressOffset),| Memory| :heavy_check_mark:|:heavy_check_mark:||
-I32Store8(AddressOffset),| Memory| :heavy_check_mark:|:heavy_check_mark:||
-I32Store16(AddressOffset),| Memory| :heavy_check_mark:|:heavy_check_mark:||
-MemorySize,| |  |
-MemoryGrow,| |  |
-MemoryFill, // precompile?| |  |
-MemoryCopy, // precompile?| |  |
-MemoryInit(DataSegmentIdx),| |  |
-DataDrop(DataSegmentIdx),| |  |
-TableSize(TableIdx), // not sure| |  |
-TableGrow(TableIdx), // not sure| |  |
-TableFill(TableIdx), // not sure| |  |
-TableGet(TableIdx), // not sure| |  |
-TableSet(TableIdx), // not sure| |  |
-TableCopy(TableIdx), // not sure| |  |
-TableInit(ElementSegmentIdx), // not sure| |  |
-ElemDrop(ElementSegmentIdx), // not sure| |  |
-RefFunc(FuncIdx),| |  |
-I32Const(UntypedValue),|Branching | :heavy_check_mark:|
-I32Eqz,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32Eq,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32Ne,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32LtS,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32LtU,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32GtS,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32GtU,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32LeS,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32LeU,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32GeS,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32GeU,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32Clz, // replace with snippet| |  |
-I32Ctz, // replace with snippet| |  |
-I32Popcnt, // replace with snippet| |  |""""""""""""
-I32Add,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32Sub,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32Mul,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32DivS,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32DivU,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32RemS,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32RemU,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32And,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32Or,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32Xor,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32Shl,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32ShrS,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32ShrU,|Arithmetic | :heavy_check_mark:|:heavy_check_mark:||
-I32Rotl,|Arithmetic | :x:|
-I32Rotr,|Arithmetic | :x:|
-I32Extend8S,|Arithmetic|:x:|
-I32Extend16S,|Arithmetic|:x:|
+| Instruction |  Status|Comment|
+| ------------| --|--|
+| Unreachable  | &cross;  |   |
+| Trap(TrapCode) | &cross; |  |
+| LocalGet(LocalDepth)  |:white_check_mark: | |
+|  LocalSet(LocalDepth)  | :white_check_mark: | |
+|  LocalTee(LocalDepth)  | :white_check_mark: | |
+|    Br(BranchOffset)  | :white_check_mark: | |
+|    BrIfEqz(BranchOffset)  | :white_check_mark: | |
+|    BrIfNez(BranchOffset)  | :white_check_mark: | |
+|    BrTable(BranchTableTargets)  | :white_check_mark: | |
+|   ConsumeFuel(BlockFuel)  | &cross; |  |
+|   ConsumeFuelStack  | &cross; |  |
+|  Return  | :white_check_mark: | |
+| ReturnCallInternal(CompiledFunc) | &cross; |  |
+|   ReturnCall(SysFuncIdx)| &cross; |  |
+|  ReturnCallIndirect(SignatureIdx) | &cross; |  |
+|   CallInternal(CompiledFunc) = | :white_check_mark: |
+|  Call(SysFuncIdx)  | &cross; | Yao TODO |
+|  CallIndirect(SignatureIdx)  | :white_check_mark: |
+|  SignatureCheck(SignatureIdx) | &cross; |  |
+|    StackCheck(MaxStackHeight) | &cross; |  |
+|    RefFunc(CompiledFunc) | &cross; |  |
+|    I32Const(UntypedValue)  | :white_check_mark: |
+|  Drop = 0x62 | &cross; |  |
+|   Select = 0x63 | &cross; |  |
+|  GlobalGet(GlobalIdx)  | &cross; |  |
+|   GlobalSet(GlobalIdx) | &cross; |  |
+| I32Load(AddressOffset) | :white_check_mark: |
+|    I32Load8S(AddressOffset) | :white_check_mark: |
+|    I32Load8U(AddressOffset) | :white_check_mark: |
+|    I32Load16S(AddressOffset) | :white_check_mark: |
+|    I32Load16U(AddressOffset) | :white_check_mark: |
+|    I32Store(AddressOffset) | :white_check_mark: |
+|    I32Store8(AddressOffset) | :white_check_mark: |
+|    I32Store16(AddressOffset) | :white_check_mark: |
+|  MemorySize  | &cross; |  |
+|    MemoryGrow  | &cross; |  |
+|    MemoryFill  | &cross; |  |
+|    MemoryCopy  | &cross; |  |
+|    MemoryInit(DataSegmentIdx)  | &cross; |  |
+|    DataDrop(DataSegmentIdx)  | &cross; |  |
+|    TableSize(TableIdx)  | &cross; |  |
+|   TableGrow(TableIdx)  | :white_check_mark: |
+|   TableFill(TableIdx)  | :white_check_mark: |
+|   TableGet(TableIdx)  | &cross; | Alexi TODO |
+|    TableSet(TableIdx)  | &cross; | Alexi TODO |
+|  TableCopy(TableIdx, TableIdx) =  | &cross; | Alexi TODO |
+|    TableInit(ElementSegmentIdx) =| :white_check_mark: |
+|    ElemDrop(ElementSegmentIdx) =  | :white_check_mark: |
+|I32Eqz  | :white_check_mark: |
+|    I32Eq  | :white_check_mark: |
+|    I32Ne  | :white_check_mark: |
+|    I32LtS  | :white_check_mark: |
+|    I32LtU  | :white_check_mark: |
+|    I32GtS  | :white_check_mark: |
+|    I32GtU | :white_check_mark: |
+|    I32LeS  | :white_check_mark: |
+|    I32LeU | :white_check_mark: |
+|    I32GeS  | :white_check_mark: |
+|    I32GeU  | :white_check_mark: |
+|    I32Clz | :white_check_mark: |
+|    I32Ctz  | :white_check_mark: |
+|    I32Popcnt  | :white_check_mark: |
+|    I32Add  | :white_check_mark: |
+|    I32Sub  | :white_check_mark: |
+|    I32Mul  | :white_check_mark: |
+|    I32DivS  | :white_check_mark: |
+|    I32DivU  | :white_check_mark: |
+|    I32RemS  | :white_check_mark: |
+|    I32RemU  | :white_check_mark: |
+|    I32And  | :white_check_mark: |
+|    I32Or  | :white_check_mark: |
+|    I32Xor  | :white_check_mark: |
+|    I32Shl  | :white_check_mark: |
+|    I32ShrS  | :white_check_mark: |
+|    I32ShrU  | :white_check_mark: |
+|    I32Rotl  | :white_check_mark: |
+|    I32Rotr  | :white_check_mark: |
+|    I32WrapI64  | &cross; | Sulyiman TODO |
+|    I32Extend8S  | &cross; |  |
+|    I32Extend16S   | &cross; |  |
+ |   I32Mul64  | &cross; | Sulyiman TODO |
+ |   I32Add64  | &cross; | Sulyiman TODO |
