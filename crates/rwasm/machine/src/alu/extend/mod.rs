@@ -3,102 +3,71 @@ use core::{
     borrow::{Borrow, BorrowMut},
     mem::size_of,
 };
+use hashbrown::HashMap;
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use rwasm::Opcode::{I32Extend16S, I32Extend8S};
-use rwasm_executor::{events::AluEvent, ExecutionRecord, Program, DEFAULT_PC_INC};
+use rwasm_executor::{
+    events::{AluEvent, ByteLookupEvent, ByteRecord},
+    ByteOpcode, ExecutionRecord, Opcode, Program, DEFAULT_PC_INC,
+};
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{air::MachineAir, Word};
-
 pub const NUM_EXTEND_COLS: usize = size_of::<ExtendCols<u8>>();
 
-/// # Extend chip (i32.extend8_s / i32.extend16_s)
-///
-/// ## Columns (per row)
-/// - `pc`: program counter.
-/// - `is_extend8s`, `is_extend16s`: opcode selectors; sum is boolean (at most one fires).
-/// - `b: Word<T>`: input u32 as 4 bytes `[b0,b1,b2,b3]` (LSB→MSB).
-/// - `a: Word<T>`: result u32 as 4 bytes `[a0,a1,a2,a3]` (LSB→MSB).
-///
-/// ### 8-bit witnesses
-/// - `bits8[0..8)`: boolean bits of low 8 of `b`.
-/// - `lo8`: low 8 value reconstructed from `bits8`.
-/// - `q8`: quotient witnessing `b = lo8 + 2^8 * q8`.
-///
-/// ### 16-bit witnesses
-/// - `bits16[0..16)`: boolean bits of low 16 of `b` (LSB→MSB; `bits16[15]` is sign).
-/// - `lo16 = [lo,hi]`: low 16 value as two bytes; `lo16_lo = Σ bits16[0..8)·2^i`, `lo16_hi = Σ
-///   bits16[8..16)·2^(i-8)`.
-/// - `q16  = [lo,hi]`: upper 16 of `b` as two bytes; witnesses `b = lo16 + 2^16 * q16`.
-///
-/// ## Constraint sketch (all gated by the active selector)
-/// - **Byte reconstruction:** `b = Σ b[i]·256^i`, `a = Σ a[i]·256^i` (used only for linkage).
-/// - **8-bit path:**
-///   1) `bits8[i] ∈ {0,1}`.
-///   2) `lo8 = Σ bits8[i]·2^i`.
-///   3) `b = lo8 + 256·q8`.
-///   4) Let `s8 = bits8[7]`. Enforce bytes: `a0 = lo8`, `a1 = a2 = a3 = 0xFF·s8`.
-/// - **16-bit path:**
-///   1) `bits16[i] ∈ {0,1}`.
-///   2) `lo16_lo = Σ bits16[0..8)·2^i`, `lo16_hi = Σ bits16[8..16)·2^(i-8)`.
-///   3) `lo16 = lo16_lo + 256·lo16_hi` and `b = lo16 + 65536·q16`.
-///   4) Let `s16 = bits16[15]`. Enforce bytes: `a0 = lo16_lo`, `a1 = lo16_hi`, `a2 = a3 =
-///      0xFF·s16`.
-///
-/// This byte-wise formulation avoids large constants like `2^32-2^8/2^16` and works over small
-/// fields.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct ExtendCols<T> {
     pub pc: T,
-    pub a: Word<T>, // result as bytes (LSB..MSB)
-    pub b: Word<T>, // input word as bytes (LSB..MSB)
+    pub a: Word<T>, // result bytes
+    pub b: Word<T>, // input bytes
     pub is_extend8s: T,
     pub is_extend16s: T,
-
-    // 8-bit witnesses
-    pub lo8: T,        // b mod 256
-    pub q8: T,         // floor(b / 256)
-    pub bits8: [T; 8], // boolean bits of lo8 (LSB..MSB)
-
-    // 16-bit witnesses (store as two bytes to avoid large-field constants)
-    pub lo16: [T; 2],    // b mod 65536, as [lo, hi]
-    pub q16: [T; 2],     // floor(b / 65536), as [lo, hi]
-    pub bits16: [T; 16], // boolean bits of lo16 (LSB..MSB)
+    // Sign bits (certified via byte lookup)
+    pub msb8: T,  // bit7(b[0])
+    pub msb16: T, // bit7(b[1])
 }
 
 #[derive(Default)]
 pub struct ExtendChip;
 
 impl ExtendChip {
-    fn event_to_row<F: PrimeField32>(&self, event: &AluEvent, cols: &mut ExtendCols<F>) {
+    fn event_to_row<F: PrimeField32>(
+        &self,
+        event: &AluEvent,
+        cols: &mut ExtendCols<F>,
+        blu: &mut impl ByteRecord,
+    ) {
         cols.pc = F::from_canonical_u32(event.pc);
         cols.a = event.a.into();
         cols.b = event.b.into();
-        cols.is_extend8s = F::from_bool(event.opcode == I32Extend8S);
-        cols.is_extend16s = F::from_bool(event.opcode == I32Extend16S);
+        cols.is_extend8s = F::from_bool(event.opcode == Opcode::I32Extend8S);
+        cols.is_extend16s = F::from_bool(event.opcode == Opcode::I32Extend16S);
 
-        // Concrete witnesses for sanity (not strictly necessary at prover level but handy)
         let b = event.b;
-        // 8-bit path
-        let lo8 = (b & 0xFF) as u32;
-        cols.lo8 = F::from_canonical_u32(lo8);
-        cols.q8 = F::from_canonical_u32(b >> 8);
-        let mut tmp = lo8;
-        for bit in cols.bits8.iter_mut() {
-            *bit = F::from_canonical_u32(tmp & 1);
-            tmp >>= 1;
-        }
-        // 16-bit path
-        let lo16 = (b & 0xFFFF) as u32;
-        let q16 = (b >> 16) as u32;
-        cols.lo16 = [F::from_canonical_u32(lo16 & 0xFF), F::from_canonical_u32((lo16 >> 8) & 0xFF)];
-        cols.q16 = [F::from_canonical_u32(q16 & 0xFF), F::from_canonical_u32((q16 >> 8) & 0xFF)];
-        let mut tmp16 = lo16;
-        for bit in cols.bits16.iter_mut() {
-            *bit = F::from_canonical_u32(tmp16 & 1);
-            tmp16 >>= 1;
+        let b_bytes = b.to_le_bytes();
+        // compute sign bits (also certified by lookups below)
+        cols.msb8 = F::from_canonical_u32(((b_bytes[0] as u32) >> 7) & 1);
+        cols.msb16 = F::from_canonical_u32(((b_bytes[1] as u32) >> 7) & 1);
+
+        // Emit one lookup per active opcode (hi=0, lo=byte)
+        if event.opcode == Opcode::I32Extend8S {
+            blu.add_byte_lookup_event(ByteLookupEvent::new(
+                ByteOpcode::MSB,
+                ((b_bytes[0] >> 7) & 1) as u16,
+                0,
+                b_bytes[0],
+                0,
+            ));
+        } else if event.opcode == Opcode::I32Extend16S {
+            blu.add_byte_lookup_event(ByteLookupEvent::new(
+                ByteOpcode::MSB,
+                ((b_bytes[1] >> 7) & 1) as u16,
+                0,
+                b_bytes[1],
+                0,
+            ));
         }
     }
 }
@@ -114,104 +83,43 @@ where
 
         builder.assert_bool(local.is_extend8s);
         builder.assert_bool(local.is_extend16s);
+        builder.assert_bool(local.msb8);
+        builder.assert_bool(local.msb16);
+
         let is_real = local.is_extend8s + local.is_extend16s;
         builder.assert_bool(is_real.clone());
 
-        // Reconstruct b from bytes to a single field expression: b = Σ b[i] * 256^i
-        let mut b_expr = AB::Expr::from_canonical_u32(0);
-        for (i, byte) in local.b.0.iter().enumerate() {
-            let w = AB::Expr::from_canonical_u32(1u32 << (8 * i));
-            b_expr = b_expr + (*byte) * w;
-        }
-        // Reconstruct a from bytes to a single field expression: a = Σ a[i] * 256^i
-        let mut a_expr = AB::Expr::from_canonical_u32(0);
-        for (i, byte) in local.a.0.iter().enumerate() {
-            let w = AB::Expr::from_canonical_u32(1u32 << (8 * i));
-            a_expr = a_expr + (*byte) * w;
-        }
-
-        let two_pow_8 = AB::Expr::from_canonical_u32(1 << 8);
-        let two_pow_16 = AB::Expr::from_canonical_u32(1 << 16);
-        let one = AB::Expr::one();
-
-        // === Constraint summary (per active opcode) ===
-        // See the module docs above for the full derivation. We gate every assertion with
-        // `is_extend8s` / `is_extend16s`. The result `a` is constrained byte-wise.
-
-        // -------- extend8_s path --------
-        builder.when(local.is_extend8s).assert_zero({
-            // booleanity for bits8
-            let mut acc = AB::Expr::from_canonical_u32(0);
-            for bit in local.bits8 {
-                acc = acc + bit * (one.clone() - bit);
-            }
-            acc
-        });
-
-        // lo8 = Σ bit[i] * 2^i
-        let mut lo8_from_bits = AB::Expr::from_canonical_u32(0);
-        for (i, bit) in local.bits8.iter().enumerate() {
-            let w = AB::Expr::from_canonical_u32(1u32 << i);
-            lo8_from_bits = lo8_from_bits + (*bit) * w;
-        }
-        builder.when(local.is_extend8s).assert_zero(local.lo8 - lo8_from_bits.clone());
-
-        // b = lo8 + 2^8 * q8
-        builder
-            .when(local.is_extend8s)
-            .assert_zero(b_expr.clone() - (local.lo8 + two_pow_8.clone() * local.q8));
-
-        // Byte-wise semantics:
-        // a[0] = lo8
-        // a[1], a[2], a[3] = 0xFF * msb8
-        let a_bytes = &local.a.0;
-        let msb8 = local.bits8[7];
         let ff = AB::Expr::from_canonical_u32(0xFF);
-        builder.when(local.is_extend8s).assert_zero(a_bytes[0] - lo8_from_bits.clone());
-        builder.when(local.is_extend8s).assert_zero(a_bytes[1] - msb8 * ff.clone());
-        builder.when(local.is_extend8s).assert_zero(a_bytes[2] - msb8 * ff.clone());
-        builder.when(local.is_extend8s).assert_zero(a_bytes[3] - msb8 * ff);
+        let a = &local.a.0;
+        let b = &local.b.0;
 
-        // -------- extend16_s path --------
-        builder.when(local.is_extend16s).assert_zero({
-            // booleanity for bits16
-            let mut acc = AB::Expr::from_canonical_u32(0);
-            for bit in local.bits16 {
-                acc = acc + bit * (one.clone() - bit);
-            }
-            acc
-        });
-
-        // Reconstruct 16-bit low and high bytes from bits16
-        let mut lo16_low_from_bits = AB::Expr::from_canonical_u32(0);
-        for (i, bit) in local.bits16[0..8].iter().enumerate() {
-            let w = AB::Expr::from_canonical_u32(1u32 << i);
-            lo16_low_from_bits = lo16_low_from_bits + (*bit) * w;
-        }
-        let mut lo16_high_from_bits = AB::Expr::from_canonical_u32(0);
-        for (i, bit) in local.bits16[8..16].iter().enumerate() {
-            let w = AB::Expr::from_canonical_u32(1u32 << i);
-            lo16_high_from_bits = lo16_high_from_bits + (*bit) * w;
-        }
-        let lo16_expr =
-            lo16_low_from_bits.clone() + two_pow_8.clone() * lo16_high_from_bits.clone();
-        // q16 is provided as two bytes
-        let q16_expr = local.q16[0] + two_pow_8.clone() * local.q16[1];
-        // lo16 matches its bit decomposition
-        builder
-            .when(local.is_extend16s)
-            .assert_zero((local.lo16[0] + two_pow_8.clone() * local.lo16[1]) - lo16_expr.clone());
-        // b = lo16 + 2^16 * q16
-        builder.when(local.is_extend16s).assert_zero(
-            b_expr.clone() - (lo16_expr.clone() + two_pow_16.clone() * q16_expr.clone()),
+        // Lookups (one per opcode)
+        builder.send_byte(
+            ByteOpcode::MSB.as_field::<AB::F>(),
+            local.msb8,
+            b[0],             // op1
+            AB::Expr::zero(), // op2
+            local.is_extend8s,
         );
-        let msb16 = local.bits16[15];
-        let ff = AB::Expr::from_canonical_u32(0xFF);
-        // a[0..2] byte semantics: [lo16_lo, lo16_hi, 0xFF*msb16, 0xFF*msb16]
-        builder.when(local.is_extend16s).assert_zero(a_bytes[0] - lo16_low_from_bits.clone());
-        builder.when(local.is_extend16s).assert_zero(a_bytes[1] - lo16_high_from_bits.clone());
-        builder.when(local.is_extend16s).assert_zero(a_bytes[2] - msb16 * ff.clone());
-        builder.when(local.is_extend16s).assert_zero(a_bytes[3] - msb16 * ff);
+        builder.send_byte(
+            ByteOpcode::MSB.as_field::<AB::F>(),
+            local.msb16,
+            b[1],             // op1
+            AB::Expr::zero(), // op2
+            local.is_extend16s,
+        );
+
+        // i32.extend8_s result bytes
+        builder.when(local.is_extend8s).assert_zero(a[0] - b[0]);
+        builder.when(local.is_extend8s).assert_zero(a[1] - local.msb8 * ff.clone());
+        builder.when(local.is_extend8s).assert_zero(a[2] - local.msb8 * ff.clone());
+        builder.when(local.is_extend8s).assert_zero(a[3] - local.msb8 * ff.clone());
+
+        // i32.extend16_s result bytes
+        builder.when(local.is_extend16s).assert_zero(a[0] - b[0]);
+        builder.when(local.is_extend16s).assert_zero(a[1] - b[1]);
+        builder.when(local.is_extend16s).assert_zero(a[2] - local.msb16 * ff.clone());
+        builder.when(local.is_extend16s).assert_zero(a[3] - local.msb16 * ff.clone());
 
         builder.receive_instruction(
             AB::Expr::zero(),
@@ -249,13 +157,13 @@ impl<F: PrimeField32> MachineAir<F> for ExtendChip {
     fn generate_trace(
         &self,
         input: &ExecutionRecord,
-        _output: &mut ExecutionRecord,
+        output: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
         let mut rows = Vec::new();
         for event in input.extend_events.iter() {
             let mut row = [F::zero(); NUM_EXTEND_COLS];
             let cols: &mut ExtendCols<F> = row.as_mut_slice().borrow_mut();
-            self.event_to_row(event, cols);
+            self.event_to_row(event, cols, output);
             rows.push(row);
         }
 
@@ -268,8 +176,24 @@ impl<F: PrimeField32> MachineAir<F> for ExtendChip {
         RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<F>>(), NUM_EXTEND_COLS)
     }
 
-    fn generate_dependencies(&self, _input: &Self::Record, _output: &mut Self::Record) {
-        // No cross-table byte lookups required for sign-extend.
+    fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
+        use rayon::{iter::ParallelIterator, slice::ParallelSlice};
+        let chunk_size = std::cmp::max(input.extend_events.len() / num_cpus::get(), 1);
+
+        let blu_batches = input
+            .extend_events
+            .par_chunks(chunk_size)
+            .map(|events| {
+                let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
+                events.iter().for_each(|event| {
+                    let mut row = [F::zero(); NUM_EXTEND_COLS];
+                    let cols: &mut ExtendCols<F> = row.as_mut_slice().borrow_mut();
+                    self.event_to_row(event, cols, &mut blu);
+                });
+                blu
+            })
+            .collect::<Vec<_>>();
+        output.add_byte_lookup_events_from_maps(blu_batches.iter().collect::<Vec<_>>());
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -319,8 +243,7 @@ mod tests {
         let chip = ExtendChip::default();
         let trace: RowMajorMatrix<BabyBear> = chip.generate_trace(&shard, &mut output);
         assert_eq!(trace.width(), NUM_EXTEND_COLS);
-        // Sign-extend chip does not use cross-table byte lookups
-        assert_eq!(output.byte_lookups.len(), 0);
+        assert_eq!(output.byte_lookups.len(), 2);
     }
 
     #[test]
@@ -396,7 +319,7 @@ mod tests {
                     // Corrupt a boolean bit to violate the (b*(1-b)=0) constraint
                     let row0 = trace.row_mut(0);
                     let cols: &mut ExtendCols<BabyBear> = row0.borrow_mut();
-                    cols.bits8[0] = BabyBear::from_canonical_u32(2);
+                    cols.msb16 = BabyBear::from_canonical_u32(2);
                 }
             }
 
