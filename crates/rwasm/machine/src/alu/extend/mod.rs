@@ -24,9 +24,8 @@ pub struct ExtendCols<T> {
     pub b: Word<T>, // input bytes
     pub is_extend8s: T,
     pub is_extend16s: T,
-    // Sign bits (certified via byte lookup)
-    pub msb8: T,  // bit7(b[0])
-    pub msb16: T, // bit7(b[1])
+    // Unified sign bit (certified via byte lookup)
+    pub msb: T, // bit7(b[0]) for extend8s, bit7(b[1]) for extend16s
 }
 
 #[derive(Default)]
@@ -47,23 +46,24 @@ impl ExtendChip {
 
         let b = event.b;
         let b_bytes = b.to_le_bytes();
-        // compute sign bits (also certified by lookups below)
-        cols.msb8 = F::from_canonical_u32(((b_bytes[0] as u32) >> 7) & 1);
-        cols.msb16 = F::from_canonical_u32(((b_bytes[1] as u32) >> 7) & 1);
 
-        // Emit one lookup per active opcode (hi=0, lo=byte)
+        // Emit one lookup per active opcode and set the unified `msb` column.
         if event.opcode == Opcode::I32Extend8S {
+            let msb = (b_bytes[0] >> 7) & 1;
+            cols.msb = F::from_canonical_u32(msb as u32);
             blu.add_byte_lookup_event(ByteLookupEvent::new(
                 ByteOpcode::MSB,
-                ((b_bytes[0] >> 7) & 1) as u16,
+                msb as u16,
                 0,
                 b_bytes[0],
                 0,
             ));
         } else if event.opcode == Opcode::I32Extend16S {
+            let msb = (b_bytes[1] >> 7) & 1;
+            cols.msb = F::from_canonical_u32(msb as u32);
             blu.add_byte_lookup_event(ByteLookupEvent::new(
                 ByteOpcode::MSB,
-                ((b_bytes[1] >> 7) & 1) as u16,
+                msb as u16,
                 0,
                 b_bytes[1],
                 0,
@@ -83,8 +83,7 @@ where
 
         builder.assert_bool(local.is_extend8s);
         builder.assert_bool(local.is_extend16s);
-        builder.assert_bool(local.msb8);
-        builder.assert_bool(local.msb16);
+        builder.assert_bool(local.msb);
 
         let is_real = local.is_extend8s + local.is_extend16s;
         builder.assert_bool(is_real.clone());
@@ -93,33 +92,34 @@ where
         let a = &local.a.0;
         let b = &local.b.0;
 
-        // Lookups (one per opcode)
+        // Constrain the unified `msb` column depending on the active opcode.
+        // The correct MSB is certified by the corresponding lookup.
         builder.send_byte(
             ByteOpcode::MSB.as_field::<AB::F>(),
-            local.msb8,
-            b[0],             // op1
-            AB::Expr::zero(), // op2
-            local.is_extend8s,
+            local.msb,         // Certified result
+            b[0],              // op1: byte being checked
+            AB::Expr::zero(),  // op2
+            local.is_extend8s, // Multiplicity
         );
         builder.send_byte(
             ByteOpcode::MSB.as_field::<AB::F>(),
-            local.msb16,
-            b[1],             // op1
-            AB::Expr::zero(), // op2
-            local.is_extend16s,
+            local.msb,          // Certified result
+            b[1],               // op1: byte being checked
+            AB::Expr::zero(),   // op2
+            local.is_extend16s, // Multiplicity
         );
 
         // i32.extend8_s result bytes
         builder.when(local.is_extend8s).assert_zero(a[0] - b[0]);
-        builder.when(local.is_extend8s).assert_zero(a[1] - local.msb8 * ff.clone());
-        builder.when(local.is_extend8s).assert_zero(a[2] - local.msb8 * ff.clone());
-        builder.when(local.is_extend8s).assert_zero(a[3] - local.msb8 * ff.clone());
+        builder.when(local.is_extend8s).assert_zero(a[1] - local.msb * ff.clone());
+        builder.when(local.is_extend8s).assert_zero(a[2] - local.msb * ff.clone());
+        builder.when(local.is_extend8s).assert_zero(a[3] - local.msb * ff.clone());
 
         // i32.extend16_s result bytes
         builder.when(local.is_extend16s).assert_zero(a[0] - b[0]);
         builder.when(local.is_extend16s).assert_zero(a[1] - b[1]);
-        builder.when(local.is_extend16s).assert_zero(a[2] - local.msb16 * ff.clone());
-        builder.when(local.is_extend16s).assert_zero(a[3] - local.msb16 * ff.clone());
+        builder.when(local.is_extend16s).assert_zero(a[2] - local.msb * ff.clone());
+        builder.when(local.is_extend16s).assert_zero(a[3] - local.msb * ff.clone());
 
         builder.receive_instruction(
             AB::Expr::zero(),
@@ -319,7 +319,7 @@ mod tests {
                     // Corrupt a boolean bit to violate the (b*(1-b)=0) constraint
                     let row0 = trace.row_mut(0);
                     let cols: &mut ExtendCols<BabyBear> = row0.borrow_mut();
-                    cols.msb16 = BabyBear::from_canonical_u32(2);
+                    cols.msb = BabyBear::from_canonical_u32(2);
                 }
             }
 
