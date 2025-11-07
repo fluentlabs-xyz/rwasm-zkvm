@@ -42,12 +42,12 @@
 |    DataDrop(DataSegmentIdx)  | &cross; |  |
 |    TableSize(TableIdx)  | &cross; |  |
 |   TableGrow(TableIdx)  | :white_check_mark: |
-|   TableFill(TableIdx)  | :white_check_mark: |
+|   TableFill(TableIdx)   | &cross; | Alexi TODO |
 |   TableGet(TableIdx)  | &cross; | Alexi TODO |
 |    TableSet(TableIdx)  | &cross; | Alexi TODO |
 |  TableCopy(TableIdx, TableIdx) =  | &cross; | Alexi TODO |
 |    TableInit(ElementSegmentIdx) =| :white_check_mark: |
-|    ElemDrop(ElementSegmentIdx) =  | :white_check_mark: |
+|    ElemDrop(ElementSegmentIdx) =  | &cross; | Alexi TODO |
 |I32Eqz  | :white_check_mark: |
 |    I32Eq  | :white_check_mark: |
 |    I32Ne  | :white_check_mark: |
