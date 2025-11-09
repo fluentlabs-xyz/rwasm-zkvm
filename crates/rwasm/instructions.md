@@ -77,7 +77,7 @@
 |    I32ShrU  | :white_check_mark: |
 |    I32Rotl  | :white_check_mark: |
 |    I32Rotr  | :white_check_mark: |
-|    I32WrapI64  | &cross; | Sulyiman TODO |
+|    I32WrapI64  | &cross; |  |
 |    I32Extend8S  | &cross; |  |
 |    I32Extend16S   | &cross; |  |
  |   I32Mul64  | &cross; | Sulyiman TODO |
