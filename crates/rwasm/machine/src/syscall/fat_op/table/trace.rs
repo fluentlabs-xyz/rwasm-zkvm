@@ -1,7 +1,6 @@
 use std::borrow::BorrowMut;
 
 use crate::{
-    memory::MemoryCols,
     syscall::fat_op::table::{TableInitCols, NUM_TABLE_INIT_SIZE},
     utils::pad_rows_fixed,
 };

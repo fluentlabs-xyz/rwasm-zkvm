@@ -1,9 +1,6 @@
 use std::borrow::Borrow;
 
-use crate::{
-    air::MemoryAirBuilder,
-    memory::ElementAddressCols,
-};
+use crate::{air::MemoryAirBuilder, memory::ElementAddressCols};
 
 use p3_air::{Air, AirBuilder, BaseAir};
 
