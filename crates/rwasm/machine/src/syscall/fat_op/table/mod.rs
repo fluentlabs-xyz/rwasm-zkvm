@@ -266,6 +266,8 @@ mod test {
                     };
 
                     event.d = event.d + 1;
+
+                    event.stack_access[0].value = event.d;
                 });
             }
 
