@@ -3,7 +3,7 @@ use crate::profiler::Profiler;
 use crate::{
     dependencies::{emit_branch_dependencies, emit_divrem_dependencies, emit_memory_dependencies},
     estimator::RecordEstimator,
-    events::{CallEvent, ConstEvent, PrecompileEvent, SysStateEvent, SyscallEvent},
+    events::{CallEvent, ConstEvent, I64AluEvent, PrecompileEvent, SyscallEvent},
 };
 #[cfg(feature = "profiling")]
 use std::{fs::File, io::BufWriter};
@@ -711,6 +711,7 @@ impl<'a> Executor<'a> {
         arg1: u32,
         arg2: u32,
         res: u32,
+        res_hi: u32,
         record: MemoryAccessRecord,
         call_data: Option<TraceCallData>,
         fat_op: Option<FatOpEvent>,
@@ -812,6 +813,8 @@ impl<'a> Executor<'a> {
                     );
                 }
             }
+        } else if opcode.is_64b_op() {
+            self.emit_i64_event(clk, pc, next_pc, opcode, res, res_hi, arg1, arg2, record);
         } else {
             println!("no event :ins:{:?},", opcode);
         }
@@ -1164,19 +1167,33 @@ impl<'a> Executor<'a> {
         self.record.call_events.push(event);
     }
 
-    // Emit a branch event.
+    #[allow(clippy::too_many_arguments)]
     #[inline]
-    #[allow(dead_code)]
-    fn emit_sys_state_event(
+    fn emit_i64_event(
         &mut self,
+
+        clk: u32,
+        pc: u32,
+        next_pc: u32,
         opcode: Opcode,
-        fuel: u32,
-        next_fuel: u32,
-        max_memory: u32,
-        next_max_memory: u32,
+        res: u32,
+        res_hi: u32,
+        arg1: u32,
+        arg2: u32,
+        memory_access: MemoryAccessRecord,
     ) {
-        let event = SysStateEvent::new(opcode, fuel, next_fuel, max_memory, next_max_memory);
-        self.record.sys_state_events.push(event);
+        let event = I64AluEvent {
+            pc,
+            opcode,
+            a: res,
+            a_hi: res_hi,
+            b: arg1,
+            c: arg2,
+            code: opcode.code(),
+            res_hi_addr: memory_access.res_hi_addr.unwrap().to_virtual_addr(),
+            res_hi_access: memory_access.res_hi_record,
+        };
+        self.record.i64_events.push(event);
     }
 
     /// Execute an ecall opcode.
@@ -1307,6 +1324,7 @@ impl<'a> Executor<'a> {
             syscall,
             op_state.arg1,
             op_state.arg2,
+            op_state.res,
             op_state.res,
             op_state.memory_access,
             op_state.call_state,
@@ -5147,5 +5165,22 @@ mod tests {
 
         let top = rt.state.memory.get(rt.state.sp).unwrap().value;
         assert_eq!(top, a.trailing_zeros(), "incorrect count zeros");
+    }
+
+    #[test]
+    fn test_i32add64() {
+        let sp0 = SP_START;
+        let opcodes = vec![
+            Opcode::I32Const(u32::MAX.into()),
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Add64, // wraps to 0
+        ];
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + 4).unwrap().value, 0);
+        assert_eq!(sp0, rt.state.sp);
     }
 }
