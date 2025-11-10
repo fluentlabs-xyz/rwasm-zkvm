@@ -1,11 +1,10 @@
 use p3_air::AirBuilder;
 use p3_field::{AbstractField, PrimeField32};
-use rwasm::mem_index::UNIT;
 use rwasm_executor::events::{ByteLookupEvent, ByteRecord};
 use sp1_derive::AlignedBorrow;
 
 use rwasm_executor::ByteOpcode;
-use sp1_stark::air::SP1AirBuilder;
+use sp1_stark::{air::SP1AirBuilder, Word};
 
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
@@ -58,7 +57,7 @@ impl<F: PrimeField32, const START: u32, const END: u32> Range16bCols<F, START, E
                     a1: true as u16,
                     a2: 0,
                     b: low_8bits,
-                    c: Self::UB_LOW_8BITS_SHIFTED,
+                    c: Self::UB_LOW_8BITS_SHIFTED + 1,
                 });
             }
         }
@@ -66,8 +65,8 @@ impl<F: PrimeField32, const START: u32, const END: u32> Range16bCols<F, START, E
 }
 
 impl<T: Copy, const START: u32, const END: u32> Range16bCols<T, START, END> {
-    const UB_LOW_8BITS_SHIFTED: u8 = (END - START + UNIT) as u8;
-    const UB_HI_8BITS_SHIFTED: u8 = ((END - START + UNIT) >> 8) as u8;
+    const UB_LOW_8BITS_SHIFTED: u8 = (END - START) as u8;
+    const UB_HI_8BITS_SHIFTED: u8 = ((END - START) >> 8) as u8;
 
     pub fn value<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
     where
@@ -125,7 +124,7 @@ impl<T: Copy, const START: u32, const END: u32> Range16bCols<T, START, END> {
             AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
             AB::Expr::from_bool(true),
             cols.low_8bits,
-            AB::Expr::from_canonical_u8(Self::UB_LOW_8BITS_SHIFTED),
+            AB::Expr::from_canonical_u8(Self::UB_LOW_8BITS_SHIFTED + 1),
             cols.hi_is_eq_ub_hi,
         );
     }
@@ -225,7 +224,7 @@ impl<
         END_LOW16_SHIFTED,
     >
 {
-    const UB_HI_16BITS_SHIFTED: u16 = ((END - START + UNIT) >> 16) as u16;
+    const UB_HI_16BITS_SHIFTED: u16 = ((END - START) >> 16) as u16;
 
     pub fn value<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
     where
@@ -372,5 +371,150 @@ impl<T: Copy, const START: u32, const END: u32> Range8bCols<T, START, END> {
             AB::Expr::from_canonical_u8((END - START) as u8),
             cols.is_not_zero,
         );
+    }
+}
+
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[repr(C)]
+pub struct DynamicLE16bCols<T> {
+    hi_8bits: T,
+    low_8bits: T,
+    pub hi_is_zero: T,
+    pub hi_is_not_edge: T,
+    pub hi_is_eq_ub_hi: T,
+}
+
+impl<F: PrimeField32> DynamicLE16bCols<F> {
+    pub fn populate(&mut self, value: u32, output: &mut impl ByteRecord, end: u32, do_check: bool) {
+        let ub_low_8bits: u8 = end as u8;
+        let ub_hi_8bits: u8 = (end >> 8) as u8;
+
+        let hi_8bits: u8 = (value >> 8) as u8;
+        let low_8bits: u8 = value as u8;
+
+        self.hi_8bits = F::from_canonical_u8(hi_8bits);
+        self.low_8bits = F::from_canonical_u8(low_8bits);
+
+        if do_check {
+            let hi_is_zero = hi_8bits == 0;
+            self.hi_is_zero = F::from_bool(hi_is_zero);
+
+            let hi_is_eq_ub_hi = hi_8bits == ub_hi_8bits && !hi_is_zero;
+            self.hi_is_eq_ub_hi = F::from_bool(hi_is_eq_ub_hi);
+
+            let hi_is_not_edge = !hi_is_zero && !hi_is_eq_ub_hi;
+            self.hi_is_not_edge = F::from_bool(hi_is_not_edge);
+
+            output.add_u8_range_check(hi_8bits, low_8bits);
+
+            if hi_is_not_edge {
+                output.add_byte_lookup_event(ByteLookupEvent {
+                    opcode: ByteOpcode::LTU,
+                    a1: true as u16,
+                    a2: 0,
+                    b: hi_8bits,
+                    c: ub_hi_8bits,
+                });
+            }
+
+            if hi_is_eq_ub_hi {
+                output.add_byte_lookup_event(ByteLookupEvent {
+                    opcode: ByteOpcode::LTU,
+                    a1: true as u16,
+                    a2: 0,
+                    b: low_8bits + 1,
+                    c: ub_low_8bits,
+                });
+            }
+        }
+    }
+}
+
+impl<T: Copy> DynamicLE16bCols<T> {
+    pub fn value<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
+    where
+        T: Into<AB::Expr>,
+    {
+        let hi = self.hi_8bits.into();
+        let low = self.low_8bits.into();
+        hi * AB::Expr::from_canonical_u32(1 << 8) + low
+    }
+
+    pub fn is_real<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
+    where
+        T: Into<AB::Expr>,
+    {
+        self.hi_is_not_edge.into() + self.hi_is_zero.into() + self.hi_is_eq_ub_hi.into()
+    }
+
+    pub fn range_check<AB: SP1AirBuilder>(
+        builder: &mut AB,
+        cols: DynamicLE16bCols<AB::Var>,
+        end_low: AB::Expr,
+        end_hi: AB::Expr,
+    ) {
+        let is_real = cols.hi_is_not_edge + cols.hi_is_zero + cols.hi_is_eq_ub_hi;
+
+        builder.assert_bool(is_real.clone());
+
+        //range check the hi and low bits of value
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::U8Range as u32),
+            AB::Expr::zero(),
+            cols.hi_8bits,
+            cols.low_8bits,
+            is_real.clone(),
+        );
+
+        // check edge cases of hi_8bits
+        builder.when(is_real.clone()).when(cols.hi_is_zero).assert_zero(cols.hi_8bits);
+
+        builder.when(is_real).when(cols.hi_is_eq_ub_hi).assert_eq(cols.hi_8bits, end_hi.clone());
+
+        // If it's not an edge case, we check that hi_8bits is located within the space between
+        // the edges
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
+            AB::Expr::from_bool(true),
+            cols.hi_8bits,
+            end_hi,
+            cols.hi_is_not_edge,
+        );
+
+        // Check low_8bits in case hi_8bits is an edge case
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::LTU as u32),
+            AB::Expr::from_bool(true),
+            cols.low_8bits,
+            end_low + AB::Expr::one(),
+            cols.hi_is_eq_ub_hi,
+        );
+    }
+
+    /// The prove always have known whether a column of rangechecker is real or not.
+    /// So the input do check should always  equals rangechecker.is_real.
+    pub fn do_range_check<AB: SP1AirBuilder>(
+        builder: &mut AB,
+        cols: DynamicLE16bCols<AB::Var>,
+        end_low: AB::Expr,
+        end_hi: AB::Expr,
+        do_check: impl Into<AB::Expr>,
+    ) {
+        let is_real = cols.hi_is_not_edge + cols.hi_is_zero + cols.hi_is_eq_ub_hi;
+        builder.assert_eq(do_check, is_real);
+        DynamicLE16bCols::<AB::Var>::range_check(builder, cols, end_low, end_hi);
+    }
+}
+
+pub type LE16bCols<T, const END: u32> = Range16bCols<T, 0, END>;
+
+impl<T: Copy, const END: u32> LE16bCols<T, END> {
+    pub fn word<AB: SP1AirBuilder<Var = T>>(&self) -> Word<AB::Expr>
+    where
+        T: Into<AB::Expr>,
+    {
+        let hi = self.hi_8bits.into();
+        let low = self.low_8bits.into();
+        Word::<AB::Expr>([low, hi, AB::Expr::zero(), AB::Expr::zero()])
     }
 }

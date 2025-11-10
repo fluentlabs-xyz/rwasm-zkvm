@@ -1,6 +1,7 @@
 use std::borrow::BorrowMut;
 
 use crate::{
+    memory::MemoryCols,
     syscall::fat_op::table::{TableInitCols, NUM_TABLE_INIT_SIZE},
     utils::pad_rows_fixed,
 };
@@ -115,10 +116,14 @@ impl TableInitChip {
                 local.table_idx.populate(event.table_idx, blu, true);
                 local.length.populate(event.n, blu, true);
                 local.sp.populate(event.sp, blu, true);
+
+                local.table_size_read_access.populate(event.table_size_read_acess, blu);
             } else {
                 local.dst_access.populate(event.stack_access[0], &mut Vec::new());
                 local.src_access.populate(event.stack_access[1], &mut Vec::new());
                 local.length_access.populate(event.stack_access[2], &mut Vec::new());
+
+                local.table_size_read_access.populate(event.table_size_read_acess, &mut Vec::new());
 
                 local.table_idx.populate(event.table_idx, blu, false);
                 local.sp.populate(event.sp, blu, false);
@@ -127,10 +132,20 @@ impl TableInitChip {
             // populate address
             if idx == 0 || idx == event.n as usize - 1 {
                 local.src_address.populate(event.s + idx as u32, blu, true);
-                local.dst_address.populate(event.d + idx as u32, blu, true);
+                local.dst_address.populate(
+                    event.d + idx as u32,
+                    blu,
+                    event.table_size_read_acess.value,
+                    true,
+                );
             } else {
                 local.src_address.populate(event.s + idx as u32, blu, false);
-                local.dst_address.populate(event.d + idx as u32, blu, false);
+                local.dst_address.populate(
+                    event.d + idx as u32,
+                    blu,
+                    event.table_size_read_acess.value,
+                    false,
+                );
             }
 
             if event.n != 0 {

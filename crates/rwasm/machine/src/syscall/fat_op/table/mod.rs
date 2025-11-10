@@ -1,9 +1,6 @@
 use std::borrow::Borrow;
 
-use crate::{
-    air::MemoryAirBuilder,
-    memory::{ElementAddressCols, TableAddressCols},
-};
+use crate::{air::MemoryAirBuilder, memory::ElementAddressCols};
 
 use p3_air::{Air, AirBuilder, BaseAir};
 
@@ -54,6 +51,11 @@ where
         builder.when_transition().when_not(local.is_last).assert_eq(local.is_real, next.is_real);
         builder.when_transition().when_not(local.is_last).assert_eq(local.clk, next.clk);
         builder.when_transition().when_not(local.is_last).assert_eq(local.shard, next.shard);
+        builder.when_transition().when_not(local.is_last).assert_word_eq(
+            *local.table_size_read_access.value(),
+            *next.table_size_read_access.value(),
+        );
+
         builder
             .when_transition()
             .when_not(local.is_last)
@@ -114,7 +116,14 @@ where
         builder.when(local.is_first).assert_one(local.src_address.is_real::<AB>());
         builder.when(local.is_last).assert_one(local.src_address.is_real::<AB>());
 
-        TableAddressCols::<AB::Var>::range_check(builder, local.dst_address);
+        let table_size_value = local.table_size_read_access.value();
+
+        DynamicTableAddressCols::<AB::Var>::range_check(
+            builder,
+            local.dst_address,
+            table_size_value[0].into(),
+            table_size_value[1].into(),
+        );
         builder.when(local.is_first).assert_one(local.dst_address.is_real::<AB>());
         builder.when(local.is_last).assert_one(local.dst_address.is_real::<AB>());
 
@@ -176,7 +185,7 @@ impl TableInitChip {
         let table_addr = AB::Expr::from_canonical_u32(TypedAddress::Table(0).to_virtual_addr()) +
             (local.dst_address.value::<AB>() +
                 local.table_idx.value::<AB>() * AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE)) *
-                unit;
+                unit.clone();
 
         builder.eval_memory_access(
             local.shard,
@@ -184,6 +193,15 @@ impl TableInitChip {
             src_addr,
             &local.src_read_access,
             local.is_non_zero_length,
+        );
+
+        builder.eval_memory_access(
+            local.shard,
+            local.clk,
+            AB::Expr::from_canonical_u32(TypedAddress::TableSize(0).to_virtual_addr()) +
+                local.table_idx.value::<AB>() * unit,
+            &local.table_size_read_access,
+            local.is_first,
         );
 
         builder.eval_memory_access(
@@ -199,5 +217,63 @@ impl TableInitChip {
 impl<F> BaseAir<F> for TableInitChip {
     fn width(&self) -> usize {
         NUM_TABLE_INIT_SIZE
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #![allow(clippy::print_stdout)]
+
+    use crate::{io::SP1Stdin, rwasm::RwasmAir, utils::run_malicious_test};
+    use p3_baby_bear::BabyBear;
+    use rwasm_executor::{events::PrecompileEvent, ExecutionRecord, Opcode, Program};
+    use sp1_stark::{baby_bear_poseidon2::BabyBearPoseidon2, CpuProver, MachineProver};
+
+    use rwasm_executor::syscalls::SyscallCode;
+
+    #[test]
+    fn test_malicious_table_init() {
+        type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
+
+        let elements = vec![111u32, 111u32, 111u32, 111u32];
+
+        let program = Program::from_instrs(vec![
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(64.into()),
+            Opcode::TableGrow(0),
+            Opcode::I32Const(62.into()),
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(2.into()),
+            Opcode::TableInit(0),
+            Opcode::TableGet(0),
+            Opcode::I32Const(137.into()),
+        ])
+        .with_elements(elements);
+
+        let stdin = SP1Stdin::new();
+
+        let malicious = move |prover: &P, record: &mut ExecutionRecord| {
+            let mut malicious_record = record.clone();
+
+            if let Some(event) =
+                malicious_record.precompile_events.events.get_mut(&SyscallCode::TABLE_INIT)
+            {
+                event.first_mut().map(|(_, event)| {
+                    let event = if let PrecompileEvent::TableInit(event) = event {
+                        event
+                    } else {
+                        unreachable!()
+                    };
+
+                    event.d = event.d + 1;
+                });
+            }
+
+            prover.generate_traces(&malicious_record)
+        };
+
+        let result = run_malicious_test::<P>(program, stdin, Box::new(malicious));
+
+        assert!(result.is_err() && result.unwrap_err().is_local_cumulative_sum_failing());
     }
 }
