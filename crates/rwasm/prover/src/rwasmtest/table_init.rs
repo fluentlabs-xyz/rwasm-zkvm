@@ -90,3 +90,21 @@ pub fn test_table_memory_out_of_bound() {
     let program = Program::from_instrs(ops).with_elements(elements);
     run_rwasm_prover(program);
 }
+
+#[test]
+pub fn test_table_size_out_of_bound() {
+    let ops = vec![
+        Opcode::I32Const(0.into()),
+        Opcode::I32Const(64.into()),
+        Opcode::TableGrow(0),
+        Opcode::I32Const(62.into()),
+        Opcode::I32Const(0.into()),
+        Opcode::I32Const(2.into()),
+        Opcode::TableInit(0),
+        Opcode::TableGet(0),
+        Opcode::I32Const(137.into()),
+    ];
+    let elements = vec![111u32, 111u32, 111u32, 111u32];
+    let program = Program::from_instrs(ops).with_elements(elements);
+    run_rwasm_prover(program);
+}

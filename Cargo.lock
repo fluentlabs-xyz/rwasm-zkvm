@@ -6022,7 +6022,7 @@ dependencies = [
 [[package]]
 name = "rwasm"
 version = "0.0.0"
-source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing#af1b5e2043c63c68dcb5c23acd957dd43c06d933"
+source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ftable-init-check-size#6c2b996c01f26f3e184b412a377df1b765f542e8"
 dependencies = [
  "anyhow",
  "bincode 2.0.1",

@@ -1,6 +1,6 @@
 use crate::{
-    memory::{ElementAddressCols, TableAddressCols},
-    operations::{Range16bCols, Range8bCols},
+    memory::ElementAddressCols,
+    operations::{DynamicLE16bCols, Range16bCols, Range8bCols},
 };
 use rwasm::{
     mem_index::{SP_END, UNIT},
@@ -33,7 +33,8 @@ pub struct TableInitCols<T> {
     pub is_last: T,
     pub is_non_zero_length: T,
     pub src_address: ElementAddressCols<T>,
-    pub dst_address: TableAddressCols<T>,
+    pub dst_address: DynamicTableAddressCols<T>,
+    pub table_size_read_access: MemoryReadCols<T>,
     pub is_real: T,
 }
 
@@ -43,3 +44,5 @@ pub type LengthCols<T> = Range16bCols<T, 0, N_MAX_TABLE_SIZE>;
 
 const SP_START: u32 = rwasm::mem_index::SP_START - 2 * UNIT;
 pub type StackAddressCols<T> = Range16bCols<T, SP_END, SP_START>;
+
+pub type DynamicTableAddressCols<T> = DynamicLE16bCols<T>;
