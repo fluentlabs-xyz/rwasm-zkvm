@@ -251,7 +251,8 @@ pub struct I64AluEvent {
 }
 
 impl I64AluEvent {
-    /// Create a new [`AluEvent`].
+    /// Create a new [`I64AluEvent`].
+    #[allow(clippy::too_many_arguments)]
     #[must_use]
     pub fn new(
         pc: u32,
