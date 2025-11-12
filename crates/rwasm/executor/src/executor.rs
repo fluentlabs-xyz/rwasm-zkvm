@@ -5181,6 +5181,6 @@ mod tests {
 
         assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
         assert_eq!(rt.state.memory.get(rt.state.sp + 4).unwrap().value, 0);
-        assert_eq!(sp0, rt.state.sp);
+        assert_eq!(sp0-8, rt.state.sp);
     }
 }
