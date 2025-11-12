@@ -5137,37 +5137,97 @@ mod tests {
 
     #[test]
     fn test_i32popcnt() {
-        let a: u32 = 0x137_137;
-        let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Popcnt]);
+        fn check(a: u32) {
+            let sp0 = SP_START;
+            let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Popcnt]);
 
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
-        assert_eq!(top, a.count_ones(), "incorrect count ones");
+            let expected = a.count_ones();
+            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            assert_eq!(top, expected, "I32Popcnt result mismatch for a={:#x}", a);
+            // One 32-bit value pushed
+            assert_eq!(sp0, rt.state.sp + UNIT);
+        }
+
+        // Edge cases
+        check(0x0000_0000); // 0
+        check(0xFFFF_FFFF); // 32
+        check(0x0000_0001); // 1
+        check(0x8000_0000); // 1
+        check(0x7FFF_FFFF); // 31
+
+        // Patterns
+        check(0xAAAA_AAAA); // 16 ones
+        check(0x5555_5555); // 16 ones
+
+        // Random-ish sanity values
+        check(0x0137_0137);
+        check(0xDEAD_BEEF);
     }
     #[test]
     fn test_i32clz() {
-        //count leading zeros
-        let a: u32 = 0x137_137;
-        let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Clz]);
+        fn check(a: u32) {
+            let sp0 = SP_START;
+            let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Clz]);
 
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
-        assert_eq!(top, a.leading_zeros(), "incorrect count zeros");
+            let expected = a.leading_zeros(); // WASM spec: clz(0) = 32
+            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            assert_eq!(top, expected, "I32Clz result mismatch for a={:#x}", a);
+            // One 32-bit value pushed
+            assert_eq!(sp0, rt.state.sp + UNIT);
+        }
+
+        // Edge cases
+        check(0x0000_0000); // 32
+        check(0x0000_0001); // 31
+        check(0x8000_0000); // 0
+
+        // Boundary & pattern cases
+        check(0x0000_FFFF); // 16
+        check(0x00F0_0000); // 8
+        check(0x7FFF_FFFF); // 1
+        check(0xFFFF_0000); // 0
+
+        // Random-ish sanity values
+        check(0x0137_0137);
+        check(0xDEAD_BEEF);
     }
     #[test]
     fn test_i32ctz() {
-        let a: u32 = 0x137_137;
-        let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Ctz]);
+        fn check(a: u32) {
+            let sp0 = SP_START;
+            let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Ctz]);
 
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
-        assert_eq!(top, a.trailing_zeros(), "incorrect count zeros");
+            let expected = a.trailing_zeros(); // Rust matches WASM semantics: ctz(0) = 32
+            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            assert_eq!(top, expected, "I32Ctz result mismatch for a={:#x}", a);
+            // One 32-bit value pushed
+            assert_eq!(sp0, rt.state.sp + UNIT);
+        }
+
+        // Edge cases
+        check(0x0000_0000); // ctz(0) = 32
+        check(0x0000_0001); // 0
+        check(0x0000_0002); // 1
+        check(0x0000_0004); // 2
+        check(0x8000_0000); // 31
+
+        // Boundary & pattern cases
+        check(0x0001_0000); // 16
+        check(0xFFFF_0000); // 16 (low half zero)
+        check(0x00F0_0000); // 20
+
+        // Random-ish sanity values
+        check(0x0137_0137);
+        check(0xDEAD_BEEF);
     }
 
     #[test]
