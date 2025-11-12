@@ -131,13 +131,9 @@ impl TableGrowChip {
         local.delta_access.populate(event.stack_access[1], blu);
 
         // Populate table index with range check
-        if populate_range_check {
-            local.table_idx.populate(event.table_idx, blu);
-            local.sp.populate(event.sp, blu);
-        } else {
-            local.table_idx.populate_value(event.table_idx);
-            local.sp.populate_value(event.sp);
-        }
+
+        local.table_idx.populate(event.table_idx, blu, populate_range_check);
+        local.sp.populate(event.sp, blu, populate_range_check);
 
         // Populate the current table size read
         local.table_size_read_access.populate(event.table_size_read_acess, blu);
@@ -189,7 +185,7 @@ impl TableGrowChip {
             local.should_update_result = F::one();
             local.result_write_access.populate(event.result_write_access, blu);
             local.not_successful_result = F::one();
-            local.delta.populate(event.delta, blu);
+            local.delta.populate(event.delta, blu, true);
 
             push_row(row);
             return;
@@ -225,11 +221,11 @@ impl TableGrowChip {
                 local.is_first = F::one();
                 local.should_update_result = F::one();
                 local.result_write_access.populate(event.result_write_access, blu);
-                local.delta.populate(event.delta, blu);
+                local.delta.populate(event.delta, blu, true);
             } else {
                 // Subsequent rows: reuse values without byte lookups to avoid duplicates
                 local.result_write_access.populate(event.result_write_access, &mut Vec::new());
-                local.table_idx.populate_value(event.table_idx);
+                local.table_idx.populate(event.table_idx, blu, false);
             }
 
             // Mark that the operation has non-zero length
@@ -238,9 +234,17 @@ impl TableGrowChip {
             // Calculate destination address in table (old_size + idx)
             // Perform range checks only on first and last addresses to optimize
             if idx == 0 || idx == event.delta as usize - 1 {
-                local.dst_address.populate(event.table_size_read_acess.value + idx as u32, blu);
+                local.dst_address.populate(
+                    event.table_size_read_acess.value + idx as u32,
+                    blu,
+                    true,
+                );
             } else {
-                local.dst_address.populate_value(event.table_size_read_acess.value + idx as u32);
+                local.dst_address.populate(
+                    event.table_size_read_acess.value + idx as u32,
+                    blu,
+                    false,
+                );
             }
 
             // Write initialization value to this table entry

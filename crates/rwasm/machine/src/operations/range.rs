@@ -18,23 +18,7 @@ pub struct Range16bCols<T, const START: u32, const END: u32> {
 }
 
 impl<F: PrimeField32, const START: u32, const END: u32> Range16bCols<F, START, END> {
-    pub fn populate_value(&mut self, value: u32) {
-        // We subtract the START to work with the value that is in the range [0..END -
-        // START]
-
-        let (shifted_value, overflow) = value.overflowing_sub(START);
-
-        assert!(!overflow);
-
-        let shifted_value: u16 = shifted_value.try_into().unwrap();
-
-        let hi_8bits: u8 = (shifted_value >> 8) as u8;
-        let low_8bits: u8 = shifted_value as u8;
-        self.hi_8bits = F::from_canonical_u8(hi_8bits);
-        self.low_8bits = F::from_canonical_u8(low_8bits);
-    }
-
-    pub fn populate(&mut self, value: u32, output: &mut impl ByteRecord) {
+    pub fn populate(&mut self, value: u32, output: &mut impl ByteRecord, do_check: bool) {
         // We subtract the START to work with the value that is in the range [0..END -
         // START]
         let (shifted_value, overflow) = value.overflowing_sub(START);
@@ -47,36 +31,37 @@ impl<F: PrimeField32, const START: u32, const END: u32> Range16bCols<F, START, E
         let low_8bits: u8 = shifted_value as u8;
         self.hi_8bits = F::from_canonical_u8(hi_8bits);
         self.low_8bits = F::from_canonical_u8(low_8bits);
+        if do_check {
+            let hi_is_eq_ub_hi = hi_8bits == Self::UB_HI_8BITS_SHIFTED;
+            self.hi_is_eq_ub_hi = F::from_bool(hi_is_eq_ub_hi);
 
-        let hi_is_eq_ub_hi = hi_8bits == Self::UB_HI_8BITS_SHIFTED;
-        self.hi_is_eq_ub_hi = F::from_bool(hi_is_eq_ub_hi);
+            let hi_is_zero = hi_8bits == 0;
+            self.hi_is_zero = F::from_bool(hi_is_zero);
 
-        let hi_is_zero = hi_8bits == 0;
-        self.hi_is_zero = F::from_bool(hi_is_zero);
+            let hi_is_not_edge = !hi_is_zero && !hi_is_eq_ub_hi;
+            self.hi_is_not_edge = F::from_bool(hi_is_not_edge);
 
-        let hi_is_not_edge = !hi_is_zero && !hi_is_eq_ub_hi;
-        self.hi_is_not_edge = F::from_bool(hi_is_not_edge);
+            output.add_u8_range_check(hi_8bits, low_8bits);
 
-        output.add_u8_range_check(hi_8bits, low_8bits);
+            if hi_is_not_edge {
+                output.add_byte_lookup_event(ByteLookupEvent {
+                    opcode: ByteOpcode::LTU,
+                    a1: true as u16,
+                    a2: 0,
+                    b: hi_8bits,
+                    c: Self::UB_HI_8BITS_SHIFTED,
+                });
+            }
 
-        if hi_is_not_edge {
-            output.add_byte_lookup_event(ByteLookupEvent {
-                opcode: ByteOpcode::LTU,
-                a1: true as u16,
-                a2: 0,
-                b: hi_8bits,
-                c: Self::UB_HI_8BITS_SHIFTED,
-            });
-        }
-
-        if hi_is_eq_ub_hi {
-            output.add_byte_lookup_event(ByteLookupEvent {
-                opcode: ByteOpcode::LTU,
-                a1: true as u16,
-                a2: 0,
-                b: low_8bits,
-                c: Self::UB_LOW_8BITS_SHIFTED,
-            });
+            if hi_is_eq_ub_hi {
+                output.add_byte_lookup_event(ByteLookupEvent {
+                    opcode: ByteOpcode::LTU,
+                    a1: true as u16,
+                    a2: 0,
+                    b: low_8bits,
+                    c: Self::UB_LOW_8BITS_SHIFTED,
+                });
+            }
         }
     }
 }
@@ -145,6 +130,144 @@ impl<T: Copy, const START: u32, const END: u32> Range16bCols<T, START, END> {
             cols.hi_is_eq_ub_hi,
         );
     }
+
+    /// The prove always have known whether a column of rangechecker is real or not.
+    /// So the input do check should always  equals rangechecker.is_real.
+    pub fn do_range_check<AB: SP1AirBuilder>(
+        builder: &mut AB,
+        cols: Range16bCols<AB::Var, START, END>,
+        do_check: impl Into<AB::Expr>,
+    ) {
+        let is_real = cols.hi_is_not_edge + cols.hi_is_zero + cols.hi_is_eq_ub_hi;
+        builder.assert_eq(do_check, is_real);
+        Range16bCols::<AB::Var, START, END>::range_check(builder, cols);
+    }
+}
+
+#[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
+#[repr(C)]
+pub struct Range32bCols<
+    T,
+    const START_HI16: u32,
+    const START_LOW16: u32,
+    const END_HI16: u32,
+    const END_LOW16: u32,
+> {
+    hi_16bits: Range16bCols<T, START_HI16, END_HI16>,
+    low_16bits: Range16bCols<T, START_LOW16, END_LOW16>,
+    pub hi_is_zero: T,
+    pub hi_is_not_edge: T,
+    pub hi_is_eq_ub_hi: T,
+}
+
+impl<
+        F: PrimeField32,
+        const START_HI16: u32,
+        const START_LOW16: u32,
+        const END_HI16: u32,
+        const END_LOW16: u32,
+    > Range32bCols<F, START_HI16, START_LOW16, END_HI16, END_LOW16>
+{
+    pub fn populate(&mut self, value: u32, output: &mut impl ByteRecord, do_check: bool) {
+        // We subtract the START to work with the value that is in the range [0..END -
+        // START]
+        let start = Self::START;
+        let (shifted_value, overflow) = value.overflowing_sub(start);
+
+        assert!(!overflow);
+        let hi_16bits: u16 = (shifted_value >> 16) as u16;
+        let low_16bits: u16 = shifted_value as u16;
+
+        let hi_is_eq_ub_hi = hi_16bits == Self::UB_HI_16BITS_SHIFTED;
+        self.hi_is_eq_ub_hi = F::from_bool(hi_is_eq_ub_hi);
+
+        let hi_is_zero = hi_16bits == 0;
+        self.hi_is_zero = F::from_bool(hi_is_zero);
+
+        let hi_is_not_edge = !hi_is_zero && !hi_is_eq_ub_hi;
+        self.hi_is_not_edge = F::from_bool(hi_is_not_edge);
+
+        if do_check {
+            output.add_u16_range_check(hi_16bits);
+            output.add_u16_range_check(low_16bits);
+        }
+        self.low_16bits.populate(low_16bits as u32, output, do_check && hi_is_eq_ub_hi);
+        self.hi_16bits.populate(hi_16bits as u32, output, do_check && hi_is_not_edge);
+    }
+}
+
+impl<
+        T: Copy,
+        const START_HI16: u32,
+        const START_LOW16: u32,
+        const END_HI16: u32,
+        const END_LOW16: u32,
+    > Range32bCols<T, START_HI16, START_LOW16, END_HI16, END_LOW16>
+{
+    const START: u32 = (START_HI16 << 16) + START_LOW16;
+    const END: u32 = (END_HI16 << 16) + END_LOW16;
+    const UB_HI_16BITS_SHIFTED: u16 = ((Self::END - Self::START + UNIT) >> 16) as u16;
+
+    pub fn value<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
+    where
+        T: Into<AB::Expr>,
+    {
+        let hi = self.hi_16bits.value::<AB>();
+        let low = self.low_16bits.value::<AB>();
+        hi * AB::Expr::from_canonical_u32(1 << 16) + low + AB::Expr::from_canonical_u32(Self::START)
+    }
+
+    pub fn is_real<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
+    where
+        T: Into<AB::Expr>,
+    {
+        self.hi_is_not_edge.into() + self.hi_is_zero.into() + self.hi_is_eq_ub_hi.into()
+    }
+
+    pub fn range_check<AB: SP1AirBuilder>(
+        builder: &mut AB,
+        cols: Range32bCols<AB::Var, START_HI16, START_LOW16, END_HI16, END_LOW16>,
+    ) {
+        let is_real = cols.hi_is_not_edge + cols.hi_is_zero + cols.hi_is_eq_ub_hi;
+
+        builder.assert_bool(is_real.clone());
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::U16Range as u32),
+            cols.hi_16bits.value::<AB>(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            is_real.clone(),
+        );
+        builder.send_byte(
+            AB::Expr::from_canonical_u32(ByteOpcode::U16Range as u32),
+            cols.low_16bits.value::<AB>(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            is_real.clone(),
+        );
+
+        Range16bCols::<AB::Var, START_HI16, END_HI16>::do_range_check(
+            builder,
+            cols.hi_16bits,
+            cols.hi_is_not_edge,
+        );
+        Range16bCols::<AB::Var, START_LOW16, END_LOW16>::do_range_check(
+            builder,
+            cols.low_16bits,
+            cols.hi_is_eq_ub_hi,
+        );
+
+        // check edge cases of hi_16bits
+        builder
+            .when(is_real.clone())
+            .when(cols.hi_is_zero)
+            .assert_zero(cols.hi_16bits.value::<AB>());
+
+        builder.when(is_real).when(cols.hi_is_eq_ub_hi).assert_eq(
+            cols.hi_16bits.value::<AB>(),
+            AB::Expr::from_canonical_u16(Self::UB_HI_16BITS_SHIFTED),
+        );
+    }
 }
 
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
@@ -156,20 +279,7 @@ pub struct Range8bCols<T, const START: u32, const END: u32> {
 }
 
 impl<F: PrimeField32, const START: u32, const END: u32> Range8bCols<F, START, END> {
-    pub fn populate_value(&mut self, value: u32) {
-        // We subtract the START to work with the value that is in the range [0..END -
-        // START]
-
-        let (shifted_value, overflow) = value.overflowing_sub(START);
-
-        assert!(!overflow);
-
-        let byte: u8 = shifted_value.try_into().unwrap();
-
-        self.byte = F::from_canonical_u8(byte);
-    }
-
-    pub fn populate(&mut self, value: u32, output: &mut impl ByteRecord) {
+    pub fn populate(&mut self, value: u32, output: &mut impl ByteRecord, do_check: bool) {
         // We subtract the START to work with the value that is in the range [0..END -
         // START]
         let (shifted_value, overflow) = value.overflowing_sub(START);
@@ -179,21 +289,22 @@ impl<F: PrimeField32, const START: u32, const END: u32> Range8bCols<F, START, EN
         let byte: u8 = shifted_value.try_into().unwrap();
 
         self.byte = F::from_canonical_u8(byte);
+        if do_check {
+            let is_zero = byte == 0;
 
-        let is_zero = byte == 0;
+            if is_zero {
+                self.is_zero = F::one();
+            } else {
+                self.is_not_zero = F::one();
 
-        if is_zero {
-            self.is_zero = F::one();
-        } else {
-            self.is_not_zero = F::one();
-
-            output.add_byte_lookup_event(ByteLookupEvent {
-                opcode: ByteOpcode::LTU,
-                a1: true as u16,
-                a2: 0,
-                b: byte,
-                c: (END - START) as u8,
-            });
+                output.add_byte_lookup_event(ByteLookupEvent {
+                    opcode: ByteOpcode::LTU,
+                    a1: true as u16,
+                    a2: 0,
+                    b: byte,
+                    c: (END - START) as u8,
+                });
+            }
         }
     }
 }
