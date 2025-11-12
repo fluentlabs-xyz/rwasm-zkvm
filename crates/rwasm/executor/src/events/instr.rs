@@ -223,3 +223,48 @@ impl CallEvent {
         }
     }
 }
+
+/// Alu Opcode Event.
+///
+/// This object encapsulated the information needed to prove a RISC-V ALU operation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[repr(C)]
+pub struct I64AluEvent {
+    /// The program counter.
+    pub pc: u32,
+    /// riscv opcode
+    pub opcode: Opcode,
+    /// The result value
+    pub a: u32,
+    /// The result value's hi bits
+    pub a_hi: u32,
+    /// The second operand value.
+    pub b: u32,
+    /// The third operand value.
+    pub c: u32,
+    /// u32 representation of Opcode
+    pub code: u32,
+
+    pub res_hi_addr: u32,
+
+    pub res_hi_access: Option<MemoryRecordEnum>,
+}
+
+impl I64AluEvent {
+    /// Create a new [`I64AluEvent`].
+    #[allow(clippy::too_many_arguments)]
+    #[must_use]
+    pub fn new(
+        pc: u32,
+        opcode: Opcode,
+        a: u32,
+        a_hi: u32,
+        b: u32,
+        c: u32,
+        code: u32,
+        res_hi_addr: u32,
+        res_hi_access: Option<MemoryRecordEnum>,
+    ) -> Self {
+        Self { pc, opcode, a, a_hi, b, c, code, res_hi_addr, res_hi_access }
+    }
+}
