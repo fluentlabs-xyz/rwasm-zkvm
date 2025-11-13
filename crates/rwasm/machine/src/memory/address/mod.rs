@@ -1,10 +1,7 @@
 use crate::operations::{Range16bCols, Range32bCols};
 use rwasm::{
-    
-    mem_index::{{FUNC_FRAME_END, FUNC_FRAME_START, SP_END},
-    TABLE_SEG_END, TABLE_SEG_START},
+    mem_index::{FUNC_FRAME_END, FUNC_FRAME_START, SP_END, TABLE_SEG_END, TABLE_SEG_START},
     N_MAX_ELEM_SEGMENTS_BITS, N_MAX_TABLE_SIZE,
-,
 };
 use rwasm_executor::SP_START;
 

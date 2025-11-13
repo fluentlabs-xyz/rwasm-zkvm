@@ -98,10 +98,10 @@ impl CallChip {
         cols.opcode = F::from_canonical_u32(event.opcode.code());
         cols.call_sp = F::from_canonical_u32(event.call_sp);
         let call_sp_addr = TypedAddress::FuncFrame(event.call_sp);
-        cols.call_sp_addr.populate(call_sp_addr.to_virtual_addr(), blu);
+        cols.call_sp_addr.populate(call_sp_addr.to_virtual_addr(), blu, true);
         cols.next_call_sp = F::from_canonical_u32(event.next_call_sp);
         let next_call_sp_addr = TypedAddress::FuncFrame(event.next_call_sp);
-        cols.next_call_sp_addr.populate(next_call_sp_addr.to_virtual_addr(), blu);
+        cols.next_call_sp_addr.populate(next_call_sp_addr.to_virtual_addr(), blu, true);
 
         cols.signature_id = F::from_canonical_u32(event.signature_id);
 

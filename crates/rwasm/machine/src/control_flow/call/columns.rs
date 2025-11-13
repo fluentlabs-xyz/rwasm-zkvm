@@ -3,7 +3,7 @@ use sp1_stark::Word;
 use std::mem::size_of;
 
 use crate::{
-    memory::{CallStackAddressCols, MemoryReadWriteCols, TableAddressCols},
+    memory::{CallStackAddressCols, MemoryReadWriteCols},
     operations::BabyBearWordRangeChecker,
 };
 

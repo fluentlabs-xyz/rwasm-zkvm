@@ -226,7 +226,7 @@ where
                                         shape_config,
                                     )
                                 });
-                           
+
                             // Trace the checkpoint and reconstruct the execution records.
                             *report_aggregate.lock().unwrap() += report;
                             checkpoint

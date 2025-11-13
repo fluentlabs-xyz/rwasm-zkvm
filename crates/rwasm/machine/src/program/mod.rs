@@ -19,8 +19,6 @@ use sp1_stark::{
     Word,
 };
 
-use crate::cpu::columns::InstructionCols;
-
 /// The number of preprocessed program columns.
 pub const NUM_PROGRAM_PREPROCESSED_COLS: usize = size_of::<ProgramPreprocessedCols<u8>>();
 
@@ -116,10 +114,12 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
         // Store it as a map of PC -> count.
         let mut instruction_counts = HashMap::new();
         input.cpu_events.iter().for_each(|event| {
+            println!("cpu events:{:?}", event);
             let pc = event.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
         input.dataop_events.iter().for_each(|event| {
+            println!("dataop events:{:?}", event);
             let pc = event.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });

@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
 
-use num::one;
 use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
@@ -14,7 +13,7 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::{
     air::{SP1CoreAirBuilder, WordAirBuilder},
-    memory::{CallStackAddressCols, MemoryCols, TableAddressCols},
+    memory::{CallStackAddressCols, MemoryCols},
     operations::BabyBearWordRangeChecker,
 };
 const CALL_SP_STACK_SHIFT: u32 = FUNC_FRAME_START;

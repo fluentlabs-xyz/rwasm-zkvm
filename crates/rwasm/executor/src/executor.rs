@@ -717,7 +717,6 @@ impl<'a> Executor<'a> {
         fat_op: Option<FatOpEvent>,
         dataop_event: Option<DataOpEvent>,
     ) {
-        
         if opcode.is_memory_instruction() {
             self.emit_cpu(
                 clk,
@@ -796,7 +795,7 @@ impl<'a> Executor<'a> {
                         call_data.table_id,
                         call_data.table_idx,
                         call_sp_record,
-                        call_data.table_access.map_or(None, |x| Some(MemoryRecordEnum::Read(x))),
+                        call_data.table_access.map(|x| MemoryRecordEnum::Read(x)),
                         dataop_event,
                     );
                 }
@@ -1177,9 +1176,8 @@ impl<'a> Executor<'a> {
             table_access,
         };
         self.record.call_events.push(event);
-        match dataop_event {
-            Some(event) => self.record.dataop_events.push(event),
-            None => (),
+        if let Some(event) = dataop_event {
+            self.record.dataop_events.push(event)
         }
     }
 
@@ -1325,14 +1323,11 @@ impl<'a> Executor<'a> {
 
         let op_state = self.store.tracer.logs.last().unwrap();
         let syscall = SyscallCode::default();
-        let dataop_event = if op_state.opcode.is_fat_op() {
-            match op_state.opcode {
-                Opcode::CallIndirect(_) => Some(self.store.tracer.data_op_logs.last().unwrap()),
-                _ => None,
-            }
-        } else {
-            None
+        let dataop_event = match op_state.opcode {
+            Opcode::CallIndirect(_) => Some(self.store.tracer.data_op_logs.last().unwrap()),
+            _ => None,
         };
+
         self.state.clk = op_state.clk;
         self.state.pc = op_state.pc;
         self.emit_events(
@@ -1536,6 +1531,7 @@ impl<'a> Executor<'a> {
 
         let done = tracing::debug_span!("execute").in_scope(|| self.execute())?;
         println!("cpu events:{:?}", self.record.cpu_events);
+        println!("data_op events{:?}", self.record.dataop_events);
         // Create a checkpoint using `memory_checkpoint`. Just include all memory if `done` since we
         // need it all for MemoryFinalize.
         let next_pc = self.state.pc;

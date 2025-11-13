@@ -1,6 +1,5 @@
 use std::iter::once;
 
-use crate::cpu::columns::InstructionCols;
 use p3_air::AirBuilder;
 use sp1_stark::{
     air::{AirInteraction, BaseAirBuilder, InteractionScope},
@@ -20,7 +19,6 @@ pub trait ProgramAirBuilder: BaseAirBuilder {
         let values = once(pc.into())
             .chain(once(opcode.into()))
             .chain(aux_val.0.into_iter().map(Into::into))
-            .map(Into::into)
             .collect();
 
         self.send(
