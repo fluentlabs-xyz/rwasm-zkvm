@@ -2,7 +2,10 @@ use sp1_derive::AlignedBorrow;
 use sp1_stark::Word;
 use std::mem::size_of;
 
-use crate::{memory::MemoryReadWriteCols, operations::BabyBearWordRangeChecker};
+use crate::{
+    memory::{CallStackAddressCols, MemoryReadWriteCols, TableAddressCols},
+    operations::BabyBearWordRangeChecker,
+};
 
 pub const NUM_CALL_COLS: usize = size_of::<CallColumns<u8>>();
 
@@ -19,11 +22,13 @@ pub struct CallColumns<T> {
     /// The next program counter.
     pub next_pc: Word<T>,
     pub next_pc_range_checker: BabyBearWordRangeChecker<T>,
-
-    pub call_stack_access: MemoryReadWriteCols<T>,
-    pub table_access: MemoryReadWriteCols<T>,
     pub call_sp: T,
     pub next_call_sp: T,
+    pub call_stack_access: MemoryReadWriteCols<T>,
+    pub table_access: MemoryReadWriteCols<T>,
+
+    pub call_sp_addr: CallStackAddressCols<T>,
+    pub next_call_sp_addr: CallStackAddressCols<T>,
     pub func_ref: T,
     pub signature_id: T,
     pub table_id: T,

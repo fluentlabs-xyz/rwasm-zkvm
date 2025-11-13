@@ -6,6 +6,7 @@ use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
+use rwasm::{mem_index::TypedAddress, N_MAX_TABLE_SIZE};
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, CallEvent},
     ExecutionRecord, Opcode, Program,
@@ -96,13 +97,22 @@ impl CallChip {
 
         cols.opcode = F::from_canonical_u32(event.opcode.code());
         cols.call_sp = F::from_canonical_u32(event.call_sp);
+        let call_sp_addr = TypedAddress::FuncFrame(event.call_sp);
+        cols.call_sp_addr.populate(call_sp_addr.to_virtual_addr(), blu);
         cols.next_call_sp = F::from_canonical_u32(event.next_call_sp);
+        let next_call_sp_addr = TypedAddress::FuncFrame(event.next_call_sp);
+        cols.next_call_sp_addr.populate(next_call_sp_addr.to_virtual_addr(), blu);
+
         cols.signature_id = F::from_canonical_u32(event.signature_id);
+
         cols.func_ref = F::from_canonical_u32(event.func_ref);
         cols.table_id = F::from_canonical_u32(event.table_id);
         cols.table_idx = F::from_canonical_u32(event.table_idx);
         if let Some(record) = event.table_access {
             cols.table_access.populate(record, blu);
+            let table_addr =
+                TypedAddress::Table(event.table_id * N_MAX_TABLE_SIZE + event.table_idx);
+            // cols.table_access_addr.populate(table_addr.to_virtual_addr(), blu);
         }
         println!("opcode  for call: {}", event.opcode.code());
         cols.opcode_aux_val = event.opcode.aux_value().into();

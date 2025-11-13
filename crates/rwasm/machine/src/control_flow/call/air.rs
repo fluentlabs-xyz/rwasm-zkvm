@@ -14,7 +14,7 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::{
     air::{SP1CoreAirBuilder, WordAirBuilder},
-    memory::MemoryCols,
+    memory::{CallStackAddressCols, MemoryCols, TableAddressCols},
     operations::BabyBearWordRangeChecker,
 };
 const CALL_SP_STACK_SHIFT: u32 = FUNC_FRAME_START;
@@ -97,8 +97,7 @@ where
         builder.eval_memory_access(
             local.shard,
             local.clk + AB::Expr::from_canonical_u8(1),
-            local.next_call_sp * AB::Expr::from_canonical_u32(UNIT) +
-                AB::Expr::from_canonical_u32(CALL_SP_STACK_SHIFT),
+            local.next_call_sp_addr.value::<AB>(),
             &local.call_stack_access,
             local.is_call + local.is_call_indirect + local.is_call_internal,
         );
@@ -106,8 +105,7 @@ where
         builder.eval_memory_access(
             local.shard,
             local.clk,
-            local.call_sp * AB::Expr::from_canonical_u32(UNIT) +
-                AB::Expr::from_canonical_u32(CALL_SP_STACK_SHIFT),
+            local.call_sp_addr.value::<AB>(),
             &local.call_stack_access,
             local.is_return - local.not_real_return,
         );
@@ -129,7 +127,20 @@ where
             .when(local.is_call_internal)
             .assert_eq(local.func_ref, local.opcode_aux_val.reduce::<AB>());
         self.eval_call_sp(builder, local);
-        // self.eval_next_pc(builder, local);
+        self.eval_next_pc(builder, local);
+
+        builder.when(is_call_ins.clone()).assert_eq(
+            local.next_call_sp_addr.value::<AB>(),
+            local.next_call_sp * AB::Expr::from_canonical_u32(UNIT) +
+                AB::Expr::from_canonical_u32(CALL_SP_STACK_SHIFT),
+        );
+        builder.when(local.is_return - local.not_real_return).assert_eq(
+            local.call_sp_addr.value::<AB>(),
+            local.call_sp * AB::Expr::from_canonical_u32(UNIT) +
+                AB::Expr::from_canonical_u32(CALL_SP_STACK_SHIFT),
+        );
+        CallStackAddressCols::<AB::Var>::range_check(builder, local.call_sp_addr);
+        CallStackAddressCols::<AB::Var>::range_check(builder, local.next_call_sp_addr);
     }
 }
 
