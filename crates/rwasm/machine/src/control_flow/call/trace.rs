@@ -86,6 +86,7 @@ impl CallChip {
         shard: u32,
         blu: &mut HashMap<ByteLookupEvent, usize>,
     ) {
+        println!("callevent:{:?}", event);
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
         cols.pc = event.pc.into();
@@ -100,6 +101,9 @@ impl CallChip {
         cols.func_ref = F::from_canonical_u32(event.func_ref);
         cols.table_id = F::from_canonical_u32(event.table_id);
         cols.table_idx = F::from_canonical_u32(event.table_idx);
+        if let Some(record) = event.table_access {
+            cols.table_access.populate(record, blu);
+        }
         println!("opcode  for call: {}", event.opcode.code());
         cols.opcode_aux_val = event.opcode.aux_value().into();
         println!("col.opcode:{:?}", cols.opcode);

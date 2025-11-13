@@ -1,12 +1,11 @@
 use std::iter::once;
 
+use crate::cpu::columns::InstructionCols;
 use p3_air::AirBuilder;
 use sp1_stark::{
     air::{AirInteraction, BaseAirBuilder, InteractionScope},
-    InteractionKind,
+    InteractionKind, Word,
 };
-
-use crate::cpu::columns::InstructionCols;
 
 /// A trait which contains methods related to program interactions in an AIR.
 pub trait ProgramAirBuilder: BaseAirBuilder {
@@ -14,12 +13,14 @@ pub trait ProgramAirBuilder: BaseAirBuilder {
     fn send_program(
         &mut self,
         pc: impl Into<Self::Expr>,
-        instruction: InstructionCols<impl Into<Self::Expr> + Copy>,
+        opcode: impl Into<Self::Expr>,
+        aux_val: Word<impl Into<Self::Expr>>,
         multiplicity: impl Into<Self::Expr>,
     ) {
         let values = once(pc.into())
-            .chain(once(instruction.opcode.into()))
-            .chain(instruction.into_iter().map(|x| x.into()))
+            .chain(once(opcode.into()))
+            .chain(aux_val.0.into_iter().map(Into::into))
+            .map(Into::into)
             .collect();
 
         self.send(
@@ -32,12 +33,13 @@ pub trait ProgramAirBuilder: BaseAirBuilder {
     fn receive_program(
         &mut self,
         pc: impl Into<Self::Expr>,
-        instruction: InstructionCols<impl Into<Self::Expr> + Copy>,
+        opcode: impl Into<Self::Expr>,
+        aux_val: Word<impl Into<Self::Expr>>,
         multiplicity: impl Into<Self::Expr>,
     ) {
         let values: Vec<<Self as AirBuilder>::Expr> = once(pc.into())
-            .chain(once(instruction.opcode.into()))
-            .chain(instruction.into_iter().map(|x| x.into()))
+            .chain(once(opcode.into()))
+            .chain(aux_val.0.into_iter().map(Into::into))
             .collect();
 
         self.receive(

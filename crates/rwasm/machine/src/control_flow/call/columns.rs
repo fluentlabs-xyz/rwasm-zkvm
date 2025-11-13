@@ -21,6 +21,7 @@ pub struct CallColumns<T> {
     pub next_pc_range_checker: BabyBearWordRangeChecker<T>,
 
     pub call_stack_access: MemoryReadWriteCols<T>,
+    pub table_access: MemoryReadWriteCols<T>,
     pub call_sp: T,
     pub next_call_sp: T,
     pub func_ref: T,

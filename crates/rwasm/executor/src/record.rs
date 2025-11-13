@@ -2,6 +2,7 @@ use enum_map::EnumMap;
 use hashbrown::HashMap;
 use itertools::{EitherOrBoth, Itertools};
 use p3_field::{AbstractField, PrimeField};
+use rwasm::DataOpEvent;
 use sp1_stark::{
     air::{MachineAir, PublicValues},
     shape::Shape,
@@ -31,6 +32,9 @@ pub struct ExecutionRecord {
     pub program: Arc<Program>,
     /// A trace of the CPU events which get emitted during execution.
     pub cpu_events: Vec<CpuEvent>,
+    /// A trace of data_op access. They are send to Program chip but without cpu events because
+    /// data_ops like TableGet are not executed but access by CPU as data.
+    pub dataop_events: Vec<DataOpEvent>,
     /// A trace of the ADD, and ADDI events.
     pub add_events: Vec<AluEvent>,
     /// A trace of the MUL events.
@@ -269,6 +273,7 @@ impl MachineRecord for ExecutionRecord {
     fn stats(&self) -> HashMap<String, usize> {
         let mut stats = HashMap::new();
         stats.insert("cpu_events".to_string(), self.cpu_events.len());
+        stats.insert("dataop_events".to_string(), self.dataop_events.len());
         stats.insert("add_events".to_string(), self.add_events.len());
         stats.insert("mul_events".to_string(), self.mul_events.len());
         stats.insert("sub_events".to_string(), self.sub_events.len());
@@ -309,6 +314,7 @@ impl MachineRecord for ExecutionRecord {
 
     fn append(&mut self, other: &mut ExecutionRecord) {
         self.cpu_events.append(&mut other.cpu_events);
+        self.dataop_events.append(&mut other.dataop_events);
         self.add_events.append(&mut other.add_events);
         self.sub_events.append(&mut other.sub_events);
         self.mul_events.append(&mut other.mul_events);
