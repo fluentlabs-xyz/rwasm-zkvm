@@ -64,11 +64,11 @@ p3-poseidon2 = { workspace = true }
 
 rwasm-machine = { workspace = true }
 #rwasm
-rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/tracing", features = [
-    "std",
-    "tracing",
-] }
-
+# rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/tracing", features = [
+#     "std",
+#     "tracing",
+# ] }
+rwasm = {path = "/Users/wangyao/github/Fluent/rwasm",features = ["std","tracing"]}
 [dev-dependencies]
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 criterion = "0.5.1"

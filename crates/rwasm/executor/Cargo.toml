@@ -49,10 +49,11 @@ range-set-blaze = "0.1.16"
 
 # rwasm
 fluentbase-types = { git = "https://github.com/fluentlabs-xyz/fluentbase.git", "branch" = "devel", default-features = false }
-rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/tracing", features = [
-    "std",
-    "tracing",
-] }
+# rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/tracing", features = [
+#     "std",
+#     "tracing",
+# ] }
+rwasm = {path = "/Users/wangyao/github/Fluent/rwasm",features = ["std","tracing"]}
 
 wat = "1.0.80"
 # profiling

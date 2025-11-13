@@ -717,7 +717,7 @@ impl<'a> Executor<'a> {
         fat_op: Option<FatOpEvent>,
         dataop_event: Option<DataOpEvent>,
     ) {
-        println!("emit cpu");
+        
         if opcode.is_memory_instruction() {
             self.emit_cpu(
                 clk,
@@ -1491,7 +1491,6 @@ impl<'a> Executor<'a> {
         let public_values = removed_record.public_values;
         self.record.public_values = public_values;
         self.records.push(removed_record);
-        println!("after bump records:{:?}", self.records);
     }
     /// Execute up to `self.shard_batch_size` cycles, returning the events emitted and whether the
     /// program ended.
@@ -1697,7 +1696,6 @@ impl<'a> Executor<'a> {
             self.postprocess_syscall();
 
             let res = self.execute_cycle(res)?;
-            println!("self.record.cpuevent:{:?}", self.record.cpu_events);
             if res {
                 done = true;
                 break;

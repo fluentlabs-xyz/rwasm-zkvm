@@ -48,11 +48,12 @@ enum-map = { version = "2.7.3" }
 
 
 # rwasm
-rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/tracing", features = [
-    "std",
-    "tracing",
-] }
+# rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/tracing", features = [
+#     "std",
+#     "tracing",
+# ] }
 
+rwasm = {path = "/Users/wangyao/github/Fluent/rwasm",features = ["std","tracing"]}
 
 [build-dependencies]
 downloader = { version = "0.2", default-features = false, features = [
