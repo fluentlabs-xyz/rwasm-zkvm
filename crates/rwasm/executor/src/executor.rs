@@ -5115,6 +5115,7 @@ mod tests {
     }
     #[test]
     fn test_i32rot() {
+        let sp0 = SP_START;
         let b: u32 = 0x8000_0001u32;
         let c: u32 = 7u32;
         let program = Program::from_instrs(vec![
@@ -5130,57 +5131,206 @@ mod tests {
 
         let top = rt.state.memory.get(rt.state.sp).unwrap().value;
         assert_eq!(top, b, "recovery result mismatch");
+        assert_eq!(sp0, rt.state.sp + UNIT);
     }
 
     #[test]
     fn test_i32popcnt() {
-        let a: u32 = 0x137_137;
-        let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Popcnt]);
+        fn check(a: u32) {
+            let sp0 = SP_START;
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(a.into()),
+                Opcode::I32Popcnt,
+            ]);
 
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
-        assert_eq!(top, a.count_ones(), "incorrect count ones");
+            let expected = a.count_ones();
+            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            assert_eq!(top, expected, "I32Popcnt result mismatch for a={:#x}", a);
+            // One 32-bit value pushed
+            assert_eq!(sp0, rt.state.sp + UNIT);
+        }
+
+        // Edge cases
+        check(0x0000_0000);        // 0
+        check(0xFFFF_FFFF);        // 32
+        check(0x0000_0001);        // 1
+        check(0x8000_0000);        // 1
+        check(0x7FFF_FFFF);        // 31
+
+        // Patterns
+        check(0xAAAA_AAAA);        // 16 ones
+        check(0x5555_5555);        // 16 ones
+
+        // Random-ish sanity values
+        check(0x0137_0137);
+        check(0xDEAD_BEEF);
     }
     #[test]
     fn test_i32clz() {
-        //count leading zeros
-        let a: u32 = 0x137_137;
-        let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Clz]);
+        fn check(a: u32) {
+            let sp0 = SP_START;
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(a.into()),
+                Opcode::I32Clz,
+            ]);
 
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
-        assert_eq!(top, a.leading_zeros(), "incorrect count zeros");
+            let expected = a.leading_zeros(); // WASM spec: clz(0) = 32
+            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            assert_eq!(top, expected, "I32Clz result mismatch for a={:#x}", a);
+            // One 32-bit value pushed
+            assert_eq!(sp0, rt.state.sp + UNIT);
+        }
+
+        // Edge cases
+        check(0x0000_0000); // 32
+        check(0x0000_0001); // 31
+        check(0x8000_0000); // 0
+
+        // Boundary & pattern cases
+        check(0x0000_FFFF); // 16
+        check(0x00F0_0000); // 8
+        check(0x7FFF_FFFF); // 1
+        check(0xFFFF_0000); // 0
+
+        // Random-ish sanity values
+        check(0x0137_0137);
+        check(0xDEAD_BEEF);
     }
     #[test]
     fn test_i32ctz() {
-        let a: u32 = 0x137_137;
-        let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Ctz]);
+        fn check(a: u32) {
+            let sp0 = SP_START;
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(a.into()),
+                Opcode::I32Ctz,
+            ]);
 
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
-        assert_eq!(top, a.trailing_zeros(), "incorrect count zeros");
+            let expected = a.trailing_zeros(); // Rust matches WASM semantics: ctz(0) = 32
+            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            assert_eq!(top, expected, "I32Ctz result mismatch for a={:#x}", a);
+            // One 32-bit value pushed
+            assert_eq!(sp0, rt.state.sp + UNIT);
+        }
+
+        // Edge cases
+        check(0x0000_0000); // ctz(0) = 32
+        check(0x0000_0001); // 0
+        check(0x0000_0002); // 1
+        check(0x0000_0004); // 2
+        check(0x8000_0000); // 31
+
+        // Boundary & pattern cases
+        check(0x0001_0000); // 16
+        check(0xFFFF_0000); // 16 (low half zero)
+        check(0x00F0_0000); // 20
+
+        // Random-ish sanity values
+        check(0x0137_0137);
+        check(0xDEAD_BEEF);
     }
 
     #[test]
     fn test_i32add64() {
-        let sp0 = SP_START;
-        let opcodes = vec![
-            Opcode::I32Const(u32::MAX.into()),
-            Opcode::I32Const(1u32.into()),
-            Opcode::I32Add64, // wraps to 0
-        ];
-        let program = Program::from_instrs(opcodes);
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
+        fn check(a: u32, b: u32) {
+            let sp0 = SP_START;
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(a.into()),
+                Opcode::I32Const(b.into()),
+                Opcode::I32Add64,
+            ]);
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
 
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
-        assert_eq!(rt.state.memory.get(rt.state.sp + 4).unwrap().value, 0);
-        assert_eq!(sp0, rt.state.sp);
+            let sum = (a as u64) + (b as u64);
+            let lo = (sum & 0xFFFF_FFFF) as u32;
+            let hi = (sum >> 32) as u32;
+
+            // Convention for 64-bit ops: top-of-stack = HI, next = LO.
+            assert_eq!(
+                rt.state.memory.get(rt.state.sp).unwrap().value,
+                hi,
+                "HI mismatch for a={:#x}, b={:#x}",
+                a,
+                b
+            );
+            assert_eq!(
+                rt.state.memory.get(rt.state.sp + 4).unwrap().value,
+                lo,
+                "LO mismatch for a={:#x}, b={:#x}",
+                a,
+                b
+            );
+            // Two 32-bit words were produced
+            assert_eq!(sp0, rt.state.sp + 2 * UNIT);
+        }
+
+        // Basic and edge cases
+        check(0, 0);                            // 0 + 0 -> (hi=0, lo=0)
+        check(u32::MAX, 0);                     // max + 0
+        check(u32::MAX, 1);                     // carry into HI -> (hi=1, lo=0)
+        check(u32::MAX, u32::MAX);              // 0xFFFF_FFFF + 0xFFFF_FFFF -> (hi=1, lo=0xFFFF_FFFE)
+        check(0x7FFF_FFFF, 1);                  // boundary without HI carry -> (hi=0, lo=0x8000_0000)
+
+        // Cross terms around the carry boundary
+        check(0xFFFF_0000, 0x0000_FFFF);        // no HI carry -> (hi=0, lo=0xFFFF_FFFF)
+        check(0xFFFF_0001, 0x0000_FFFF);        // exact 2^32 -> (hi=1, lo=0)
+
+        // Symmetry / commutativity sanity
+        check(0x1234_5678, 0x9ABC_DEF0);
+        check(0x9ABC_DEF0, 0x1234_5678);
+    }
+    #[test]
+    fn test_i32mul64() {
+        fn check(a: u32, b: u32) {
+            let sp0 = SP_START;
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(a.into()),
+                Opcode::I32Const(b.into()),
+                Opcode::I32Mul64,
+            ]);
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
+
+            let prod = (a as u64).wrapping_mul(b as u64);
+            let lo = (prod & 0xFFFF_FFFF) as u32;
+            let hi = (prod >> 32) as u32;
+
+            // After 64-bit ops, convention is: top-of-stack = HI, next = LO (see test_i32add64).
+            assert_eq!(
+                rt.state.memory.get(rt.state.sp).unwrap().value,
+                hi,
+                "HI mismatch for a={:#x}, b={:#x}",
+                a,
+                b
+            );
+            assert_eq!(
+                rt.state.memory.get(rt.state.sp + 4).unwrap().value,
+                lo,
+                "LO mismatch for a={:#x}, b={:#x}",
+                a,
+                b
+            );
+            // Two 32-bit words remain on the stack
+            assert_eq!(sp0, rt.state.sp + 2 * UNIT);
+        }
+
+        // Edge & sanity cases
+        check(0, 0);                          // zero * zero
+        check(u32::MAX, 1);                   // max * 1
+        check(u32::MAX, u32::MAX);            // max * max -> hi = 0xFFFF_FFFE, lo = 1
+        check(0x8000_0000, 2);                // 2^31 * 2 = 2^32 -> hi=1, lo=0
+        check(0xFFFF_0000, 0x0000_FFFF);      // cross terms
+        // Random-ish sanity and commutativity
+        check(0x1234_5678, 0x9ABC_DEF0);
+        check(0x9ABC_DEF0, 0x1234_5678);
     }
 }

@@ -30,7 +30,7 @@ use crate::{
 pub(crate) mod rwasm_chips {
     pub use crate::{
         alu::{
-            AddSubChip, BitwiseChip, DivRemChip, LtChip, MulChip, RotateChip, ShiftLeft,
+            AddSubChip, BitwiseChip, DivRemChip, LtChip, MulChip, Mul64Chip, RotateChip, ShiftLeft,
             ShiftRightChip,
         },
         bytes::ByteChip,
@@ -85,6 +85,8 @@ pub enum RwasmAir<F: PrimeField32> {
     Bitwise(BitwiseChip),
     /// An AIR for RISC-V Mul instruction.
     Mul(MulChip),
+    /// An AIR for RISC-V Mul64 instruction.
+    Mul64(Mul64Chip),
     /// An AIR for RISC-V Div and Rem instructions.
     DivRem(DivRemChip),
     /// An AIR for RISC-V Lt instruction.
@@ -376,6 +378,10 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(mul.name(), mul.cost());
         chips.push(mul);
 
+        let mul64 = Chip::new(RwasmAir::Mul64(Mul64Chip::default()));
+        costs.insert(mul64.name(), mul64.cost());
+        chips.push(mul64);
+
         let shift_right = Chip::new(RwasmAir::ShiftRight(ShiftRightChip::default()));
         costs.insert(shift_right.name(), shift_right.cost());
         chips.push(shift_right);
@@ -459,6 +465,7 @@ impl<F: PrimeField32> RwasmAir<F> {
             RwasmAir::Add(AddSubChip::default()),
             RwasmAir::Bitwise(BitwiseChip::default()),
             RwasmAir::Mul(MulChip::default()),
+            RwasmAir::Mul64(Mul64Chip::default()),
             RwasmAir::DivRem(DivRemChip::default()),
             RwasmAir::Lt(LtChip::default()),
             RwasmAir::ShiftLeft(ShiftLeft::default()),
@@ -549,6 +556,7 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Add => RwasmAirId::AddSub,
             RwasmAirDiscriminants::Bitwise => RwasmAirId::Bitwise,
             RwasmAirDiscriminants::Mul => RwasmAirId::Mul,
+            RwasmAirDiscriminants::Mul64 => RwasmAirId::Mul64,
             RwasmAirDiscriminants::DivRem => RwasmAirId::DivRem,
             RwasmAirDiscriminants::Lt => RwasmAirId::Lt,
             RwasmAirDiscriminants::ShiftLeft => RwasmAirId::ShiftLeft,

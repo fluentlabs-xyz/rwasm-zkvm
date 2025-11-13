@@ -155,6 +155,9 @@ pub enum RwasmAirId {
 
     #[subenum(CoreAirId)]
     Trailing = 49,
+
+    #[subenum(CoreAirId)]
+    Mul64 = 50,
 }
 
 impl RwasmAirId {
