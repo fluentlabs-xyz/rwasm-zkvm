@@ -87,7 +87,6 @@ impl CallChip {
         shard: u32,
         blu: &mut HashMap<ByteLookupEvent, usize>,
     ) {
-        println!("callevent:{:?}", event);
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
         cols.pc = event.pc.into();
