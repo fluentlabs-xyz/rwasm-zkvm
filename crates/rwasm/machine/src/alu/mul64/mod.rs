@@ -29,7 +29,6 @@ pub const fn get_msb(a: [u8; WORD_SIZE]) -> u8 {
     (a[WORD_SIZE - 1] >> (BYTE_SIZE - 1)) & 1
 }
 
-
 #[derive(Default)]
 pub struct Mul64Chip;
 
@@ -70,11 +69,8 @@ impl<F: PrimeField32> MachineAir<F> for Mul64Chip {
         input: &ExecutionRecord,
         _: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
-        let events: Vec<_> = input
-            .i64_events
-            .iter()
-            .filter(|e| e.opcode == Opcode::I32Mul64)
-            .collect();
+        let events: Vec<_> =
+            input.i64_events.iter().filter(|e| e.opcode == Opcode::I32Mul64).collect();
 
         let nb_rows = events.len();
         let mut padded_nb_rows = next_power_of_two(nb_rows, input.fixed_log2_rows::<F, _>(self));
@@ -85,34 +81,27 @@ impl<F: PrimeField32> MachineAir<F> for Mul64Chip {
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_MUL64_COLS);
         let chunk_size = std::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
 
-        values
-            .chunks_mut(chunk_size * NUM_MUL64_COLS)
-            .enumerate()
-            .par_bridge()
-            .for_each(|(i, rows)| {
-                rows.chunks_mut(NUM_MUL64_COLS)
-                    .enumerate()
-                    .for_each(|(j, row)| {
-                        let idx = i * chunk_size + j;
-                        let cols: &mut Mul64Cols<F> = row.borrow_mut();
+        values.chunks_mut(chunk_size * NUM_MUL64_COLS).enumerate().par_bridge().for_each(
+            |(i, rows)| {
+                rows.chunks_mut(NUM_MUL64_COLS).enumerate().for_each(|(j, row)| {
+                    let idx = i * chunk_size + j;
+                    let cols: &mut Mul64Cols<F> = row.borrow_mut();
 
-                        if idx < nb_rows {
-                            let mut byte_lookup_events = Vec::new();
-                            let event = events[idx];
-                            self.event_to_row(event, cols, &mut byte_lookup_events);
-                        }
-                    });
-            });
+                    if idx < nb_rows {
+                        let mut byte_lookup_events = Vec::new();
+                        let event = events[idx];
+                        self.event_to_row(event, cols, &mut byte_lookup_events);
+                    }
+                });
+            },
+        );
 
         RowMajorMatrix::new(values, NUM_MUL64_COLS)
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
-        let events: Vec<_> = input
-            .i64_events
-            .iter()
-            .filter(|e| e.opcode == Opcode::I32Mul64)
-            .collect();
+        let events: Vec<_> =
+            input.i64_events.iter().filter(|e| e.opcode == Opcode::I32Mul64).collect();
 
         let chunk_size = std::cmp::max(events.len() / num_cpus::get(), 1);
 
@@ -133,10 +122,7 @@ impl<F: PrimeField32> MachineAir<F> for Mul64Chip {
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
-        shard
-            .i64_events
-            .iter()
-            .any(|e| e.opcode == Opcode::I32Mul64)
+        shard.i64_events.iter().any(|e| e.opcode == Opcode::I32Mul64)
     }
 
     fn local_only(&self) -> bool {
@@ -297,18 +283,14 @@ where
             if i > 0 {
                 v += local.carry[i - 1].into();
             }
-            v -= local.carry[i] * base.clone();
+            v -= local.carry[i] * base;
             builder.assert_eq(local.product[i], v);
         }
 
         // Check result against a_lo and a_hi
         for i in 0..WORD_SIZE {
-            builder
-                .when(local.is_real)
-                .assert_eq(local.product[i], local.a_lo[i]);
-            builder
-                .when(local.is_real)
-                .assert_eq(local.product[i + WORD_SIZE], local.a_hi[i]);
+            builder.when(local.is_real).assert_eq(local.product[i], local.a_lo[i]);
+            builder.when(local.is_real).assert_eq(local.product[i + WORD_SIZE], local.a_hi[i]);
         }
 
         // Range checks
@@ -416,10 +398,8 @@ mod tests {
 
         let malicious = move |prover: &P, record: &mut ExecutionRecord| {
             let mut malicious_record = record.clone();
-            if let Some(event) = malicious_record
-                .i64_events
-                .iter_mut()
-                .find(|e| e.opcode == Opcode::I32Mul64)
+            if let Some(event) =
+                malicious_record.i64_events.iter_mut().find(|e| e.opcode == Opcode::I32Mul64)
             {
                 event.a = wrong_res as u32;
                 event.a_hi = (wrong_res >> 32) as u32;

@@ -5138,10 +5138,7 @@ mod tests {
     fn test_i32popcnt() {
         fn check(a: u32) {
             let sp0 = SP_START;
-            let program = Program::from_instrs(vec![
-                Opcode::I32Const(a.into()),
-                Opcode::I32Popcnt,
-            ]);
+            let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Popcnt]);
 
             let mut rt = Executor::new(program, SP1CoreOpts::default());
             rt.run().unwrap();
@@ -5154,15 +5151,15 @@ mod tests {
         }
 
         // Edge cases
-        check(0x0000_0000);        // 0
-        check(0xFFFF_FFFF);        // 32
-        check(0x0000_0001);        // 1
-        check(0x8000_0000);        // 1
-        check(0x7FFF_FFFF);        // 31
+        check(0x0000_0000); // 0
+        check(0xFFFF_FFFF); // 32
+        check(0x0000_0001); // 1
+        check(0x8000_0000); // 1
+        check(0x7FFF_FFFF); // 31
 
         // Patterns
-        check(0xAAAA_AAAA);        // 16 ones
-        check(0x5555_5555);        // 16 ones
+        check(0xAAAA_AAAA); // 16 ones
+        check(0x5555_5555); // 16 ones
 
         // Random-ish sanity values
         check(0x0137_0137);
@@ -5172,10 +5169,7 @@ mod tests {
     fn test_i32clz() {
         fn check(a: u32) {
             let sp0 = SP_START;
-            let program = Program::from_instrs(vec![
-                Opcode::I32Const(a.into()),
-                Opcode::I32Clz,
-            ]);
+            let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Clz]);
 
             let mut rt = Executor::new(program, SP1CoreOpts::default());
             rt.run().unwrap();
@@ -5206,10 +5200,7 @@ mod tests {
     fn test_i32ctz() {
         fn check(a: u32) {
             let sp0 = SP_START;
-            let program = Program::from_instrs(vec![
-                Opcode::I32Const(a.into()),
-                Opcode::I32Ctz,
-            ]);
+            let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Ctz]);
 
             let mut rt = Executor::new(program, SP1CoreOpts::default());
             rt.run().unwrap();
@@ -5274,15 +5265,15 @@ mod tests {
         }
 
         // Basic and edge cases
-        check(0, 0);                            // 0 + 0 -> (hi=0, lo=0)
-        check(u32::MAX, 0);                     // max + 0
-        check(u32::MAX, 1);                     // carry into HI -> (hi=1, lo=0)
-        check(u32::MAX, u32::MAX);              // 0xFFFF_FFFF + 0xFFFF_FFFF -> (hi=1, lo=0xFFFF_FFFE)
-        check(0x7FFF_FFFF, 1);                  // boundary without HI carry -> (hi=0, lo=0x8000_0000)
+        check(0, 0); // 0 + 0 -> (hi=0, lo=0)
+        check(u32::MAX, 0); // max + 0
+        check(u32::MAX, 1); // carry into HI -> (hi=1, lo=0)
+        check(u32::MAX, u32::MAX); // 0xFFFF_FFFF + 0xFFFF_FFFF -> (hi=1, lo=0xFFFF_FFFE)
+        check(0x7FFF_FFFF, 1); // boundary without HI carry -> (hi=0, lo=0x8000_0000)
 
         // Cross terms around the carry boundary
-        check(0xFFFF_0000, 0x0000_FFFF);        // no HI carry -> (hi=0, lo=0xFFFF_FFFF)
-        check(0xFFFF_0001, 0x0000_FFFF);        // exact 2^32 -> (hi=1, lo=0)
+        check(0xFFFF_0000, 0x0000_FFFF); // no HI carry -> (hi=0, lo=0xFFFF_FFFF)
+        check(0xFFFF_0001, 0x0000_FFFF); // exact 2^32 -> (hi=1, lo=0)
 
         // Symmetry / commutativity sanity
         check(0x1234_5678, 0x9ABC_DEF0);
@@ -5324,14 +5315,13 @@ mod tests {
         }
 
         // Edge & sanity cases
-        check(0, 0);                          // zero * zero
-        check(u32::MAX, 1);                   // max * 1
-        check(u32::MAX, u32::MAX);            // max * max -> hi = 0xFFFF_FFFE, lo = 1
-        check(0x8000_0000, 2);                // 2^31 * 2 = 2^32 -> hi=1, lo=0
-        check(0xFFFF_0000, 0x0000_FFFF);      // cross terms
-        // Random-ish sanity and commutativity
+        check(0, 0); // zero * zero
+        check(u32::MAX, 1); // max * 1
+        check(u32::MAX, u32::MAX); // max * max -> hi = 0xFFFF_FFFE, lo = 1
+        check(0x8000_0000, 2); // 2^31 * 2 = 2^32 -> hi=1, lo=0
+        check(0xFFFF_0000, 0x0000_FFFF); // cross terms
+                                         // Random-ish sanity and commutativity
         check(0x1234_5678, 0x9ABC_DEF0);
         check(0x9ABC_DEF0, 0x1234_5678);
     }
-
 }
