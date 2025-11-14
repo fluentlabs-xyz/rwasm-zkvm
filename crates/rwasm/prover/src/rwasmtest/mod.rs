@@ -1,5 +1,6 @@
 mod comp;
 mod rotate;
+mod table_fill;
 mod table_grow;
 mod table_init;
 mod trailing;

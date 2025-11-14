@@ -155,29 +155,29 @@ where
         );
 
         StackAddressCols::<AB::Var>::range_check(builder, local.sp);
-        builder.when(local.is_first).assert_one(local.sp.is_real::<AB>());
+        builder.when(local.is_first).assert_one(local.sp.do_check::<AB>());
 
         // Range check destination address to ensure it fits in table address space
         TableAddressCols::<AB::Var>::range_check(builder, local.dst_address);
         builder
             .when(local.is_non_zero_length)
             .when(local.is_first)
-            .assert_one(local.dst_address.is_real::<AB>());
+            .assert_one(local.dst_address.do_check::<AB>());
         builder
             .when(local.is_non_zero_length)
             .when(local.is_last)
-            .assert_one(local.dst_address.is_real::<AB>());
+            .assert_one(local.dst_address.do_check::<AB>());
 
         // Range check table index to ensure valid table reference
         TableIdxCols::<AB::Var>::range_check(builder, local.table_idx);
-        builder.when(local.is_first).assert_one(local.table_idx.is_real::<AB>());
+        builder.when(local.is_first).assert_one(local.table_idx.do_check::<AB>());
 
         // Range check delta value to prevent overflow in address calculations
         DeltaCols::<AB::Var>::range_check(builder, local.delta);
         builder
             .when(local.is_non_zero_length)
             .when(local.is_first)
-            .assert_one(local.delta.is_real::<AB>());
+            .assert_one(local.delta.do_check::<AB>());
 
         // Verify all memory accesses against the global memory bus
         self.eval_memory_access(local, builder);

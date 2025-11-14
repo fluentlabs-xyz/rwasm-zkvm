@@ -144,7 +144,8 @@ pub enum RwasmAirId {
     #[subenum(CoreAirId)]
     Call = 45,
 
-    TableInit = 46,
+    /// The TableInit TableFill Chip
+    TableInitFill = 46,
 
     /// The rotated left/right chip.
     #[subenum(CoreAirId)]

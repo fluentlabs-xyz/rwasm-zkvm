@@ -78,7 +78,7 @@ impl<T: Copy, const START: u32, const END: u32> Range16bCols<T, START, END> {
         hi * AB::Expr::from_canonical_u32(1 << 8) + low + AB::Expr::from_canonical_u32(START)
     }
 
-    pub fn is_real<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
+    pub fn do_check<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
     where
         T: Into<AB::Expr>,
     {
@@ -216,7 +216,7 @@ impl<
         hi * AB::Expr::from_canonical_u32(1 << 16) + low + AB::Expr::from_canonical_u32(Self::START)
     }
 
-    pub fn is_real<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
+    pub fn do_check<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
     where
         T: Into<AB::Expr>,
     {
@@ -317,7 +317,7 @@ impl<T: Copy, const START: u32, const END: u32> Range8bCols<T, START, END> {
         byte + AB::Expr::from_canonical_u32(START)
     }
 
-    pub fn is_real<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
+    pub fn do_check<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
     where
         T: Into<AB::Expr>,
     {
@@ -328,7 +328,7 @@ impl<T: Copy, const START: u32, const END: u32> Range8bCols<T, START, END> {
         builder: &mut AB,
         cols: Range8bCols<AB::Var, START, END>,
     ) {
-        let is_real = cols.is_real::<AB>();
+        let is_real = cols.do_check::<AB>();
 
         builder.assert_bool(is_real.clone());
 
@@ -413,7 +413,7 @@ impl<T: Copy> DynamicLE16bCols<T> {
         hi * AB::Expr::from_canonical_u32(1 << 8) + low
     }
 
-    pub fn is_real<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
+    pub fn do_check<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
     where
         T: Into<AB::Expr>,
     {

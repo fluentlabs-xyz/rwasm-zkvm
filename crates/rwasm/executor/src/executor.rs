@@ -759,6 +759,7 @@ impl<'a> Executor<'a> {
         } else if opcode.is_ecall_instruction() {
             let syscall_code = match opcode {
                 Opcode::TableInit(_) => SyscallCode::TABLE_INIT,
+                Opcode::TableFill(_) => SyscallCode::TABLE_FILL,
                 Opcode::TableGrow(_) => SyscallCode::TABLE_GROW,
                 _ => syscall_code,
             };
@@ -1101,11 +1102,11 @@ impl<'a> Executor<'a> {
             SyscallCode::SECP256R1_ADD => todo!(),
             SyscallCode::SECP256R1_DOUBLE => todo!(),
             SyscallCode::SECP256R1_DECOMPRESS => todo!(),
-            SyscallCode::TABLE_INIT => match fat_op.unwrap() {
-                FatOpEvent::TableInit(table_init_event) => self.record.precompile_events.add_event(
-                    SyscallCode::TABLE_INIT,
+            SyscallCode::TABLE_INIT | SyscallCode::TABLE_FILL => match fat_op.unwrap() {
+                FatOpEvent::TableInitFill(event) => self.record.precompile_events.add_event(
+                    syscall_code,
                     syscall_event,
-                    PrecompileEvent::TableInit(table_init_event),
+                    PrecompileEvent::TableInitFill(event),
                 ),
                 _ => {
                     unreachable!();
@@ -1851,7 +1852,7 @@ impl<'a> Executor<'a> {
 
             if let Some(op_state) = self.store.tracer.logs.last() {
                 let addrs = match &op_state.fat_op {
-                    Some(FatOpEvent::TableInit(event)) => &event.local_mem_access_addr,
+                    Some(FatOpEvent::TableInitFill(event)) => &event.local_mem_access_addr,
                     Some(FatOpEvent::TableGrow(event)) => &event.local_mem_access_addr,
                     _ => &Vec::new(),
                 };
@@ -4873,6 +4874,25 @@ mod tests {
         ];
         let elements = vec![5u32, 7u32];
         let program = Program::from_instrs(ops).with_elements(elements);
+
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+
+        rt.run().unwrap();
+    }
+
+    #[test]
+    fn test_table_fill() {
+        let ops = vec![
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(100.into()),
+            Opcode::TableGrow(0),
+            Opcode::I32Const(2.into()),
+            Opcode::I32Const(137.into()),
+            Opcode::I32Const(5.into()),
+            Opcode::TableFill(0),
+            Opcode::TableGet(0),
+        ];
+        let program = Program::from_instrs(ops);
 
         let mut rt = Executor::new(program, SP1CoreOpts::default());
 

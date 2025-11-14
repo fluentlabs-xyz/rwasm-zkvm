@@ -6022,7 +6022,7 @@ dependencies = [
 [[package]]
 name = "rwasm"
 version = "0.0.0"
-source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ftable-init-check-size#6c2b996c01f26f3e184b412a377df1b765f542e8"
+source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ftable-fill#39704d16aefcaaf89d8734826e2ac99cfa605724"
 dependencies = [
  "anyhow",
  "bincode 2.0.1",
@@ -6253,6 +6253,7 @@ dependencies = [
  "p3-matrix",
  "p3-symmetric",
  "p3-util",
+ "rand 0.9.2",
  "rayon",
  "rwasm 0.0.0",
  "rwasm-executor",

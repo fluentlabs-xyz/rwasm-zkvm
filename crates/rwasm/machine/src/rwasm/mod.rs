@@ -20,7 +20,7 @@ use crate::{
     memory::{MemoryChipType, MemoryInstructionsChip, MemoryLocalChip},
     shape::Shapeable,
     syscall::{
-        fat_op::{table_grow::TableGrowChip, TableInitChip},
+        fat_op::{table_grow::TableGrowChip, TableInitFillChip},
         instructions::SyscallInstrsChip,
         precompiles::fptower::{Fp2AddSubAssignChip, Fp2MulAssignChip, FpOpChip},
     },
@@ -167,8 +167,8 @@ pub enum RwasmAir<F: PrimeField32> {
     Bn254Fp2Mul(Fp2MulAssignChip<Bn254BaseField>),
     /// A precompile for BN-254 fp2 addition/subtraction.
     Bn254Fp2AddSub(Fp2AddSubAssignChip<Bn254BaseField>),
-
-    TableInit(TableInitChip),
+    // Fat op for TableInit/TableFill
+    TableInitFill(TableInitFillChip),
 
     TableGrow(TableGrowChip),
 }
@@ -427,9 +427,9 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(byte.name(), byte.cost());
         chips.push(byte);
 
-        let table_init = Chip::new(RwasmAir::TableInit(TableInitChip::default()));
-        costs.insert(table_init.name(), table_init.cost());
-        chips.push(table_init);
+        let table_init_fill = Chip::new(RwasmAir::TableInitFill(TableInitFillChip::default()));
+        costs.insert(table_init_fill.name(), table_init_fill.cost());
+        chips.push(table_init_fill);
 
         let table_grow = Chip::new(RwasmAir::TableGrow(TableGrowChip::default()));
         costs.insert(table_grow.name(), table_grow.cost());
@@ -588,7 +588,7 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Bn254Fp => RwasmAirId::Bn254FpOpAssign,
             RwasmAirDiscriminants::Bn254Fp2Mul => RwasmAirId::Bn254Fp2MulAssign,
             RwasmAirDiscriminants::Bn254Fp2AddSub => RwasmAirId::Bn254Fp2AddSubAssign,
-            RwasmAirDiscriminants::TableInit => RwasmAirId::TableInit,
+            RwasmAirDiscriminants::TableInitFill => RwasmAirId::TableInitFill,
             RwasmAirDiscriminants::TableGrow => RwasmAirId::TableGrow,
             RwasmAirDiscriminants::Rotate => RwasmAirId::Rotate,
             RwasmAirDiscriminants::Trailing => RwasmAirId::Trailing,

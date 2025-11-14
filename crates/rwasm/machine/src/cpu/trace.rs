@@ -200,6 +200,7 @@ impl CpuChip {
             let syscall_id = match instruction {
                 Opcode::Call(_) => instruction.aux_value(),
                 Opcode::TableInit(_) => SyscallCode::TABLE_INIT.syscall_id(),
+                Opcode::TableFill(_) => SyscallCode::TABLE_FILL.syscall_id(),
                 Opcode::TableGrow(_) => SyscallCode::TABLE_GROW.syscall_id(),
                 _ => unimplemented!(),
             };

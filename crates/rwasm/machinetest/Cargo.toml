@@ -64,7 +64,7 @@ p3-poseidon2 = { workspace = true }
 
 rwasm-machine = { workspace = true }
 #rwasm
-rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "djadjka/table-init-check-size", features = [
+rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "djadjka/table-fill", features = [
     "std",
     "tracing",
 ] }
