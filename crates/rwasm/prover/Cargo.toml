@@ -46,9 +46,12 @@ eyre = "0.6.12"
 hashbrown = { workspace = true, features = ["inline-more"] }
 enum-map = { version = "2.7.3" }
 
+[dev-dependencies]
+rand = "0.9.2"
+
 
 # rwasm
-rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "djadjka/table-init-check-size", features = [
+rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "djadjka/table-fill", features = [
     "std",
     "tracing",
 ] }

@@ -20,8 +20,8 @@ use rwasm::{
 };
 
 #[derive(Default)]
-pub struct TableInitChip {}
-impl<AB> Air<AB> for TableInitChip
+pub struct TableInitFillChip {}
+impl<AB> Air<AB> for TableInitFillChip
 where
     AB: SP1AirBuilder,
 {
@@ -31,31 +31,145 @@ where
         let local: &TableInitCols<AB::Var> = (*local).borrow();
         let next: &TableInitCols<AB::Var> = (*next).borrow();
 
+        let is_real = local.is_table_init + local.is_table_fill;
+        let next_is_real = next.is_table_init + next.is_table_fill;
+
+        self.eval_boolean_constraints(builder, local, is_real.clone());
+
+        // First Row Constraints
+        // The first row in the trace must be marked as first
+        builder.when_first_row().assert_one(local.is_first);
+
+        self.eval_real_row_constraints(builder, local, is_real.clone());
+        self.eval_operation_type_constraints(builder, local);
+        self.eval_length_validation_constraints(builder, local);
+
+        // Event Transition Constraints
+        // Between events: if last row and next is real, then next must be first
+        builder
+            .when_transition()
+            .when(local.is_last)
+            .when(next_is_real.clone())
+            .assert_one(next.is_first);
+
+        self.eval_within_event_transition_constraints(
+            builder,
+            local,
+            next,
+            is_real.clone(),
+            next_is_real,
+        );
+        self.eval_value_propagation_constraints(builder, local);
+        self.eval_address_boundary_constraints(builder, local);
+        self.eval_address_increment_constraints(builder, local, next, is_real.clone());
+        self.eval_initial_address_constraints(builder, local);
+        self.eval_range_check_constraints(builder, local);
+        self.eval_memory_access(local, builder);
+        self.eval_syscall_interactions(builder, local);
+    }
+}
+
+impl TableInitFillChip {
+    // Boolean Constraints
+    fn eval_boolean_constraints<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &TableInitCols<AB::Var>,
+        is_real: AB::Expr,
+    ) {
+        // Ensure all flag fields are boolean (0 or 1)
+        builder.assert_bool(local.is_table_init);
+        builder.assert_bool(local.is_table_fill);
         builder.assert_bool(local.is_first);
         builder.assert_bool(local.is_last);
-        builder.assert_bool(local.is_real);
+        builder.assert_bool(is_real);
         builder.assert_bool(local.is_non_zero_length);
+        builder.assert_bool(local.is_first_table_fill + local.is_first_table_init);
+    }
 
-        builder.when_first_row().assert_one(local.is_first);
-        builder.when(local.is_last).assert_one(local.is_real);
-        builder.when(local.is_first).assert_one(local.is_real);
+    // Real Row Constraints
+    fn eval_real_row_constraints<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &TableInitCols<AB::Var>,
+        is_real: AB::Expr,
+    ) {
+        // Last and first rows must be real (either table_init or table_fill)
+        builder.when(local.is_last).assert_one(is_real.clone());
+        builder.when(local.is_first).assert_one(is_real);
+    }
 
+    // Operation Type Constraints
+    fn eval_operation_type_constraints<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &TableInitCols<AB::Var>,
+    ) {
+        // For table_fill operations: first row must be marked as is_first_table_fill
+        builder
+            .when(local.is_table_fill)
+            .when(local.is_first)
+            .assert_one(local.is_first_table_fill);
+
+        // For table_init operations: first row must be marked as is_first_table_init
+        builder
+            .when(local.is_table_init)
+            .when(local.is_first)
+            .assert_one(local.is_first_table_init);
+    }
+
+    // Length Validation Constraints
+    fn eval_length_validation_constraints<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &TableInitCols<AB::Var>,
+    ) {
+        // On first row: length field must match length from stack access
         builder
             .when(local.is_first)
             .assert_eq(local.length.value::<AB>(), local.length_access.value().reduce::<AB>());
 
-        // check transition between events
-        builder.when_transition().when(local.is_last).when(next.is_real).assert_one(next.is_first);
+        // For table_fill: should_read_elements must be zero
+        builder.when(local.is_table_fill).assert_zero(local.should_read_elements);
 
-        // check in event transitions
-        builder.when_transition().when_not(local.is_last).assert_eq(local.is_real, next.is_real);
+        // For table_init with non-zero length: should_read_elements must be one
+        builder
+            .when(local.is_table_init)
+            .when(local.is_non_zero_length)
+            .assert_one(local.should_read_elements);
+
+        // For first row with zero length: length_access must be zero
+        builder
+            .when(local.is_first)
+            .when_not(local.is_non_zero_length)
+            .assert_word_zero(*local.length_access.value());
+    }
+
+    // Within-Event Transition Constraints
+    fn eval_within_event_transition_constraints<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &TableInitCols<AB::Var>,
+        next: &TableInitCols<AB::Var>,
+        is_real: AB::Expr,
+        next_is_real: AB::Expr,
+    ) {
+        // When not last row (within same event), the following must remain constant
+        builder.when_transition().when_not(local.is_last).assert_eq(is_real, next_is_real);
         builder.when_transition().when_not(local.is_last).assert_eq(local.clk, next.clk);
         builder.when_transition().when_not(local.is_last).assert_eq(local.shard, next.shard);
+        builder
+            .when_transition()
+            .when_not(local.is_last)
+            .assert_eq(local.is_table_init, next.is_table_init);
+        builder
+            .when_transition()
+            .when_not(local.is_last)
+            .assert_eq(local.is_table_fill, next.is_table_fill);
         builder.when_transition().when_not(local.is_last).assert_word_eq(
             *local.table_size_read_access.value(),
             *next.table_size_read_access.value(),
         );
-
         builder
             .when_transition()
             .when_not(local.is_last)
@@ -72,82 +186,161 @@ where
             .when_transition()
             .when_not(local.is_last)
             .assert_word_eq(*local.dst_access.value(), *next.dst_access.value());
-
         builder
-            .when(local.is_real)
+            .when_transition()
+            .when_not(local.is_last)
+            .assert_eq(local.is_non_zero_length, next.is_non_zero_length);
+    }
+
+    // Value Propagation Constraints
+    fn eval_value_propagation_constraints<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &TableInitCols<AB::Var>,
+    ) {
+        // For table_init: value read from source must equal value written to destination
+        builder
+            .when(local.is_table_init)
             .assert_word_eq(*local.src_read_access.value(), *local.dst_write_access.value());
 
+        // For table_fill with non-zero length
         builder
-            .when(local.is_first)
-            .when_not(local.is_non_zero_length)
-            .assert_word_zero(*local.length_access.value());
+            .when(local.is_table_fill)
+            .when(local.is_non_zero_length)
+            .assert_word_eq(*local.src_access.value(), *local.dst_write_access.value());
+    }
 
-        builder.when(local.is_last).when(local.is_non_zero_length).assert_eq(
+    // Address Boundary Constraints
+    fn eval_address_boundary_constraints<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &TableInitCols<AB::Var>,
+    ) {
+        // On last row with elements to read: src_address must equal src_access + length - 1
+        builder.when(local.is_last).when(local.should_read_elements).assert_eq(
             local.src_access.value().reduce::<AB>() + local.length_access.value().reduce::<AB>() -
                 AB::Expr::one(),
             local.src_address.value::<AB>(),
         );
+
+        // On last row with non-zero length: dst_address must equal dst_access + length - 1
         builder.when(local.is_last).when(local.is_non_zero_length).assert_eq(
             local.dst_access.value().reduce::<AB>() + local.length_access.value().reduce::<AB>() -
                 AB::Expr::one(),
             local.dst_address.value::<AB>(),
         );
-        builder.when_transition().when(local.is_real).when_not(local.is_last).assert_eq(
+    }
+
+    // Address Increment Constraints
+    fn eval_address_increment_constraints<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &TableInitCols<AB::Var>,
+        next: &TableInitCols<AB::Var>,
+        is_real: AB::Expr,
+    ) {
+        // For table_init within event: src_address increments by 1
+        builder.when_transition().when(local.is_table_init).when_not(local.is_last).assert_eq(
             local.src_address.value::<AB>() + AB::Expr::one(),
             next.src_address.value::<AB>(),
         );
-        builder.when_transition().when(local.is_real).when_not(local.is_last).assert_eq(
+
+        // For any real operation within event: dst_address increments by 1
+        builder.when_transition().when(is_real).when_not(local.is_last).assert_eq(
             local.dst_address.value::<AB>() + AB::Expr::one(),
             next.dst_address.value::<AB>(),
         );
+    }
 
-        // check that it does not go out of memory bounds
+    // Initial Address Constraints
+    fn eval_initial_address_constraints<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &TableInitCols<AB::Var>,
+    ) {
+        // For table_init first row: src_address must equal src_access
         builder
             .when(local.is_first)
+            .when(local.is_table_init)
             .assert_eq(local.src_access.value().reduce::<AB>(), local.src_address.value::<AB>());
+
+        // For first row: dst_address must equal dst_access
         builder
             .when(local.is_first)
             .assert_eq(local.dst_access.value().reduce::<AB>(), local.dst_address.value::<AB>());
+    }
 
+    // Range Check Constraints
+    fn eval_range_check_constraints<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &TableInitCols<AB::Var>,
+    ) {
+        // Stack pointer range check
         StackAddressCols::<AB::Var>::range_check(builder, local.sp);
-        builder.when(local.is_first).assert_one(local.sp.is_real::<AB>());
+        builder.when(local.is_first).assert_one(local.sp.do_check::<AB>());
 
+        // Element address range check
         ElementAddressCols::<AB::Var>::range_check(builder, local.src_address);
-        builder.when(local.is_first).assert_one(local.src_address.is_real::<AB>());
-        builder.when(local.is_last).assert_one(local.src_address.is_real::<AB>());
+        builder
+            .when(local.is_first)
+            .when(local.is_table_init)
+            .assert_one(local.src_address.do_check::<AB>());
+        builder
+            .when(local.is_last)
+            .when(local.is_table_init)
+            .assert_one(local.src_address.do_check::<AB>());
 
+        // Dynamic table address range check
         let table_size_value = local.table_size_read_access.value();
-
         DynamicTableAddressCols::<AB::Var>::range_check(
             builder,
             local.dst_address,
             table_size_value[0].into(),
             table_size_value[1].into(),
         );
-        builder.when(local.is_first).assert_one(local.dst_address.is_real::<AB>());
-        builder.when(local.is_last).assert_one(local.dst_address.is_real::<AB>());
+        builder.when(local.is_first).assert_one(local.dst_address.do_check::<AB>());
+        builder.when(local.is_last).assert_one(local.dst_address.do_check::<AB>());
 
+        // Table index range check
         TableIdxCols::<AB::Var>::range_check(builder, local.table_idx);
-        builder.when(local.is_first).assert_one(local.table_idx.is_real::<AB>());
+        builder.when(local.is_first).assert_one(local.table_idx.do_check::<AB>());
 
+        // Length range check
         LengthCols::<AB::Var>::range_check(builder, local.length);
-        builder.when(local.is_first).assert_one(local.length.is_real::<AB>());
+        builder.when(local.is_first).assert_one(local.length.do_check::<AB>());
+    }
 
-        self.eval_memory_access(local, builder);
-
+    // Syscall Interactions
+    fn eval_syscall_interactions<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &TableInitCols<AB::Var>,
+    ) {
+        // Receive TABLE_INIT syscall
         builder.receive_syscall(
             local.shard,
             local.clk,
             AB::Expr::from_canonical_u32(SyscallCode::TABLE_INIT.syscall_id() as u32),
             AB::Expr::zero(),
             AB::Expr::zero(),
-            local.is_first,
+            local.is_first_table_init,
+            InteractionScope::Local,
+        );
+
+        // Receive TABLE_FILL syscall
+        builder.receive_syscall(
+            local.shard,
+            local.clk,
+            AB::Expr::from_canonical_u32(SyscallCode::TABLE_FILL.syscall_id() as u32),
+            AB::Expr::zero(),
+            local.table_idx.value::<AB>(),
+            local.is_first_table_fill,
             InteractionScope::Local,
         );
     }
-}
 
-impl TableInitChip {
+    // Memory Access Constraints
     fn eval_memory_access<AB: SP1AirBuilder>(
         &self,
         local: &TableInitCols<AB::Var>,
@@ -192,7 +385,7 @@ impl TableInitChip {
             local.clk,
             src_addr,
             &local.src_read_access,
-            local.is_non_zero_length,
+            local.should_read_elements,
         );
 
         builder.eval_memory_access(
@@ -214,7 +407,7 @@ impl TableInitChip {
     }
 }
 
-impl<F> BaseAir<F> for TableInitChip {
+impl<F> BaseAir<F> for TableInitFillChip {
     fn width(&self) -> usize {
         NUM_TABLE_INIT_SIZE
     }
@@ -259,7 +452,7 @@ mod test {
                 malicious_record.precompile_events.events.get_mut(&SyscallCode::TABLE_INIT)
             {
                 event.first_mut().map(|(_, event)| {
-                    let event = if let PrecompileEvent::TableInit(event) = event {
+                    let event = if let PrecompileEvent::TableInitFill(event) = event {
                         event
                     } else {
                         unreachable!()

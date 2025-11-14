@@ -34,7 +34,6 @@ impl<F: PrimeField32> MachineAir<F> for SyscallInstrsChip {
         input: &ExecutionRecord,
         output: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
-        println!("SyscallInstrsEvent to Trace ");
         let chunk_size = std::cmp::max((input.syscall_events.len()) / num_cpus::get(), 1);
         let nb_rows = input.syscall_events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
@@ -82,7 +81,6 @@ impl SyscallInstrsChip {
         cols: &mut SyscallInstrColumns<F>,
         blu: &mut impl ByteRecord,
     ) {
-        println!("sys instr event:{:?}", event);
         cols.is_real = F::one();
         cols.pc = F::from_canonical_u32(event.pc);
         cols.next_pc = F::from_canonical_u32(event.next_pc);
@@ -91,12 +89,13 @@ impl SyscallInstrsChip {
         cols.clk = F::from_canonical_u32(event.clk);
         #[allow(clippy::match_like_matches_macro)]
         let is_fat_op = match event.syscall_code {
-            SyscallCode::TABLE_INIT | SyscallCode::TABLE_GROW => true,
+            SyscallCode::TABLE_INIT | SyscallCode::TABLE_FILL | SyscallCode::TABLE_GROW => true,
             _ => false,
         };
         cols.is_fat_op = F::from_bool(is_fat_op);
         let fat_opcode = match event.syscall_code {
             SyscallCode::TABLE_INIT => Opcode::TableInit(0u32).code(),
+            SyscallCode::TABLE_FILL => Opcode::TableFill(0u16).code(),
             SyscallCode::TABLE_GROW => Opcode::TableGrow(0u16).code(),
             _ => Opcode::Unreachable.code(),
         };
@@ -108,7 +107,6 @@ impl SyscallInstrsChip {
 
         cols.syscall_code = (event.syscall_code as u32).into();
         let syscall_id = F::from_canonical_u32(event.syscall_id);
-        println!("code :{}should send:{}", event.syscall_code, event.syscall_code.should_send());
         cols.syscall_id = syscall_id;
         let num_cycles = event.syscall_code.num_cycles();
 

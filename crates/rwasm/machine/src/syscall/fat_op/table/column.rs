@@ -35,7 +35,11 @@ pub struct TableInitCols<T> {
     pub src_address: ElementAddressCols<T>,
     pub dst_address: DynamicTableAddressCols<T>,
     pub table_size_read_access: MemoryReadCols<T>,
-    pub is_real: T,
+    pub is_table_init: T,
+    pub is_table_fill: T,
+    pub is_first_table_init: T,
+    pub is_first_table_fill: T,
+    pub should_read_elements: T,
 }
 
 pub type TableIdxCols<T> = Range8bCols<T, 0, N_MAX_TABLES>;
