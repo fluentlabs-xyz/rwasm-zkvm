@@ -523,6 +523,13 @@ impl CpuChip {
                 local.instruction.is_localget +
                 local.instruction.is_i32const,
         );
+        builder.eval_memory_access(
+            local.shard,
+            clk.clone() + AB::Expr::one(),
+            local.op_res_hi_addr.value::<AB>(),
+            &local.op_res_hi_access,
+            local.instruction.is_64b_op,
+        );
         self.eval_op_memory_increase_sp(builder, local, clk.clone());
         self.eval_op_memory_decrease_sp(builder, local, clk.clone());
         self.eval_binary_op_memory_sp(builder, local, clk.clone());
@@ -673,6 +680,15 @@ impl CpuChip {
                 local.sp + AB::Expr::from_canonical_u32(UNIT) + AB::Expr::from_canonical_u32(UNIT),
                 local.next_sp,
             );
+        // set constr for outputs when is_64b_op
+        builder.when(local.instruction.is_64b_op).assert_eq(local.sp, local.next_sp);
+        builder
+            .when(local.instruction.is_64b_op)
+            .assert_eq(local.op_res_hi_addr.value::<AB>(), local.next_sp);
+        builder.when(local.instruction.is_64b_op).assert_eq(
+            local.op_res_addr.value::<AB>(),
+            local.next_sp + AB::Expr::from_canonical_u32(UNIT),
+        );
     }
     pub(crate) fn eval_call<AB: SP1AirBuilder>(
         &self,
