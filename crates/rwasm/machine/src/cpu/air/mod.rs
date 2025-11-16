@@ -66,6 +66,7 @@ where
         builder.when(local.is_real).assert_eq(local.clk_to_send, expected_clk_to_send);
 
         self.eval_alu(builder, local);
+        self.eval_alu_i64(builder, local);
         self.eval_branching(builder, local);
         self.eval_call(builder, local, next);
         self.eval_memory(builder, local);
@@ -87,7 +88,10 @@ where
         // may witness an invalid word and write it to memory.
         // SAFETY: `local.is_real` is checked to be boolean in `eval_is_real`.
         builder.slice_range_check_u8(&local.op_res_access.access.value.0, local.is_real);
-
+        //range check the word value res_hi
+        builder
+            .when(local.instruction.is_64b_op)
+            .slice_range_check_u8(&local.op_res_hi_access.access.value.0, local.is_real);
         // Check that the is_real flag is correct.
         self.eval_is_real(builder, local, next);
 
@@ -102,6 +106,28 @@ where
 }
 
 impl CpuChip {
+    pub(crate) fn eval_alu_i64<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &CpuCols<AB::Var>,
+    ) {
+        builder.send_64_instruction(
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.pc,
+            local.next_pc,
+            AB::Expr::zero(),
+            local.instruction.opcode,
+            local.op_res_val(),
+            local.op_res_hi_val(),
+            local.op_arg1_val(),
+            local.op_arg2_val(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.instruction.is_64b_op,
+        );
+    }
     pub(crate) fn eval_alu<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CpuCols<AB::Var>) {
         // Send the instruction.
         // SAFETY: `local.is_real` is checked to be boolean in `eval_is_real`.

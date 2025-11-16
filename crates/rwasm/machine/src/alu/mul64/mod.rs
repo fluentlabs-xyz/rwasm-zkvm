@@ -8,10 +8,10 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
-use rwasm::Opcode;
+use rwasm::{Opcode, Opcode::I32Mul64};
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, I64AluEvent},
-    ByteOpcode, ExecutionRecord,
+    ByteOpcode, ExecutionRecord, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::{BYTE_SIZE, LONG_WORD_SIZE, WORD_SIZE};
@@ -72,11 +72,9 @@ impl<F: PrimeField32> MachineAir<F> for Mul64Chip {
         let events: Vec<_> =
             input.i64_events.iter().filter(|e| e.opcode == Opcode::I32Mul64).collect();
 
-        let nb_rows = events.len();
-        let mut padded_nb_rows = next_power_of_two(nb_rows, input.fixed_log2_rows::<F, _>(self));
-        if padded_nb_rows < 16 {
-            padded_nb_rows = 16;
-        }
+        let nb_rows = input.mul_events.len();
+        let size_log2 = input.fixed_log2_rows::<F, _>(self);
+        let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
 
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_MUL64_COLS);
         let chunk_size = std::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
@@ -156,11 +154,15 @@ impl Mul64Chip {
         if b_msb == 1 {
             cols.b_sign_extend = F::one();
             b.resize(LONG_WORD_SIZE, BYTE_MASK);
+        } else {
+            b.resize(LONG_WORD_SIZE, 0);
         }
 
         if c_msb == 1 {
             cols.c_sign_extend = F::one();
             c.resize(LONG_WORD_SIZE, BYTE_MASK);
+        } else {
+            c.resize(LONG_WORD_SIZE, 0);
         }
 
         blu.add_byte_lookup_events(vec![
@@ -296,6 +298,23 @@ where
         // Range checks
         builder.slice_range_check_u16(&local.carry, local.is_real);
         builder.slice_range_check_u8(&local.product, local.is_real);
+
+        builder.receive_64_instruction(
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.pc,
+            local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::zero(),
+            AB::F::from_canonical_u32(I32Mul64.code()),
+            local.a_lo, // <-- Added this line
+            local.a_hi,
+            local.b,
+            local.c,
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.is_real,
+        );
     }
 }
 

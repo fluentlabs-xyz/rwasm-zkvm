@@ -67,6 +67,7 @@ pub struct CpuCols<T: Copy> {
 
     /// Operand values, either from registers or immediate values.
     pub op_res_access: MemoryReadWriteCols<T>,
+    pub op_res_hi_access: MemoryReadWriteCols<T>,
     pub op_arg1_access: MemoryReadCols<T>,
     pub op_arg2_access: MemoryReadCols<T>,
 
@@ -74,6 +75,7 @@ pub struct CpuCols<T: Copy> {
     pub op_arg1_addr: StackAddressCols<T>,
     pub op_arg2_addr: StackAddressCols<T>,
     pub op_res_addr: StackAddressCols<T>,
+    pub op_res_hi_addr: StackAddressCols<T>,
 
     /// Selector to label whether this row is a non padded row.
     pub is_real: T,
@@ -83,6 +85,10 @@ impl<T: Copy> CpuCols<T> {
     /// Gets the value of the first operand.
     pub fn op_res_val(&self) -> Word<T> {
         *self.op_res_access.value()
+    }
+
+    pub fn op_res_hi_val(&self) -> Word<T> {
+        *self.op_res_hi_access.value()
     }
 
     /// Gets the value of the second operand.

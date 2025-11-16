@@ -729,6 +729,7 @@ impl<'a> Executor<'a> {
                 arg1,
                 opcode.aux_value(),
                 arg2,
+                res_hi,
                 record,
                 0u32,
                 call_data,
@@ -745,6 +746,7 @@ impl<'a> Executor<'a> {
                 arg1,
                 arg2,
                 res,
+                res_hi,
                 record,
                 0u32,
                 call_data,
@@ -814,6 +816,7 @@ impl<'a> Executor<'a> {
                 }
             }
         } else if opcode.is_64b_op() {
+            println!("emit_i64_event cpu");
             self.emit_i64_event(clk, pc, next_pc, opcode, res, res_hi, arg1, arg2, record);
         } else {
             println!("no event :ins:{:?},", opcode);
@@ -835,6 +838,7 @@ impl<'a> Executor<'a> {
         arg1: u32,
         arg2: u32,
         res: u32,
+        res_hi: u32,
         record: MemoryAccessRecord,
         exit_code: u32,
         call_data: Option<TraceCallData>,
@@ -850,6 +854,9 @@ impl<'a> Executor<'a> {
             res,
             res_record: record.res_record,
             res_addr: record.res_addr,
+            res_hi,
+            res_hi_record: record.res_hi_record,
+            res_hi_addr: record.res_hi_addr,
             arg1,
             arg1_record: record.arg1_record,
             arg1_addr: record.arg1_addr,
@@ -1325,7 +1332,7 @@ impl<'a> Executor<'a> {
             op_state.arg1,
             op_state.arg2,
             op_state.res,
-            op_state.res,
+            op_state.res_hi,
             op_state.memory_access,
             op_state.call_state,
             op_state.fat_op.clone(),
@@ -2012,7 +2019,7 @@ mod tests {
 
     use rwasm::{
         mem_index::{TypedAddress, SP_START, UNIT},
-        BranchOffset, Opcode,
+        BranchOffset, I64ValueSplit, Opcode,
     };
     use sp1_stark::SP1CoreOpts;
 
@@ -5291,21 +5298,22 @@ mod tests {
             let mut rt = Executor::new(program, SP1CoreOpts::default());
             rt.run().unwrap();
 
-            let prod = (a as u64).wrapping_mul(b as u64);
-            let lo = (prod & 0xFFFF_FFFF) as u32;
-            let hi = (prod >> 32) as u32;
+            let prod = ((a as i32) as i64).wrapping_mul((b as i32) as i64);
+            // let prod = (a as i64).wrapping_mul(b as i64);
+
+            let (lo, hi) = prod.split_into_i32_tuple();
 
             // After 64-bit ops, convention is: top-of-stack = HI, next = LO (see test_i32add64).
             assert_eq!(
                 rt.state.memory.get(rt.state.sp).unwrap().value,
-                hi,
+                hi as u32,
                 "HI mismatch for a={:#x}, b={:#x}",
                 a,
                 b
             );
             assert_eq!(
                 rt.state.memory.get(rt.state.sp + 4).unwrap().value,
-                lo,
+                lo as u32,
                 "LO mismatch for a={:#x}, b={:#x}",
                 a,
                 b
