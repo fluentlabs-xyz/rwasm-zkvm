@@ -4,8 +4,8 @@ use rwasm_executor::{Opcode, Program};
 #[test]
 pub fn test_base_case_for_mul64() {
     let ops = vec![
-        Opcode::I32Const(0x137_137.into()),
-        Opcode::I32Const(0x137_137.into()),
+        Opcode::I32Const(0x137_137u32.into()),
+        Opcode::I32Const(0x137_137u32.into()),
         Opcode::I32Mul64,
     ];
     let program = Program::from_instrs(ops);

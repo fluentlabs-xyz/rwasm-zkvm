@@ -72,7 +72,7 @@ impl<F: PrimeField32> MachineAir<F> for Mul64Chip {
         let events: Vec<_> =
             input.i64_events.iter().filter(|e| e.opcode == Opcode::I32Mul64).collect();
 
-        let nb_rows = input.mul_events.len();
+        let nb_rows = events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
         let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
 
