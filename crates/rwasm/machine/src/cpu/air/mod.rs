@@ -112,11 +112,11 @@ impl CpuChip {
         local: &CpuCols<AB::Var>,
     ) {
         builder.send_64_instruction(
-            AB::Expr::zero(),
-            AB::Expr::zero(),
+            local.shard_to_send,
+            local.clk_to_send,
             local.pc,
             local.next_pc,
-            AB::Expr::zero(),
+            local.num_extra_cycles,
             local.instruction.opcode,
             local.op_res_val(),
             local.op_res_hi_val(),

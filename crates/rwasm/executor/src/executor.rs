@@ -1183,7 +1183,7 @@ impl<'a> Executor<'a> {
         pc: u32,
         next_pc: u32,
         opcode: Opcode,
-        res: u32,
+        res_lo: u32,
         res_hi: u32,
         arg1: u32,
         arg2: u32,
@@ -1192,7 +1192,7 @@ impl<'a> Executor<'a> {
         let event = I64AluEvent {
             pc,
             opcode,
-            a: res,
+            a_lo: res_lo,
             a_hi: res_hi,
             b: arg1,
             c: arg2,

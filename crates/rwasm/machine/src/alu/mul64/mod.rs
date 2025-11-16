@@ -137,7 +137,7 @@ impl Mul64Chip {
     ) {
         cols.pc = F::from_canonical_u32(event.pc);
 
-        let a_lo_word = event.a.to_le_bytes();
+        let a_lo_word = event.a_lo.to_le_bytes();
         let a_hi_word = event.a_hi.to_le_bytes();
         let b_word = event.b.to_le_bytes();
         let c_word = event.c.to_le_bytes();
@@ -299,14 +299,16 @@ where
         builder.slice_range_check_u16(&local.carry, local.is_real);
         builder.slice_range_check_u8(&local.product, local.is_real);
 
+        let opcode = local.is_mul64 * AB::F::from_canonical_u32(I32Mul64.code());
+
         builder.receive_64_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
             AB::Expr::zero(),
-            AB::F::from_canonical_u32(I32Mul64.code()),
-            local.a_lo, // <-- Added this line
+            opcode,
+            local.a_lo,
             local.a_hi,
             local.b,
             local.c,
@@ -343,7 +345,7 @@ mod tests {
         shard.i64_events.push(I64AluEvent {
             pc: 0,
             opcode: Opcode::I32Mul64,
-            a: result as u32,
+            a_lo: result as u32,
             a_hi: (result >> 32) as u32,
             b,
             c,
@@ -379,7 +381,7 @@ mod tests {
             shard.i64_events.push(I64AluEvent {
                 pc: 0,
                 opcode: Opcode::I32Mul64,
-                a: result as u32,
+                a_lo: result as u32,
                 a_hi: (result >> 32) as u32,
                 b,
                 c,
@@ -420,7 +422,7 @@ mod tests {
             if let Some(event) =
                 malicious_record.i64_events.iter_mut().find(|e| e.opcode == Opcode::I32Mul64)
             {
-                event.a = wrong_res as u32;
+                event.a_lo = wrong_res as u32;
                 event.a_hi = (wrong_res >> 32) as u32;
             }
             prover.generate_traces(&malicious_record)
