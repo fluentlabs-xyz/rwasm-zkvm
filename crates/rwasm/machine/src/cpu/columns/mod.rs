@@ -76,7 +76,6 @@ pub struct CpuCols<T: Copy> {
     pub op_arg2_addr: StackAddressCols<T>,
     pub op_res_addr: StackAddressCols<T>,
     pub op_res_hi_addr: StackAddressCols<T>,
-
     /// Selector to label whether this row is a non padded row.
     pub is_real: T,
 }
