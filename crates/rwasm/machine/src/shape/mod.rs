@@ -268,8 +268,8 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                     (air_id.to_string(), allowed_log2_height),
                     (
                         RwasmAir::<F>::SyscallPrecompile(SyscallChip::precompile()).name(),
-                        ((1 << allowed_log2_height)
-                            .div_ceil(&air_id.rows_per_event())
+                        (((1 << allowed_log2_height) as usize)
+                            .div_ceil(air_id.rows_per_event())
                             .next_power_of_two()
                             .ilog2() as usize)
                             .max(4),
