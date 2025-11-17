@@ -44,9 +44,6 @@ pub struct Mul64Cols<T> {
     pub product: [T; LONG_WORD_SIZE],
     pub b_msb: T,
     pub c_msb: T,
-    pub b_sign_extend: T,
-    pub c_sign_extend: T,
-    pub is_mul64: T,
     pub is_real: T,
 }
 
@@ -137,8 +134,6 @@ impl Mul64Chip {
     ) {
         cols.pc = F::from_canonical_u32(event.pc);
 
-        let a_lo_word = event.a_lo.to_le_bytes();
-        let a_hi_word = event.a_hi.to_le_bytes();
         let b_word = event.b.to_le_bytes();
         let c_word = event.c.to_le_bytes();
 
@@ -151,19 +146,8 @@ impl Mul64Chip {
         let c_msb = get_msb(c_word);
         cols.c_msb = F::from_canonical_u8(c_msb);
 
-        if b_msb == 1 {
-            cols.b_sign_extend = F::one();
-            b.resize(LONG_WORD_SIZE, BYTE_MASK);
-        } else {
-            b.resize(LONG_WORD_SIZE, 0);
-        }
-
-        if c_msb == 1 {
-            cols.c_sign_extend = F::one();
-            c.resize(LONG_WORD_SIZE, BYTE_MASK);
-        } else {
-            c.resize(LONG_WORD_SIZE, 0);
-        }
+        b.resize(LONG_WORD_SIZE, BYTE_MASK * b_msb);
+        c.resize(LONG_WORD_SIZE, BYTE_MASK * c_msb);
 
         blu.add_byte_lookup_events(vec![
             ByteLookupEvent {
@@ -203,12 +187,11 @@ impl Mul64Chip {
         }
 
         cols.product = product.map(F::from_canonical_u32);
-        cols.a_lo = Word(a_lo_word.map(F::from_canonical_u8));
-        cols.a_hi = Word(a_hi_word.map(F::from_canonical_u8));
+        cols.a_lo = event.a_lo.into();
+        cols.a_hi = event.a_hi.into();
         cols.b = Word(b_word.map(F::from_canonical_u8));
         cols.c = Word(c_word.map(F::from_canonical_u8));
         cols.is_real = F::one();
-        cols.is_mul64 = F::one();
 
         // Send range checks for the original 4 bytes
         blu.add_u8_range_checks(&b_word);
@@ -250,8 +233,6 @@ where
         let byte_mask = AB::F::from_canonical_u8(BYTE_MASK);
 
         builder.assert_bool(local.is_real);
-        builder.assert_bool(local.is_mul64);
-        builder.when(local.is_real).assert_one(local.is_mul64);
 
         // MSB checks
         builder.send_byte(
@@ -268,12 +249,8 @@ where
             zero.clone(),
             local.is_real,
         );
-
-        // Sign extension calculation
-        builder.assert_eq(local.b_sign_extend, local.b_msb);
-        builder.assert_eq(local.c_sign_extend, local.c_msb);
-        builder.assert_bool(local.b_sign_extend);
-        builder.assert_bool(local.c_sign_extend);
+        builder.assert_bool(local.b_msb);
+        builder.assert_bool(local.c_msb);
 
         // Sign extend b and c
         let (b, c) = {
@@ -284,8 +261,8 @@ where
                     b[i] = local.b[i].into();
                     c[i] = local.c[i].into();
                 } else {
-                    b[i] = local.b_sign_extend * byte_mask;
-                    c[i] = local.c_sign_extend * byte_mask;
+                    b[i] = local.b_msb * byte_mask;
+                    c[i] = local.c_msb * byte_mask;
                 }
             }
             (b, c)
@@ -343,7 +320,7 @@ where
         builder.slice_range_check_u16(&local.carry, local.is_real);
         builder.slice_range_check_u8(&local.product, local.is_real);
 
-        let opcode = local.is_mul64 * AB::F::from_canonical_u32(I32Mul64.code());
+        let opcode = local.is_real * AB::F::from_canonical_u32(I32Mul64.code());
 
         builder.receive_64_instruction(
             AB::Expr::zero(),
