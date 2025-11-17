@@ -57,6 +57,7 @@ impl Shapeable for ExecutionRecord {
             (RwasmAirId::Bitwise, self.bitwise_events.len()),
             (RwasmAirId::Rotate, self.rotate_events.len()),
             (RwasmAirId::Trailing, self.trailing_events.len()),
+            (RwasmAirId::Extend, self.extend_events.len()),
             (RwasmAirId::Mul, self.mul_events.len()),
             (RwasmAirId::ShiftRight, self.shift_right_events.len()),
             (RwasmAirId::ShiftLeft, self.shift_left_events.len()),

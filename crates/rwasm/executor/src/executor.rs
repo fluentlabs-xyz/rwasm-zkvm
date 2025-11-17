@@ -959,6 +959,9 @@ impl<'a> Executor<'a> {
             Opcode::I32Rotl | Opcode::I32Rotr => {
                 self.record.rotate_events.push(event);
             }
+            Opcode::I32Extend8S | Opcode::I32Extend16S => {
+                self.record.extend_events.push(event);
+            }
             _ => unreachable!(),
         }
     }
@@ -5134,37 +5137,97 @@ mod tests {
 
     #[test]
     fn test_i32popcnt() {
-        let a: u32 = 0x137_137;
-        let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Popcnt]);
+        fn check(a: u32) {
+            let sp0 = SP_START;
+            let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Popcnt]);
 
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
-        assert_eq!(top, a.count_ones(), "incorrect count ones");
+            let expected = a.count_ones();
+            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            assert_eq!(top, expected, "I32Popcnt result mismatch for a={:#x}", a);
+            // One 32-bit value pushed
+            assert_eq!(sp0, rt.state.sp + UNIT);
+        }
+
+        // Edge cases
+        check(0x0000_0000); // 0
+        check(0xFFFF_FFFF); // 32
+        check(0x0000_0001); // 1
+        check(0x8000_0000); // 1
+        check(0x7FFF_FFFF); // 31
+
+        // Patterns
+        check(0xAAAA_AAAA); // 16 ones
+        check(0x5555_5555); // 16 ones
+
+        // Random-ish sanity values
+        check(0x0137_0137);
+        check(0xDEAD_BEEF);
     }
     #[test]
     fn test_i32clz() {
-        //count leading zeros
-        let a: u32 = 0x137_137;
-        let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Clz]);
+        fn check(a: u32) {
+            let sp0 = SP_START;
+            let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Clz]);
 
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
-        assert_eq!(top, a.leading_zeros(), "incorrect count zeros");
+            let expected = a.leading_zeros(); // WASM spec: clz(0) = 32
+            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            assert_eq!(top, expected, "I32Clz result mismatch for a={:#x}", a);
+            // One 32-bit value pushed
+            assert_eq!(sp0, rt.state.sp + UNIT);
+        }
+
+        // Edge cases
+        check(0x0000_0000); // 32
+        check(0x0000_0001); // 31
+        check(0x8000_0000); // 0
+
+        // Boundary & pattern cases
+        check(0x0000_FFFF); // 16
+        check(0x00F0_0000); // 8
+        check(0x7FFF_FFFF); // 1
+        check(0xFFFF_0000); // 0
+
+        // Random-ish sanity values
+        check(0x0137_0137);
+        check(0xDEAD_BEEF);
     }
     #[test]
     fn test_i32ctz() {
-        let a: u32 = 0x137_137;
-        let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Ctz]);
+        fn check(a: u32) {
+            let sp0 = SP_START;
+            let program = Program::from_instrs(vec![Opcode::I32Const(a.into()), Opcode::I32Ctz]);
 
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
-        assert_eq!(top, a.trailing_zeros(), "incorrect count zeros");
+            let expected = a.trailing_zeros(); // Rust matches WASM semantics: ctz(0) = 32
+            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            assert_eq!(top, expected, "I32Ctz result mismatch for a={:#x}", a);
+            // One 32-bit value pushed
+            assert_eq!(sp0, rt.state.sp + UNIT);
+        }
+
+        // Edge cases
+        check(0x0000_0000); // ctz(0) = 32
+        check(0x0000_0001); // 0
+        check(0x0000_0002); // 1
+        check(0x0000_0004); // 2
+        check(0x8000_0000); // 31
+
+        // Boundary & pattern cases
+        check(0x0001_0000); // 16
+        check(0xFFFF_0000); // 16 (low half zero)
+        check(0x00F0_0000); // 20
+
+        // Random-ish sanity values
+        check(0x0137_0137);
+        check(0xDEAD_BEEF);
     }
 
     #[test]
@@ -5182,5 +5245,62 @@ mod tests {
         assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
         assert_eq!(rt.state.memory.get(rt.state.sp + 4).unwrap().value, 0);
         assert_eq!(sp0 - 8, rt.state.sp);
+    }
+    #[test]
+    fn test_i32extend8s() {
+        {
+            // Keep any cases you like; this one hits the boundary (-128)
+            let cases = [
+                0x0000_0000,    // 0  -> 0
+                0x0000_7FFF,    // +32767 stays +32767
+                0x0000_8000,    // -32768 -> 0xFFFF_8000
+                0x0000_FFFF,    // -1     -> 0xFFFF_FFFF
+                0xDEAD_8001u32, // 0x8001 -> -32767 -> 0xFFFF_8001
+                0xBEEF_1234u32, // 0x1234 -> +4660  -> 0x0000_1234
+            ];
+
+            for &input in &cases {
+                println!("next test of test_i32extend8s is {}", input);
+                // Mirror: i32_extend8_s(x) = (x as i8) as i32
+                let expected: u32 = ((input as i8) as i32) as u32;
+
+                let program =
+                    Program::from_instrs(vec![Opcode::I32Const(input.into()), Opcode::I32Extend8S]);
+
+                let mut rt = Executor::new(program, SP1CoreOpts::default());
+                rt.run().unwrap();
+
+                let top = rt.state.memory.get(rt.state.sp + 3).unwrap().value;
+                assert_eq!(top, expected, "I32Extend8S({:#010x}) mismatch", input);
+            }
+        }
+    }
+    #[test]
+    fn test_i32extend16s() {
+        {
+            // Sign-extend from the low 16 bits into i32, push as u32.
+            // Include boundary values and cases where high bits are noisy.
+            let cases: [u32; 6] = [
+                0x0000_0000, // 0  -> 0
+                0x0000_7FFF, // +32767 stays +32767
+                0x0000_8000, // -32768 -> 0xFFFF_8000
+                0x0000_FFFF, // -1     -> 0xFFFF_FFFF
+                0xDEAD_8001, // 0x8001 -> -32767 -> 0xFFFF_8001
+                0xBEEF_1234, // 0x1234 -> +4660  -> 0x0000_1234
+            ];
+            for &input in &cases {
+                let expected: u32 = ((input as i16) as i32) as u32;
+                let program = Program::from_instrs(vec![
+                    Opcode::I32Const(input.into()),
+                    Opcode::I32Extend16S,
+                ]);
+
+                let mut rt = Executor::new(program, SP1CoreOpts::default());
+                rt.run().unwrap();
+
+                let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+                assert_eq!(top, expected, "I32Extend16S({:#010x}) mismatch", input);
+            }
+        }
     }
 }

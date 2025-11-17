@@ -30,8 +30,8 @@ use crate::{
 pub(crate) mod rwasm_chips {
     pub use crate::{
         alu::{
-            AddSubChip, BitwiseChip, DivRemChip, LtChip, MulChip, RotateChip, ShiftLeft,
-            ShiftRightChip,
+            AddSubChip, BitwiseChip, DivRemChip, ExtendChip, LtChip, MulChip, RotateChip,
+            ShiftLeft, ShiftRightChip,
         },
         bytes::ByteChip,
         cpu::CpuChip,
@@ -97,6 +97,8 @@ pub enum RwasmAir<F: PrimeField32> {
     Rotate(RotateChip),
     /// An AIR for WASM Trailing and Popcnt instructions.
     Trailing(TrailingChip),
+    /// An AIR for WASM Extend instructions.
+    Extend(ExtendChip),
     /// An AIR for RISC-V memory instructions.
     Memory(MemoryInstructionsChip),
     /// An AIR for RISC-V branch instructions.
@@ -364,6 +366,10 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(trailing.name(), trailing.cost());
         chips.push(trailing);
 
+        let extend = Chip::new(RwasmAir::Extend(ExtendChip::default()));
+        costs.insert(extend.name(), extend.cost());
+        chips.push(extend);
+
         let add_sub = Chip::new(RwasmAir::Add(AddSubChip::default()));
         costs.insert(add_sub.name(), add_sub.cost());
         chips.push(add_sub);
@@ -465,6 +471,7 @@ impl<F: PrimeField32> RwasmAir<F> {
             RwasmAir::ShiftRight(ShiftRightChip::default()),
             RwasmAir::Rotate(RotateChip::default()),
             RwasmAir::Trailing(TrailingChip::default()),
+            RwasmAir::Extend(ExtendChip::default()),
             RwasmAir::Memory(MemoryInstructionsChip::default()),
             RwasmAir::Branch(BranchChip::default()),
             RwasmAir::Call(CallChip::default()),
@@ -592,6 +599,7 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::TableGrow => RwasmAirId::TableGrow,
             RwasmAirDiscriminants::Rotate => RwasmAirId::Rotate,
             RwasmAirDiscriminants::Trailing => RwasmAirId::Trailing,
+            RwasmAirDiscriminants::Extend => RwasmAirId::Extend,
         }
     }
 }

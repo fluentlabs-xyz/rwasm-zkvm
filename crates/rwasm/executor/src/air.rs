@@ -155,6 +155,9 @@ pub enum RwasmAirId {
 
     #[subenum(CoreAirId)]
     Trailing = 49,
+
+    #[subenum(CoreAirId)]
+    Extend = 50,
 }
 
 impl RwasmAirId {
@@ -172,6 +175,7 @@ impl RwasmAirId {
             RwasmAirId::Rotate,
             RwasmAirId::Lt,
             RwasmAirId::Trailing,
+            RwasmAirId::Extend,
             RwasmAirId::Auipc,
             RwasmAirId::MemoryLocal,
             RwasmAirId::MemoryInstrs,
