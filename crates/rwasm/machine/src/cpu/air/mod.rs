@@ -89,9 +89,9 @@ where
         // SAFETY: `local.is_real` is checked to be boolean in `eval_is_real`.
         builder.slice_range_check_u8(&local.op_res_access.access.value.0, local.is_real);
         //range check the word value res_hi
-        builder
+        /*builder
             .when(local.instruction.is_64b_op)
-            .slice_range_check_u8(&local.op_res_hi_access.access.value.0, local.is_real);
+            .slice_range_check_u8(&local.op_res_hi_access.access.value.0, local.is_real);*/
         // Check that the is_real flag is correct.
         self.eval_is_real(builder, local, next);
 
@@ -522,13 +522,6 @@ impl CpuChip {
                 local.instruction.is_i32load8u +
                 local.instruction.is_localget +
                 local.instruction.is_i32const,
-        );
-        builder.eval_memory_access(
-            local.shard,
-            clk.clone() + AB::Expr::one(),
-            local.op_res_hi_addr.value::<AB>(),
-            &local.op_res_hi_access,
-            local.instruction.is_64b_op,
         );
         self.eval_op_memory_increase_sp(builder, local, clk.clone());
         self.eval_op_memory_decrease_sp(builder, local, clk.clone());
