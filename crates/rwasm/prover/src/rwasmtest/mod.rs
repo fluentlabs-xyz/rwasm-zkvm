@@ -1,4 +1,5 @@
 mod comp;
+mod extend;
 mod mul64;
 mod rotate;
 mod table_grow;

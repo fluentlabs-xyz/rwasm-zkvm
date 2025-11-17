@@ -601,6 +601,9 @@ fn derive_cluster_from_maximal_shape(shape: &Shape<RwasmAirId>) -> ShapeCluster<
     let trialing_log_height = shape.log2_height(&RwasmAirId::Trailing);
     maybe_log2_heights.insert(RwasmAirId::Trailing, heuristic(trialing_log_height, 1));
 
+    let extend_log_height = shape.log2_height(&RwasmAirId::Extend);
+    maybe_log2_heights.insert(RwasmAirId::Extend, heuristic(extend_log_height, 1));
+
     let mul64_log_height = shape.log2_height(&RwasmAirId::Mul64);
     maybe_log2_heights.insert(RwasmAirId::Mul64, heuristic(mul64_log_height, 1));
 
