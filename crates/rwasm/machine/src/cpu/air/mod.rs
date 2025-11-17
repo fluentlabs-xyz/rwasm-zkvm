@@ -66,7 +66,7 @@ where
         builder.when(local.is_real).assert_eq(local.clk_to_send, expected_clk_to_send);
 
         self.eval_alu(builder, local);
-        self.eval_alu_i64(builder, local);
+        self.eval_alu_i64(builder, local, clk.clone());
         self.eval_branching(builder, local);
         self.eval_call(builder, local, next);
         self.eval_memory(builder, local);
@@ -100,6 +100,7 @@ where
         builder.when(not_real.clone()).assert_zero(AB::Expr::one() - local.is_syscall);
 
         StackAddressCols::<AB::F>::range_check(builder, local.op_res_addr);
+        StackAddressCols::<AB::F>::range_check(builder, local.op_res_hi_addr);
         StackAddressCols::<AB::F>::range_check(builder, local.op_arg1_addr);
         StackAddressCols::<AB::F>::range_check(builder, local.op_arg2_addr);
     }
@@ -110,6 +111,7 @@ impl CpuChip {
         &self,
         builder: &mut AB,
         local: &CpuCols<AB::Var>,
+        clk: AB::Expr,
     ) {
         builder.send_64_instruction(
             local.shard_to_send,
@@ -125,6 +127,14 @@ impl CpuChip {
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
+            local.instruction.is_64b_op,
+        );
+
+        builder.eval_memory_access(
+            local.shard,
+            clk + AB::Expr::one(),
+            local.op_res_hi_addr.value::<AB>(),
+            &local.op_res_hi_access,
             local.instruction.is_64b_op,
         );
     }
@@ -521,7 +531,8 @@ impl CpuChip {
                 local.instruction.is_i32load8s +
                 local.instruction.is_i32load8u +
                 local.instruction.is_localget +
-                local.instruction.is_i32const,
+                local.instruction.is_i32const +
+                local.instruction.is_64b_op,
         );
         self.eval_op_memory_increase_sp(builder, local, clk.clone());
         self.eval_op_memory_decrease_sp(builder, local, clk.clone());
@@ -625,6 +636,7 @@ impl CpuChip {
             local.sp + AB::Expr::from_canonical_u8(4),
             &local.op_arg1_access,
             local.instruction.is_binary +
+                local.instruction.is_64b_op +
                 local.instruction.is_i32store +
                 local.instruction.is_i32store16 +
                 local.instruction.is_i32store8, // + local.instruction.is_table_grow,
@@ -636,6 +648,7 @@ impl CpuChip {
             local.sp,
             &local.op_arg2_access,
             local.instruction.is_binary +
+                local.instruction.is_64b_op +
                 local.instruction.is_i32store +
                 local.instruction.is_i32store16 +
                 local.instruction.is_i32store8, // + local.instruction.is_table_grow,
