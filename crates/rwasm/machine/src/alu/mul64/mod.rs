@@ -210,6 +210,28 @@ impl Mul64Chip {
         cols.is_real = F::one();
         cols.is_mul64 = F::one();
 
+        // Send range checks for the original 4 bytes
+        blu.add_u8_range_checks(&b_word);
+        blu.add_u8_range_checks(&c_word);
+
+        // Send range checks for the extended upper 4 bytes
+        for i in WORD_SIZE..LONG_WORD_SIZE {
+            blu.add_byte_lookup_event(ByteLookupEvent {
+                opcode: ByteOpcode::U8Range,
+                a1: 0,
+                a2: 0,
+                b: b[i],
+                c: 0,
+            });
+            blu.add_byte_lookup_event(ByteLookupEvent {
+                opcode: ByteOpcode::U8Range,
+                a1: 0,
+                a2: 0,
+                b: c[i],
+                c: 0,
+            });
+        }
+
         blu.add_u16_range_checks(&carry.map(|x| x as u16));
         blu.add_u8_range_checks(&product.map(|x| x as u8));
     }
@@ -268,6 +290,28 @@ where
             }
             (b, c)
         };
+
+        // Send range checks for original b and c bytes
+        builder.slice_range_check_u8(&local.b.0, local.is_real);
+        builder.slice_range_check_u8(&local.c.0, local.is_real);
+
+        // Send range checks ONLY for the sign-extended upper 4 bytes
+        for i in WORD_SIZE..LONG_WORD_SIZE {
+            builder.send_byte(
+                ByteOpcode::U8Range.as_field::<AB::F>(),
+                AB::Expr::zero(),
+                b[i].clone(),
+                AB::Expr::zero(),
+                local.is_real,
+            );
+            builder.send_byte(
+                ByteOpcode::U8Range.as_field::<AB::F>(),
+                AB::Expr::zero(),
+                c[i].clone(),
+                AB::Expr::zero(),
+                local.is_real,
+            );
+        }
 
         // Uncarried product
         let mut m: Vec<AB::Expr> = vec![zero.clone(); LONG_WORD_SIZE];

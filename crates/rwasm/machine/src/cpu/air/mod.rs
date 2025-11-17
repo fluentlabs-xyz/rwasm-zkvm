@@ -88,10 +88,11 @@ where
         // may witness an invalid word and write it to memory.
         // SAFETY: `local.is_real` is checked to be boolean in `eval_is_real`.
         builder.slice_range_check_u8(&local.op_res_access.access.value.0, local.is_real);
-        //range check the word value res_hi
-        /*builder
-        .when(local.instruction.is_64b_op)
-        .slice_range_check_u8(&local.op_res_hi_access.access.value.0, local.is_real);*/
+        builder.slice_range_check_u8(
+            &local.op_res_hi_access.access.value.0,
+            local.instruction.is_64b_op,
+        );
+
         // Check that the is_real flag is correct.
         self.eval_is_real(builder, local, next);
 

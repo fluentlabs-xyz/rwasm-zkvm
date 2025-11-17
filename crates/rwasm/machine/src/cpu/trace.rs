@@ -176,23 +176,19 @@ impl CpuChip {
                     blu_events,
                     true,
                 );
-                // Hi write for 64-bit ops
-                if instruction.is_64b_op() {
-                    if let Some(record_hi) = event.res_hi_record {
-                        cols.op_res_hi_access.populate(record_hi, blu_events);
-                        cols.op_res_hi_addr.populate(
-                            event.res_hi_addr.unwrap().to_virtual_addr(),
-                            blu_events,
-                            true,
-                        );
-                    } else {
-                        debug_assert!(
-                            false,
-                            "Missing res_hi_record for 64-bit op at pc={}",
-                            event.pc
-                        );
-                    }
-                }
+            }
+        }
+        if let Some(record_hi) = event.res_hi_record {
+            // Hi write for 64-bit ops
+            if instruction.is_64b_op() {
+                cols.op_res_hi_access.populate(record_hi, blu_events);
+                cols.op_res_hi_addr.populate(
+                    event.res_hi_addr.unwrap().to_virtual_addr(),
+                    blu_events,
+                    true,
+                );
+            } else {
+                debug_assert!(false, "Missing res_hi_record for 64-bit op at pc={}", event.pc);
             }
         }
         // Populate arg1/arg2 memory reads.
