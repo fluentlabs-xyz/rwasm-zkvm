@@ -111,7 +111,7 @@ impl CallChip {
             cols.table_access.populate(record, blu);
             let table_addr =
                 TypedAddress::Table(event.table_id * N_MAX_TABLE_SIZE + event.table_idx);
-            // cols.table_access_addr.populate(table_addr.to_virtual_addr(), blu);
+            cols.table_access_addr.populate(table_addr.to_virtual_addr(), blu, true);
         }
         println!("opcode  for call: {}", event.opcode.code());
         cols.opcode_aux_val = event.opcode.aux_value().into();

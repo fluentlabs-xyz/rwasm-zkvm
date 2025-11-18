@@ -13,7 +13,7 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::{
     air::{SP1CoreAirBuilder, WordAirBuilder},
-    memory::{CallStackAddressCols, MemoryCols},
+    memory::{CallStackAddressCols, MemoryCols, TableAccessCol},
     operations::BabyBearWordRangeChecker,
 };
 const CALL_SP_STACK_SHIFT: u32 = FUNC_FRAME_START;
@@ -140,6 +140,7 @@ where
         );
         CallStackAddressCols::<AB::Var>::range_check(builder, local.call_sp_addr);
         CallStackAddressCols::<AB::Var>::range_check(builder, local.next_call_sp_addr);
+        TableAccessCol::<AB::Var>::range_check(builder, local.table_access_addr);
     }
 }
 

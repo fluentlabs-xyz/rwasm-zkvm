@@ -22,7 +22,10 @@ impl<F: PrimeField32, const START: u32, const END: u32> Range16bCols<F, START, E
         // We subtract the START to work with the value that is in the range [0..END -
         // START]
         let (shifted_value, overflow) = value.overflowing_sub(START);
-
+        println!(
+            "value:{} START:{},shifted_value:{},overflow:{}",
+            value, START, shifted_value, overflow
+        );
         assert!(!overflow);
 
         let shifted_value: u16 = shifted_value.try_into().unwrap();
@@ -148,13 +151,15 @@ impl<T: Copy, const START: u32, const END: u32> Range16bCols<T, START, END> {
 #[repr(C)]
 pub struct Range32bCols<
     T,
-    const START_HI16: u32,
-    const START_LOW16: u32,
-    const END_HI16: u32,
-    const END_LOW16: u32,
+    const START: u32,
+    const END: u32,
+    const START_HI16_SHIFTED: u32,
+    const END_HI16_SHIFTED: u32,
+    const START_LOW16_SHIFTED: u32,
+    const END_LOW16_SHIFTED: u32,
 > {
-    hi_16bits: Range16bCols<T, START_HI16, END_HI16>,
-    low_16bits: Range16bCols<T, START_LOW16, END_LOW16>,
+    hi_16bits: Range16bCols<T, START_HI16_SHIFTED, END_HI16_SHIFTED>,
+    low_16bits: Range16bCols<T, START_LOW16_SHIFTED, END_LOW16_SHIFTED>,
     pub hi_is_zero: T,
     pub hi_is_not_edge: T,
     pub hi_is_eq_ub_hi: T,
@@ -162,22 +167,37 @@ pub struct Range32bCols<
 
 impl<
         F: PrimeField32,
-        const START_HI16: u32,
-        const START_LOW16: u32,
-        const END_HI16: u32,
-        const END_LOW16: u32,
-    > Range32bCols<F, START_HI16, START_LOW16, END_HI16, END_LOW16>
+        const START: u32,
+        const END: u32,
+        const START_HI16_SHIFTED: u32,
+        const END_HI16_SHIFTED: u32,
+        const START_LOW16_SHIFTED: u32,
+        const END_LOW16_SHIFTED: u32,
+    >
+    Range32bCols<
+        F,
+        START,
+        END,
+        START_HI16_SHIFTED,
+        END_HI16_SHIFTED,
+        START_LOW16_SHIFTED,
+        END_LOW16_SHIFTED,
+    >
 {
     pub fn populate(&mut self, value: u32, output: &mut impl ByteRecord, do_check: bool) {
         // We subtract the START to work with the value that is in the range [0..END -
         // START]
-        let start = Self::START;
-        let (shifted_value, overflow) = value.overflowing_sub(start);
 
+        let (shifted_value, overflow) = value.overflowing_sub(START);
+        println!("range32");
+        println!(
+            "value:{} START:{},shifted_value:{},overflow:{}",
+            value, START, shifted_value, overflow
+        );
         assert!(!overflow);
         let hi_16bits: u16 = (shifted_value >> 16) as u16;
         let low_16bits: u16 = shifted_value as u16;
-
+        println!("hi_16bits:{},low16bits:{} value:{}", hi_16bits, low_16bits, value);
         let hi_is_eq_ub_hi = hi_16bits == Self::UB_HI_16BITS_SHIFTED;
         self.hi_is_eq_ub_hi = F::from_bool(hi_is_eq_ub_hi);
 
@@ -198,15 +218,24 @@ impl<
 
 impl<
         T: Copy,
-        const START_HI16: u32,
-        const START_LOW16: u32,
-        const END_HI16: u32,
-        const END_LOW16: u32,
-    > Range32bCols<T, START_HI16, START_LOW16, END_HI16, END_LOW16>
+        const START: u32,
+        const END: u32,
+        const START_HI16_SHIFTED: u32,
+        const END_HI16_SHIFED: u32,
+        const START_LOW16_SHIFTED: u32,
+        const END_LOW16_SHIFTED: u32,
+    >
+    Range32bCols<
+        T,
+        START,
+        END,
+        START_HI16_SHIFTED,
+        END_HI16_SHIFED,
+        START_LOW16_SHIFTED,
+        END_LOW16_SHIFTED,
+    >
 {
-    const START: u32 = (START_HI16 << 16) + START_LOW16;
-    const END: u32 = (END_HI16 << 16) + END_LOW16;
-    const UB_HI_16BITS_SHIFTED: u16 = ((Self::END - Self::START + UNIT) >> 16) as u16;
+    const UB_HI_16BITS_SHIFTED: u16 = ((END - START + UNIT) >> 16) as u16;
 
     pub fn value<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
     where
@@ -214,7 +243,7 @@ impl<
     {
         let hi = self.hi_16bits.value::<AB>();
         let low = self.low_16bits.value::<AB>();
-        hi * AB::Expr::from_canonical_u32(1 << 16) + low + AB::Expr::from_canonical_u32(Self::START)
+        hi * AB::Expr::from_canonical_u32(1 << 16) + low + AB::Expr::from_canonical_u32(START)
     }
 
     pub fn is_real<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
@@ -226,7 +255,15 @@ impl<
 
     pub fn range_check<AB: SP1AirBuilder>(
         builder: &mut AB,
-        cols: Range32bCols<AB::Var, START_HI16, START_LOW16, END_HI16, END_LOW16>,
+        cols: Range32bCols<
+            AB::Var,
+            START,
+            END,
+            START_HI16_SHIFTED,
+            END_HI16_SHIFED,
+            START_LOW16_SHIFTED,
+            END_LOW16_SHIFTED,
+        >,
     ) {
         let is_real = cols.hi_is_not_edge + cols.hi_is_zero + cols.hi_is_eq_ub_hi;
 
@@ -246,12 +283,12 @@ impl<
             is_real.clone(),
         );
 
-        Range16bCols::<AB::Var, START_HI16, END_HI16>::do_range_check(
+        Range16bCols::<AB::Var, START_HI16_SHIFTED, END_HI16_SHIFED>::do_range_check(
             builder,
             cols.hi_16bits,
             cols.hi_is_not_edge,
         );
-        Range16bCols::<AB::Var, START_LOW16, END_LOW16>::do_range_check(
+        Range16bCols::<AB::Var, START_LOW16_SHIFTED, END_LOW16_SHIFTED>::do_range_check(
             builder,
             cols.low_16bits,
             cols.hi_is_eq_ub_hi,

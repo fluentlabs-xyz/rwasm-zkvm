@@ -3,7 +3,7 @@ use sp1_stark::Word;
 use std::mem::size_of;
 
 use crate::{
-    memory::{CallStackAddressCols, MemoryReadWriteCols},
+    memory::{CallStackAddressCols, MemoryReadWriteCols, TableAccessCol},
     operations::BabyBearWordRangeChecker,
 };
 
@@ -29,6 +29,7 @@ pub struct CallColumns<T> {
 
     pub call_sp_addr: CallStackAddressCols<T>,
     pub next_call_sp_addr: CallStackAddressCols<T>,
+    pub table_access_addr: TableAccessCol<T>,
     pub func_ref: T,
     pub signature_id: T,
     pub table_id: T,
