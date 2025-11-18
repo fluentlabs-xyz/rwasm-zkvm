@@ -128,17 +128,11 @@ impl Mul64Chip {
         let b_word = event.b.to_le_bytes();
         let c_word = event.c.to_le_bytes();
 
-        let mut b = b_word.to_vec();
-        let mut c = c_word.to_vec();
-        // For I32Mul64 we now interpret b and c as u32 and zero-extend them to 64 bits.
-        b.resize(LONG_WORD_SIZE, 0);
-        c.resize(LONG_WORD_SIZE, 0);
-
         let mut product = [0u32; LONG_WORD_SIZE];
-        for i in 0..b.len() {
-            for j in 0..c.len() {
+        for i in 0..b_word.len() {
+            for j in 0..c_word.len() {
                 if i + j < LONG_WORD_SIZE {
-                    product[i + j] += (b[i] as u32) * (c[j] as u32);
+                    product[i + j] += (b_word[i] as u32) * (c_word[j] as u32);
                 }
             }
         }
@@ -156,8 +150,8 @@ impl Mul64Chip {
 
         cols.a_lo = event.a_lo.into();
         cols.a_hi = event.a_hi.into();
-        cols.b = Word(b_word.map(F::from_canonical_u8));
-        cols.c = Word(c_word.map(F::from_canonical_u8));
+        cols.b = event.b.into();
+        cols.c = event.c.into();
         cols.is_real = F::one();
 
         let a_lo_word = event.a_lo.to_le_bytes();
@@ -182,23 +176,17 @@ where
         let local = main.row_slice(0);
         let local: &Mul64Cols<AB::Var> = (*local).borrow();
         let base = AB::F::from_canonical_u32(1 << 8);
-        let zero: AB::Expr = AB::F::zero().into();
+        let zero = AB::Expr::zero();
 
         builder.assert_bool(local.is_real);
 
         // Zero-extend b and c from 32 bits to 64 bits (unsigned semantics).
         let (b, c) = {
-            let mut b: Vec<AB::Expr> = vec![zero.clone(); LONG_WORD_SIZE];
-            let mut c: Vec<AB::Expr> = vec![zero.clone(); LONG_WORD_SIZE];
-            for i in 0..LONG_WORD_SIZE {
-                if i < WORD_SIZE {
-                    b[i] = local.b[i].into();
-                    c[i] = local.c[i].into();
-                } else {
-                    // Upper bytes are zero for u32 operands.
-                    b[i] = zero.clone();
-                    c[i] = zero.clone();
-                }
+            let mut b = vec![zero.clone(); LONG_WORD_SIZE];
+            let mut c = vec![zero.clone(); LONG_WORD_SIZE];
+            for i in 0..WORD_SIZE {
+                b[i] = local.b[i].into();
+                c[i] = local.c[i].into();
             }
             (b, c)
         };
