@@ -16,8 +16,8 @@ use hashbrown::HashMap;
 use rwasm::{
     event::FatOpEvent,
     mem::{MemoryLocalEvent, MemoryRecordEnum},
-    CallStack, InstructionPtr, Opcode, RwasmExecutor, RwasmStore, TraceCallData, TrapCode,
-    ValueStack, ValueStackPtr,
+    CallStack, DataOpEvent, InstructionPtr, Opcode, RwasmExecutor, RwasmStore, TraceCallData,
+    TrapCode, ValueStack, ValueStackPtr,
 };
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
@@ -715,8 +715,8 @@ impl<'a> Executor<'a> {
         record: MemoryAccessRecord,
         call_data: Option<TraceCallData>,
         fat_op: Option<FatOpEvent>,
+        dataop_event: Option<DataOpEvent>,
     ) {
-        println!("emit cpu");
         if opcode.is_memory_instruction() {
             self.emit_cpu(
                 clk,
@@ -795,6 +795,8 @@ impl<'a> Executor<'a> {
                         call_data.table_id,
                         call_data.table_idx,
                         call_sp_record,
+                        call_data.table_access.map(MemoryRecordEnum::Read),
+                        dataop_event,
                     );
                 }
                 None => {
@@ -810,6 +812,8 @@ impl<'a> Executor<'a> {
                         0,
                         0,
                         call_sp_record,
+                        None,
+                        None,
                     );
                 }
             }
@@ -1067,6 +1071,7 @@ impl<'a> Executor<'a> {
             self.syscall_event(clk, a_record, Some(true), syscall_code, arg1, arg2, next_pc);
 
         self.record.syscall_events.push(syscall_event);
+        println!("eventcode: {:?}", syscall_code);
         match syscall_code {
             SyscallCode::HALT => todo!(),
             SyscallCode::WRITE => todo!(),
@@ -1152,6 +1157,8 @@ impl<'a> Executor<'a> {
         table_id: u32,
         table_idx: u32,
         call_stack_access: Option<MemoryRecordEnum>,
+        table_access: Option<MemoryRecordEnum>,
+        dataop_event: Option<DataOpEvent>,
     ) {
         let event = CallEvent {
             shard: self.shard(),
@@ -1166,8 +1173,12 @@ impl<'a> Executor<'a> {
             table_id,
             table_idx,
             call_stack_access,
+            table_access,
         };
         self.record.call_events.push(event);
+        if let Some(event) = dataop_event {
+            self.record.dataop_events.push(event)
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1312,6 +1323,10 @@ impl<'a> Executor<'a> {
 
         let op_state = self.store.tracer.logs.last().unwrap();
         let syscall = SyscallCode::default();
+        let dataop_event = match op_state.opcode {
+            Opcode::CallIndirect(_) => Some(self.store.tracer.data_op_logs.last().unwrap()),
+            _ => None,
+        };
 
         self.state.clk = op_state.clk;
         self.state.pc = op_state.pc;
@@ -1332,10 +1347,8 @@ impl<'a> Executor<'a> {
             op_state.memory_access,
             op_state.call_state,
             op_state.fat_op.clone(),
+            dataop_event.cloned(),
         );
-        // if op_state.opcode.is_state_instrucition() {
-        //TODO: generate sys_state_event here
-        // }
 
         // Increment the clock.
         self.state.global_clk += 1;
@@ -1473,7 +1486,6 @@ impl<'a> Executor<'a> {
         let public_values = removed_record.public_values;
         self.record.public_values = public_values;
         self.records.push(removed_record);
-        println!("after bump records:{:?}", self.records);
     }
     /// Execute up to `self.shard_batch_size` cycles, returning the events emitted and whether the
     /// program ended.
@@ -1519,6 +1531,7 @@ impl<'a> Executor<'a> {
 
         let done = tracing::debug_span!("execute").in_scope(|| self.execute())?;
         println!("cpu events:{:?}", self.record.cpu_events);
+        println!("data_op events{:?}", self.record.dataop_events);
         // Create a checkpoint using `memory_checkpoint`. Just include all memory if `done` since we
         // need it all for MemoryFinalize.
         let next_pc = self.state.pc;
@@ -1679,7 +1692,6 @@ impl<'a> Executor<'a> {
             self.postprocess_syscall();
 
             let res = self.execute_cycle(res)?;
-            println!("self.record.cpuevent:{:?}", self.record.cpu_events);
             if res {
                 done = true;
                 break;
@@ -3888,6 +3900,34 @@ mod tests {
             runtime.state.memory.get(runtime.state.sp).unwrap().value,
             x_value - (y_value + z_value)
         );
+    }
+
+    #[test]
+    fn test_call_indirect() {
+        let ops = vec![
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(2.into()),
+            Opcode::TableGrow(0),
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(2.into()),
+            Opcode::TableInit(0),
+            Opcode::TableGet(0),
+            Opcode::I32Const(1.into()),
+            Opcode::CallIndirect(0u32),
+            Opcode::TableGet(0),
+            Opcode::Return,
+            Opcode::I32Const(99.into()),
+            Opcode::I32Const(98.into()),
+            Opcode::I32Add,
+            Opcode::Return,
+        ];
+        let elements = vec![12u32, 12u32];
+        let program = Program::from_instrs(ops).with_elements(elements);
+
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+
+        rt.run().unwrap();
     }
     #[test]
     fn test_i32constwith_add() {

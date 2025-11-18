@@ -187,6 +187,7 @@ pub struct CallEvent {
     pub table_id: u32,
     pub table_idx: u32,
     pub call_stack_access: Option<MemoryRecordEnum>,
+    pub table_access: Option<MemoryRecordEnum>,
 }
 
 impl CallEvent {
@@ -206,6 +207,7 @@ impl CallEvent {
         table_id: u32,
         table_idx: u32,
         call_stack_access: Option<MemoryRecordEnum>,
+        table_access: Option<MemoryRecordEnum>,
     ) -> Self {
         Self {
             shard,
@@ -220,6 +222,7 @@ impl CallEvent {
             table_id,
             table_idx,
             call_stack_access,
+            table_access,
         }
     }
 }

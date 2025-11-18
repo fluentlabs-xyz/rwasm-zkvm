@@ -14,9 +14,10 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use rwasm_executor::{ExecutionRecord, Program};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{MachineAir, SP1AirBuilder};
-
-use crate::cpu::columns::InstructionCols;
+use sp1_stark::{
+    air::{MachineAir, SP1AirBuilder},
+    Word,
+};
 
 /// The number of preprocessed program columns.
 pub const NUM_PROGRAM_PREPROCESSED_COLS: usize = size_of::<ProgramPreprocessedCols<u8>>();
@@ -29,7 +30,8 @@ pub const NUM_PROGRAM_MULT_COLS: usize = size_of::<ProgramMultiplicityCols<u8>>(
 #[repr(C)]
 pub struct ProgramPreprocessedCols<T> {
     pub pc: T,
-    pub instruction: InstructionCols<T>,
+    pub opcode: T,
+    pub aux_val: Word<T>,
 }
 
 /// The column layout for the chip.
@@ -87,7 +89,8 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
                         let instruction = program.fetch(idx as u32);
                         let pc = idx; //TODO: find pc_base
                         cols.pc = F::from_canonical_usize(pc);
-                        cols.instruction.populate(instruction);
+                        cols.opcode = F::from_canonical_u32(instruction.code());
+                        cols.aux_val = instruction.aux_value().into()
                     }
                 });
             });
@@ -111,6 +114,10 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
         // Store it as a map of PC -> count.
         let mut instruction_counts = HashMap::new();
         input.cpu_events.iter().for_each(|event| {
+            let pc = event.pc;
+            instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
+        });
+        input.dataop_events.iter().for_each(|event| {
             let pc = event.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
@@ -167,7 +174,12 @@ where
         let mult_local: &ProgramMultiplicityCols<AB::Var> = (*mult_local).borrow();
 
         // Constrain the interaction with CPU table
-        builder.receive_program(prep_local.pc, prep_local.instruction, mult_local.multiplicity);
+        builder.receive_program(
+            prep_local.pc,
+            prep_local.opcode,
+            prep_local.aux_val,
+            mult_local.multiplicity,
+        );
     }
 }
 
