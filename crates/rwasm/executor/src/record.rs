@@ -61,8 +61,10 @@ pub struct ExecutionRecord {
     pub const_events: Vec<ConstEvent>,
     /// A trace of the constant events.
     pub call_events: Vec<CallEvent>,
-
-    pub i64_events: Vec<I64AluEvent>,
+    /// A trace of the Mul64 events.
+    pub mul64_events: Vec<I64AluEvent>,
+    /// A trace of the Add64 events.
+    pub add64_events: Vec<I64AluEvent>,
     /// A trace of the constant events.
     pub sys_state_events: Vec<SysStateEvent>,
 
@@ -284,7 +286,7 @@ impl MachineRecord for ExecutionRecord {
         stats.insert("branch_events".to_string(), self.branch_events.len());
         stats.insert("const_events".to_string(), self.const_events.len());
         stats.insert("call_events".to_string(), self.call_events.len());
-        stats.insert("i64_events".to_string(), self.i64_events.len());
+        stats.insert("i64_events".to_string(), self.mul64_events.len());
 
         for (syscall_code, events) in self.precompile_events.iter() {
             stats.insert(format!("syscall {syscall_code:?}"), events.len());

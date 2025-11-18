@@ -1203,7 +1203,13 @@ impl<'a> Executor<'a> {
             res_hi_addr: memory_access.res_hi_addr.unwrap().to_virtual_addr(),
             res_hi_access: memory_access.res_hi_record,
         };
-        self.record.i64_events.push(event);
+        match opcode {
+            Opcode::I32Mul64 => self.record.mul64_events.push(event),
+            Opcode::I32Add64 => self.record.add64_events.push(event),
+            _ => {
+                unreachable!();
+            }
+        }
     }
 
     /// Execute an ecall opcode.
@@ -5301,9 +5307,7 @@ mod tests {
             let mut rt = Executor::new(program, SP1CoreOpts::default());
             rt.run().unwrap();
 
-            let prod = ((a as i32) as i64).wrapping_mul((b as i32) as i64);
-            // let prod = (a as i64).wrapping_mul(b as i64);
-
+            let prod = (a as i64).wrapping_mul(b as i64);
             let (lo, hi) = prod.split_into_i32_tuple();
 
             // After 64-bit ops, convention is: top-of-stack = HI, next = LO (see test_i32add64).

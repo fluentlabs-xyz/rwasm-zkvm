@@ -8,10 +8,10 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
-use rwasm::{Opcode, Opcode::I32Mul64};
+use rwasm::Opcode::I32Mul64;
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, I64AluEvent},
-    ByteOpcode, ExecutionRecord, DEFAULT_PC_INC,
+    ExecutionRecord, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::{BYTE_SIZE, LONG_WORD_SIZE, WORD_SIZE};
@@ -23,11 +23,6 @@ use crate::{
 };
 
 pub const NUM_MUL64_COLS: usize = size_of::<Mul64Cols<u8>>();
-const BYTE_MASK: u8 = 0xff;
-
-pub const fn get_msb(a: [u8; WORD_SIZE]) -> u8 {
-    (a[WORD_SIZE - 1] >> (BYTE_SIZE - 1)) & 1
-}
 
 #[derive(Default)]
 pub struct Mul64Chip;
@@ -42,8 +37,6 @@ pub struct Mul64Cols<T> {
     pub c: Word<T>,
     pub carry: [T; LONG_WORD_SIZE],
     pub product: [T; LONG_WORD_SIZE],
-    pub b_msb: T,
-    pub c_msb: T,
     pub is_real: T,
 }
 
@@ -66,10 +59,7 @@ impl<F: PrimeField32> MachineAir<F> for Mul64Chip {
         input: &ExecutionRecord,
         _: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
-        let events: Vec<_> =
-            input.i64_events.iter().filter(|e| e.opcode == Opcode::I32Mul64).collect();
-
-        let nb_rows = events.len();
+        let nb_rows = input.mul64_events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
         let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
 
@@ -84,7 +74,7 @@ impl<F: PrimeField32> MachineAir<F> for Mul64Chip {
 
                     if idx < nb_rows {
                         let mut byte_lookup_events = Vec::new();
-                        let event = events[idx];
+                        let event = &input.mul64_events[idx];
                         self.event_to_row(event, cols, &mut byte_lookup_events);
                     }
                 });
@@ -95,12 +85,10 @@ impl<F: PrimeField32> MachineAir<F> for Mul64Chip {
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
-        let events: Vec<_> =
-            input.i64_events.iter().filter(|e| e.opcode == Opcode::I32Mul64).collect();
+        let chunk_size = std::cmp::max(input.mul64_events.len() / num_cpus::get(), 1);
 
-        let chunk_size = std::cmp::max(events.len() / num_cpus::get(), 1);
-
-        let blu_batches = events
+        let blu_batches = input
+            .mul64_events
             .par_chunks(chunk_size)
             .map(|events| {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
@@ -117,7 +105,11 @@ impl<F: PrimeField32> MachineAir<F> for Mul64Chip {
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
-        shard.i64_events.iter().any(|e| e.opcode == Opcode::I32Mul64)
+        if let Some(shape) = shard.shape.as_ref() {
+            shape.included::<F, _>(self)
+        } else {
+            !shard.mul64_events.is_empty()
+        }
     }
 
     fn local_only(&self) -> bool {
@@ -139,32 +131,9 @@ impl Mul64Chip {
 
         let mut b = b_word.to_vec();
         let mut c = c_word.to_vec();
-
-        // Handle signs. I32Mul64 is signed.
-        let b_msb = get_msb(b_word);
-        cols.b_msb = F::from_canonical_u8(b_msb);
-        let c_msb = get_msb(c_word);
-        cols.c_msb = F::from_canonical_u8(c_msb);
-
-        b.resize(LONG_WORD_SIZE, BYTE_MASK * b_msb);
-        c.resize(LONG_WORD_SIZE, BYTE_MASK * c_msb);
-
-        blu.add_byte_lookup_events(vec![
-            ByteLookupEvent {
-                opcode: ByteOpcode::MSB,
-                a1: b_msb as u16,
-                a2: 0,
-                b: b_word[WORD_SIZE - 1],
-                c: 0,
-            },
-            ByteLookupEvent {
-                opcode: ByteOpcode::MSB,
-                a1: c_msb as u16,
-                a2: 0,
-                b: c_word[WORD_SIZE - 1],
-                c: 0,
-            },
-        ]);
+        // For I32Mul64 we now interpret b and c as u32 and zero-extend them to 64 bits.
+        b.resize(LONG_WORD_SIZE, 0);
+        c.resize(LONG_WORD_SIZE, 0);
 
         let mut product = [0u32; LONG_WORD_SIZE];
         for i in 0..b.len() {
@@ -197,24 +166,6 @@ impl Mul64Chip {
         blu.add_u8_range_checks(&b_word);
         blu.add_u8_range_checks(&c_word);
 
-        // Send range checks for the extended upper 4 bytes
-        for i in WORD_SIZE..LONG_WORD_SIZE {
-            blu.add_byte_lookup_event(ByteLookupEvent {
-                opcode: ByteOpcode::U8Range,
-                a1: 0,
-                a2: 0,
-                b: b[i],
-                c: 0,
-            });
-            blu.add_byte_lookup_event(ByteLookupEvent {
-                opcode: ByteOpcode::U8Range,
-                a1: 0,
-                a2: 0,
-                b: c[i],
-                c: 0,
-            });
-        }
-
         blu.add_u16_range_checks(&carry.map(|x| x as u16));
         blu.add_u8_range_checks(&product.map(|x| x as u8));
     }
@@ -230,29 +181,10 @@ where
         let local: &Mul64Cols<AB::Var> = (*local).borrow();
         let base = AB::F::from_canonical_u32(1 << 8);
         let zero: AB::Expr = AB::F::zero().into();
-        let byte_mask = AB::F::from_canonical_u8(BYTE_MASK);
 
         builder.assert_bool(local.is_real);
 
-        // MSB checks
-        builder.send_byte(
-            ByteOpcode::MSB.as_field::<AB::F>(),
-            local.b_msb,
-            local.b[WORD_SIZE - 1],
-            zero.clone(),
-            local.is_real,
-        );
-        builder.send_byte(
-            ByteOpcode::MSB.as_field::<AB::F>(),
-            local.c_msb,
-            local.c[WORD_SIZE - 1],
-            zero.clone(),
-            local.is_real,
-        );
-        builder.assert_bool(local.b_msb);
-        builder.assert_bool(local.c_msb);
-
-        // Sign extend b and c
+        // Zero-extend b and c from 32 bits to 64 bits (unsigned semantics).
         let (b, c) = {
             let mut b: Vec<AB::Expr> = vec![zero.clone(); LONG_WORD_SIZE];
             let mut c: Vec<AB::Expr> = vec![zero.clone(); LONG_WORD_SIZE];
@@ -261,8 +193,9 @@ where
                     b[i] = local.b[i].into();
                     c[i] = local.c[i].into();
                 } else {
-                    b[i] = local.b_msb * byte_mask;
-                    c[i] = local.c_msb * byte_mask;
+                    // Upper bytes are zero for u32 operands.
+                    b[i] = zero.clone();
+                    c[i] = zero.clone();
                 }
             }
             (b, c)
@@ -271,24 +204,6 @@ where
         // Send range checks for original b and c bytes
         builder.slice_range_check_u8(&local.b.0, local.is_real);
         builder.slice_range_check_u8(&local.c.0, local.is_real);
-
-        // Send range checks ONLY for the sign-extended upper 4 bytes
-        for i in WORD_SIZE..LONG_WORD_SIZE {
-            builder.send_byte(
-                ByteOpcode::U8Range.as_field::<AB::F>(),
-                AB::Expr::zero(),
-                b[i].clone(),
-                AB::Expr::zero(),
-                local.is_real,
-            );
-            builder.send_byte(
-                ByteOpcode::U8Range.as_field::<AB::F>(),
-                AB::Expr::zero(),
-                c[i].clone(),
-                AB::Expr::zero(),
-                local.is_real,
-            );
-        }
 
         // Uncarried product
         let mut m: Vec<AB::Expr> = vec![zero.clone(); LONG_WORD_SIZE];
@@ -362,8 +277,8 @@ mod tests {
         let mut output = ExecutionRecord::default();
         let b = 2u32;
         let c = 3u32;
-        let result = (b as i32 as i64) * (c as i32 as i64);
-        shard.i64_events.push(I64AluEvent {
+        let result = (b as i64).wrapping_mul(c as i64);
+        shard.mul64_events.push(I64AluEvent {
             pc: 0,
             opcode: Opcode::I32Mul64,
             a_lo: result as u32,
@@ -398,8 +313,8 @@ mod tests {
         ];
 
         for (b, c) in test_cases {
-            let result = (b as i32 as i64) * (c as i32 as i64);
-            shard.i64_events.push(I64AluEvent {
+            let result = (b as i64).wrapping_mul(c as i64);
+            shard.mul64_events.push(I64AluEvent {
                 pc: 0,
                 opcode: Opcode::I32Mul64,
                 a_lo: result as u32,
@@ -426,7 +341,7 @@ mod tests {
 
         let b = 12345u32;
         let c = 54321u32;
-        let correct_res = (b as i32 as i64) * (c as i32 as i64);
+        let correct_res = (b as i64).wrapping_mul(c as i64);
         let wrong_res = correct_res.wrapping_add(1);
 
         let program = rwasm_executor::Program::from_instrs(vec![
@@ -441,7 +356,7 @@ mod tests {
         let malicious = move |prover: &P, record: &mut ExecutionRecord| {
             let mut malicious_record = record.clone();
             if let Some(event) =
-                malicious_record.i64_events.iter_mut().find(|e| e.opcode == Opcode::I32Mul64)
+                malicious_record.mul64_events.iter_mut().find(|e| e.opcode == Opcode::I32Mul64)
             {
                 event.a_lo = wrong_res as u32;
                 event.a_hi = (wrong_res >> 32) as u32;
