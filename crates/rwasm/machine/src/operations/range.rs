@@ -22,10 +22,6 @@ impl<F: PrimeField32, const START: u32, const END: u32> Range16bCols<F, START, E
         // We subtract the START to work with the value that is in the range [0..END -
         // START]
         let (shifted_value, overflow) = value.overflowing_sub(START);
-        println!(
-            "value:{} START:{},shifted_value:{},overflow:{}",
-            value, START, shifted_value, overflow
-        );
         assert!(!overflow);
 
         let shifted_value: u16 = shifted_value.try_into().unwrap();
@@ -189,15 +185,9 @@ impl<
         // START]
 
         let (shifted_value, overflow) = value.overflowing_sub(START);
-        println!("range32");
-        println!(
-            "value:{} START:{},shifted_value:{},overflow:{}",
-            value, START, shifted_value, overflow
-        );
         assert!(!overflow);
         let hi_16bits: u16 = (shifted_value >> 16) as u16;
         let low_16bits: u16 = shifted_value as u16;
-        println!("hi_16bits:{},low16bits:{} value:{}", hi_16bits, low_16bits, value);
         let hi_is_eq_ub_hi = hi_16bits == Self::UB_HI_16BITS_SHIFTED;
         self.hi_is_eq_ub_hi = F::from_bool(hi_is_eq_ub_hi);
 
