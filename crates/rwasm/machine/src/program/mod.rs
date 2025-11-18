@@ -114,12 +114,10 @@ impl<F: PrimeField32> MachineAir<F> for ProgramChip {
         // Store it as a map of PC -> count.
         let mut instruction_counts = HashMap::new();
         input.cpu_events.iter().for_each(|event| {
-            println!("cpu events:{:?}", event);
             let pc = event.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
         input.dataop_events.iter().for_each(|event| {
-            println!("dataop events:{:?}", event);
             let pc = event.pc;
             instruction_counts.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         });
