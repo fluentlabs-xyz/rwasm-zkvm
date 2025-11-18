@@ -795,7 +795,7 @@ impl<'a> Executor<'a> {
                         call_data.table_id,
                         call_data.table_idx,
                         call_sp_record,
-                        call_data.table_access.map(|x| MemoryRecordEnum::Read(x)),
+                        call_data.table_access.map(MemoryRecordEnum::Read),
                         dataop_event,
                     );
                 }
