@@ -4,7 +4,7 @@ use core::{
 };
 
 use hashbrown::HashMap;
-use p3_air::{Air, AirBuilder, BaseAir};
+use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
@@ -36,7 +36,6 @@ pub struct Mul64Cols<T> {
     pub b: Word<T>,
     pub c: Word<T>,
     pub carry: [T; LONG_WORD_SIZE],
-    pub product: [T; LONG_WORD_SIZE],
     pub is_real: T,
 }
 
@@ -155,19 +154,22 @@ impl Mul64Chip {
             cols.carry[i] = F::from_canonical_u32(carry[i]);
         }
 
-        cols.product = product.map(F::from_canonical_u32);
         cols.a_lo = event.a_lo.into();
         cols.a_hi = event.a_hi.into();
         cols.b = Word(b_word.map(F::from_canonical_u8));
         cols.c = Word(c_word.map(F::from_canonical_u8));
         cols.is_real = F::one();
 
-        // Send range checks for the original 4 bytes
+        let a_lo_word = event.a_lo.to_le_bytes();
+        let a_hi_word = event.a_hi.to_le_bytes();
+
+        // Send range checks for all 32-bit words (inputs and outputs).
         blu.add_u8_range_checks(&b_word);
         blu.add_u8_range_checks(&c_word);
+        blu.add_u8_range_checks(&a_lo_word);
+        blu.add_u8_range_checks(&a_hi_word);
 
         blu.add_u16_range_checks(&carry.map(|x| x as u16));
-        blu.add_u8_range_checks(&product.map(|x| x as u8));
     }
 }
 
@@ -215,25 +217,26 @@ where
             }
         }
 
-        // Carry propagation
+        // Carry propagation, directly constraining against a_lo/a_hi bytes.
         for i in 0..LONG_WORD_SIZE {
             let mut v = m[i].clone();
             if i > 0 {
                 v += local.carry[i - 1].into();
             }
             v -= local.carry[i] * base;
-            builder.assert_eq(local.product[i], v);
-        }
 
-        // Check result against a_lo and a_hi
-        for i in 0..WORD_SIZE {
-            builder.when(local.is_real).assert_eq(local.product[i], local.a_lo[i]);
-            builder.when(local.is_real).assert_eq(local.product[i + WORD_SIZE], local.a_hi[i]);
+            // Select the corresponding output byte from (a_lo, a_hi).
+            let out_byte: AB::Expr =
+                if i < WORD_SIZE { local.a_lo[i].into() } else { local.a_hi[i - WORD_SIZE].into() };
+
+            // Enforce that the carried product byte equals the output byte.
+            builder.assert_eq(out_byte, v);
         }
 
         // Range checks
         builder.slice_range_check_u16(&local.carry, local.is_real);
-        builder.slice_range_check_u8(&local.product, local.is_real);
+        builder.slice_range_check_u8(&local.a_lo.0, local.is_real);
+        builder.slice_range_check_u8(&local.a_hi.0, local.is_real);
 
         let opcode = local.is_real * AB::F::from_canonical_u32(I32Mul64.code());
 
