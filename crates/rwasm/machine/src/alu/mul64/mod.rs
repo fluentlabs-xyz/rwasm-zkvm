@@ -4,7 +4,7 @@ use core::{
 };
 
 use hashbrown::HashMap;
-use p3_air::{Air, BaseAir};
+use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
@@ -125,20 +125,23 @@ impl Mul64Chip {
     ) {
         cols.pc = F::from_canonical_u32(event.pc);
 
+        // Inputs are u32 (4 bytes)
         let b_word = event.b.to_le_bytes();
         let c_word = event.c.to_le_bytes();
 
+        // Max sum at any index is small enough for standard logic.
         let mut product = [0u32; LONG_WORD_SIZE];
-        for i in 0..b_word.len() {
-            for j in 0..c_word.len() {
-                if i + j < LONG_WORD_SIZE {
-                    product[i + j] += (b_word[i] as u32) * (c_word[j] as u32);
-                }
+        for i in 0..WORD_SIZE {
+            for j in 0..WORD_SIZE {
+                // i + j will range from 0 to 6 (fits in LONG_WORD_SIZE=8)
+                product[i + j] += (b_word[i] as u32) * (c_word[j] as u32);
             }
         }
 
         let base = (1 << BYTE_SIZE) as u32;
         let mut carry = [0u32; LONG_WORD_SIZE];
+
+        // Standard carry propagation over 8 bytes to form u64 result
         for i in 0..LONG_WORD_SIZE {
             carry[i] = product[i] / base;
             product[i] %= base;
@@ -157,7 +160,7 @@ impl Mul64Chip {
         let a_lo_word = event.a_lo.to_le_bytes();
         let a_hi_word = event.a_hi.to_le_bytes();
 
-        // Send range checks for all 32-bit words (inputs and outputs).
+        // Send range checks for inputs (u8) and carries (u16).
         blu.add_u8_range_checks(&b_word);
         blu.add_u8_range_checks(&c_word);
         blu.add_u8_range_checks(&a_lo_word);
@@ -175,56 +178,46 @@ where
         let main = builder.main();
         let local = main.row_slice(0);
         let local: &Mul64Cols<AB::Var> = (*local).borrow();
-        let base = AB::F::from_canonical_u32(1 << 8);
+        let base = AB::F::from_canonical_u32(1 << BYTE_SIZE);
         let zero = AB::Expr::zero();
 
         builder.assert_bool(local.is_real);
 
-        // Zero-extend b and c from 32 bits to 64 bits (unsigned semantics).
-        let (b, c) = {
-            let mut b = vec![zero.clone(); LONG_WORD_SIZE];
-            let mut c = vec![zero.clone(); LONG_WORD_SIZE];
-            for i in 0..WORD_SIZE {
-                b[i] = local.b[i].into();
-                c[i] = local.c[i].into();
-            }
-            (b, c)
-        };
-
-        // Send range checks for original b and c bytes
+        // Range checks
         builder.slice_range_check_u8(&local.b.0, local.is_real);
         builder.slice_range_check_u8(&local.c.0, local.is_real);
+        builder.slice_range_check_u8(&local.a_lo.0, local.is_real);
+        builder.slice_range_check_u8(&local.a_hi.0, local.is_real);
+        builder.slice_range_check_u16(&local.carry, local.is_real);
 
-        // Uncarried product
+        // We do NOT need to zero-extend b and c to length 8,
+        // we just iterate up to WORD_SIZE (4).
         let mut m: Vec<AB::Expr> = vec![zero.clone(); LONG_WORD_SIZE];
-        for i in 0..LONG_WORD_SIZE {
-            for j in 0..LONG_WORD_SIZE {
-                if i + j < LONG_WORD_SIZE {
-                    m[i + j] = m[i + j].clone() + b[i].clone() * c[j].clone();
-                }
+
+        for i in 0..WORD_SIZE {
+            for j in 0..WORD_SIZE {
+                // No `if i+j < ...` check needed, max index is 6, fits in 8.
+                m[i + j] = m[i + j].clone() + local.b[i].into() * local.c[j].into();
             }
         }
 
-        // Carry propagation, directly constraining against a_lo/a_hi bytes.
-        for i in 0..LONG_WORD_SIZE {
-            let mut v = m[i].clone();
-            if i > 0 {
-                v += local.carry[i - 1].into();
-            }
-            v -= local.carry[i] * base;
+        // Carry propagation logic (must cover full 64-bit result width)
+        let mut prev_carry = zero.clone();
 
-            // Select the corresponding output byte from (a_lo, a_hi).
+        for i in 0..LONG_WORD_SIZE {
+            // Current position sum = computed_products + carry_from_prev
+            let lhs = m[i].clone() + prev_carry.clone();
+
+            // Expected result = output_byte + 256 * new_carry
             let out_byte: AB::Expr =
                 if i < WORD_SIZE { local.a_lo[i].into() } else { local.a_hi[i - WORD_SIZE].into() };
 
-            // Enforce that the carried product byte equals the output byte.
-            builder.assert_eq(out_byte, v);
-        }
+            let rhs = out_byte + local.carry[i] * base;
 
-        // Range checks
-        builder.slice_range_check_u16(&local.carry, local.is_real);
-        builder.slice_range_check_u8(&local.a_lo.0, local.is_real);
-        builder.slice_range_check_u8(&local.a_hi.0, local.is_real);
+            builder.when(local.is_real).assert_eq(lhs, rhs);
+
+            prev_carry = local.carry[i].into();
+        }
 
         let opcode = local.is_real * AB::F::from_canonical_u32(I32Mul64.code());
 
@@ -268,7 +261,7 @@ mod tests {
         let mut output = ExecutionRecord::default();
         let b = 2u32;
         let c = 3u32;
-        let result = (b as i64).wrapping_mul(c as i64);
+        let result = (b as i64).wrapping_mul(c as i64); // effectively u32*u32 -> u64
         shard.mul64_events.push(I64AluEvent {
             pc: 0,
             opcode: Opcode::I32Mul64,
@@ -282,7 +275,7 @@ mod tests {
         });
         let chip = Mul64Chip::default();
         let trace: RowMajorMatrix<BabyBear> = chip.generate_trace(&shard, &mut output);
-        assert_eq!(trace.height(), 16); // Padded to a minimum of 16
+        assert_eq!(trace.height(), 16);
     }
 
     #[test]
@@ -299,7 +292,7 @@ mod tests {
             (1, 1),
             (u32::MAX, 1),
             (2, 3),
-            (u32::MAX, u32::MAX),
+            (u32::MAX, u32::MAX), // Max value check
             (1 << 20, 1 << 20),
         ];
 
