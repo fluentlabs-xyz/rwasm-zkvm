@@ -1,3 +1,4 @@
+mod add64;
 mod comp;
 mod extend;
 mod mul64;

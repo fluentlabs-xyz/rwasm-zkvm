@@ -272,6 +272,7 @@ impl MachineRecord for ExecutionRecord {
         let mut stats = HashMap::new();
         stats.insert("cpu_events".to_string(), self.cpu_events.len());
         stats.insert("add_events".to_string(), self.add_events.len());
+        stats.insert("add64_events".to_string(), self.add64_events.len());
         stats.insert("mul_events".to_string(), self.mul_events.len());
         stats.insert("sub_events".to_string(), self.sub_events.len());
         stats.insert("bitwise_events".to_string(), self.bitwise_events.len());
@@ -312,6 +313,7 @@ impl MachineRecord for ExecutionRecord {
     fn append(&mut self, other: &mut ExecutionRecord) {
         self.cpu_events.append(&mut other.cpu_events);
         self.add_events.append(&mut other.add_events);
+        self.add64_events.append(&mut other.add64_events);
         self.sub_events.append(&mut other.sub_events);
         self.mul_events.append(&mut other.mul_events);
         self.bitwise_events.append(&mut other.bitwise_events);

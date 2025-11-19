@@ -161,6 +161,9 @@ pub enum RwasmAirId {
 
     #[subenum(CoreAirId)]
     Mul64 = 51,
+
+    #[subenum(CoreAirId)]
+    Add64 = 52,
 }
 
 impl RwasmAirId {
@@ -170,6 +173,7 @@ impl RwasmAirId {
         vec![
             RwasmAirId::Cpu,
             RwasmAirId::AddSub,
+            RwasmAirId::Add64,
             RwasmAirId::Mul,
             RwasmAirId::Mul64,
             RwasmAirId::Bitwise,

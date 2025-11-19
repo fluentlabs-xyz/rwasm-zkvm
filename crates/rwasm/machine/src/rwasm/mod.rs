@@ -13,7 +13,7 @@ use sp1_stark::{
 use strum_macros::{EnumDiscriminants, EnumIter};
 
 use crate::{
-    alu::TrailingChip,
+    alu::{Add64Chip, TrailingChip},
     bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
     control_flow::{BranchChip, CallChip},
     global::GlobalChip,
@@ -87,6 +87,8 @@ pub enum RwasmAir<F: PrimeField32> {
     Mul(MulChip),
     /// An AIR for RISC-V Mul64 instruction.
     Mul64(Mul64Chip),
+    /// An AIR for rwasm add64 opcode.
+    Add64(Add64Chip),
     /// An AIR for RISC-V Div and Rem instructions.
     DivRem(DivRemChip),
     /// An AIR for RISC-V Lt instruction.
@@ -372,6 +374,10 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(extend.name(), extend.cost());
         chips.push(extend);
 
+        let add64 = Chip::new(RwasmAir::Add64(Add64Chip::default()));
+        costs.insert(add64.name(), add64.cost());
+        chips.push(add64);
+
         let add_sub = Chip::new(RwasmAir::Add(AddSubChip::default()));
         costs.insert(add_sub.name(), add_sub.cost());
         chips.push(add_sub);
@@ -469,6 +475,7 @@ impl<F: PrimeField32> RwasmAir<F> {
         vec![
             RwasmAir::Cpu(CpuChip::default()),
             RwasmAir::Add(AddSubChip::default()),
+            RwasmAir::Add64(Add64Chip::default()),
             RwasmAir::Bitwise(BitwiseChip::default()),
             RwasmAir::Mul(MulChip::default()),
             RwasmAir::Mul64(Mul64Chip::default()),
@@ -561,6 +568,7 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Program => RwasmAirId::Program,
             RwasmAirDiscriminants::Cpu => RwasmAirId::Cpu,
             RwasmAirDiscriminants::Add => RwasmAirId::AddSub,
+            RwasmAirDiscriminants::Add64 => RwasmAirId::Add64,
             RwasmAirDiscriminants::Bitwise => RwasmAirId::Bitwise,
             RwasmAirDiscriminants::Mul => RwasmAirId::Mul,
             RwasmAirDiscriminants::Mul64 => RwasmAirId::Mul64,
