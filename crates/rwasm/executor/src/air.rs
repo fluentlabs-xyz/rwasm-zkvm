@@ -160,7 +160,7 @@ pub enum RwasmAirId {
     Extend = 50,
 
     #[subenum(CoreAirId)]
-    Mul64 = 51,
+    AddMul64 = 51,
 }
 
 impl RwasmAirId {
@@ -171,7 +171,7 @@ impl RwasmAirId {
             RwasmAirId::Cpu,
             RwasmAirId::AddSub,
             RwasmAirId::Mul,
-            RwasmAirId::Mul64,
+            RwasmAirId::AddMul64,
             RwasmAirId::Bitwise,
             RwasmAirId::ShiftLeft,
             RwasmAirId::ShiftRight,

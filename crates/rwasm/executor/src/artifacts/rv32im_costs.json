@@ -50,5 +50,5 @@
   "TableGrow": 10000,
   "Trailing": 256,
   "Extend": 256,
-  "Mul64": 166
+  "AddMul64": 166
 }

@@ -604,8 +604,8 @@ fn derive_cluster_from_maximal_shape(shape: &Shape<RwasmAirId>) -> ShapeCluster<
     let extend_log_height = shape.log2_height(&RwasmAirId::Extend);
     maybe_log2_heights.insert(RwasmAirId::Extend, heuristic(extend_log_height, 1));
 
-    let mul64_log_height = shape.log2_height(&RwasmAirId::Mul64);
-    maybe_log2_heights.insert(RwasmAirId::Mul64, heuristic(mul64_log_height, 1));
+    let addmul64_log_height = shape.log2_height(&RwasmAirId::AddMul64);
+    maybe_log2_heights.insert(RwasmAirId::AddMul64, heuristic(addmul64_log_height, 1));
 
     let mul_log_height = shape.log2_height(&RwasmAirId::Mul);
     maybe_log2_heights.insert(RwasmAirId::Mul, heuristic(mul_log_height, 1));
@@ -737,7 +737,7 @@ pub mod tests {
             (RwasmAirId::AddSub, 10),
             (RwasmAirId::Bitwise, 10),
             (RwasmAirId::Mul, 10),
-            (RwasmAirId::Mul64, 12),
+            (RwasmAirId::AddMul64, 12),
             (RwasmAirId::ShiftRight, 10),
             (RwasmAirId::ShiftLeft, 10),
             (RwasmAirId::Lt, 10),

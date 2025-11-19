@@ -13,7 +13,7 @@ use sp1_stark::{
 use strum_macros::{EnumDiscriminants, EnumIter};
 
 use crate::{
-    alu::TrailingChip,
+    alu::{AddMul64Chip, TrailingChip},
     bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
     control_flow::{BranchChip, CallChip},
     global::GlobalChip,
@@ -30,8 +30,8 @@ use crate::{
 pub(crate) mod rwasm_chips {
     pub use crate::{
         alu::{
-            AddSubChip, BitwiseChip, DivRemChip, ExtendChip, LtChip, Mul64Chip, MulChip,
-            RotateChip, ShiftLeft, ShiftRightChip,
+            AddSubChip, BitwiseChip, DivRemChip, ExtendChip, LtChip, MulChip, RotateChip,
+            ShiftLeft, ShiftRightChip,
         },
         bytes::ByteChip,
         cpu::CpuChip,
@@ -85,8 +85,8 @@ pub enum RwasmAir<F: PrimeField32> {
     Bitwise(BitwiseChip),
     /// An AIR for RISC-V Mul instruction.
     Mul(MulChip),
-    /// An AIR for RISC-V Mul64 instruction.
-    Mul64(Mul64Chip),
+    /// An AIR for RISC-V Add64 and Mul64 instructions.
+    AddMul64(AddMul64Chip),
     /// An AIR for RISC-V Div and Rem instructions.
     DivRem(DivRemChip),
     /// An AIR for RISC-V Lt instruction.
@@ -384,9 +384,9 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(mul.name(), mul.cost());
         chips.push(mul);
 
-        let mul64 = Chip::new(RwasmAir::Mul64(Mul64Chip::default()));
-        costs.insert(mul64.name(), mul64.cost());
-        chips.push(mul64);
+        let addmul64 = Chip::new(RwasmAir::AddMul64(AddMul64Chip::default()));
+        costs.insert(addmul64.name(), addmul64.cost());
+        chips.push(addmul64);
 
         let shift_right = Chip::new(RwasmAir::ShiftRight(ShiftRightChip::default()));
         costs.insert(shift_right.name(), shift_right.cost());
@@ -471,7 +471,7 @@ impl<F: PrimeField32> RwasmAir<F> {
             RwasmAir::Add(AddSubChip::default()),
             RwasmAir::Bitwise(BitwiseChip::default()),
             RwasmAir::Mul(MulChip::default()),
-            RwasmAir::Mul64(Mul64Chip::default()),
+            RwasmAir::AddMul64(AddMul64Chip::default()),
             RwasmAir::DivRem(DivRemChip::default()),
             RwasmAir::Lt(LtChip::default()),
             RwasmAir::ShiftLeft(ShiftLeft::default()),
@@ -563,7 +563,7 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Add => RwasmAirId::AddSub,
             RwasmAirDiscriminants::Bitwise => RwasmAirId::Bitwise,
             RwasmAirDiscriminants::Mul => RwasmAirId::Mul,
-            RwasmAirDiscriminants::Mul64 => RwasmAirId::Mul64,
+            RwasmAirDiscriminants::AddMul64 => RwasmAirId::AddMul64,
             RwasmAirDiscriminants::DivRem => RwasmAirId::DivRem,
             RwasmAirDiscriminants::Lt => RwasmAirId::Lt,
             RwasmAirDiscriminants::ShiftLeft => RwasmAirId::ShiftLeft,
