@@ -7,7 +7,8 @@ use hashbrown::HashMap;
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
+use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
+use rayon::prelude::IntoParallelIterator;
 use rwasm::Opcode::{I32Add64, I32Mul64};
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, I64AluEvent},
@@ -100,39 +101,43 @@ impl<F: PrimeField32> MachineAir<F> for AddMul64Chip {
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
-        // 1. Generate dependencies for Add64 events
-        let chunk_size_add = std::cmp::max(input.add64_events.len() / num_cpus::get(), 1);
-        let blu_batches_add = input
-            .add64_events
-            .par_chunks(chunk_size_add)
-            .map(|events| {
-                let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-                events.iter().for_each(|event| {
-                    let mut row = [F::zero(); NUM_ADDMUL64_COLS];
-                    let cols: &mut AddMul64Cols<F> = row.as_mut_slice().borrow_mut();
-                    self.event_to_row(event, true, cols, &mut blu);
-                });
-                blu
-            })
-            .collect::<Vec<_>>();
-        output.add_byte_lookup_events_from_maps(blu_batches_add.iter().collect::<Vec<_>>());
+        let nb_rows = input.add64_events.len() + input.mul64_events.len();
+        if nb_rows == 0 {
+            return;
+        }
 
-        // 2. Generate dependencies for Mul64 events
-        let chunk_size_mul = std::cmp::max(input.mul64_events.len() / num_cpus::get(), 1);
-        let blu_batches_mul = input
-            .mul64_events
-            .par_chunks(chunk_size_mul)
-            .map(|events| {
+        let chunk_size = std::cmp::max(nb_rows / num_cpus::get(), 1);
+        let num_chunks = nb_rows.div_ceil(chunk_size);
+
+        // Process both event lists in a single parallel loop, indexed by 0..nb_rows
+        let blu_batches = (0..num_chunks)
+            .into_par_iter()
+            .map(|i| {
+                let start = i * chunk_size;
+                let end = std::cmp::min(start + chunk_size, nb_rows);
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-                events.iter().for_each(|event| {
+
+                for idx in start..end {
+                    // We must provide a temp row buffer because event_to_row requires it,
+                    // even though we only care about 'blu' here.
                     let mut row = [F::zero(); NUM_ADDMUL64_COLS];
                     let cols: &mut AddMul64Cols<F> = row.as_mut_slice().borrow_mut();
-                    self.event_to_row(event, false, cols, &mut blu);
-                });
+
+                    // Determine if we are processing an Add or Mul event based on index
+                    if idx < input.add64_events.len() {
+                        let event = &input.add64_events[idx];
+                        self.event_to_row(event, true, cols, &mut blu);
+                    } else {
+                        let mul_idx = idx - input.add64_events.len();
+                        let event = &input.mul64_events[mul_idx];
+                        self.event_to_row(event, false, cols, &mut blu);
+                    }
+                }
                 blu
             })
             .collect::<Vec<_>>();
-        output.add_byte_lookup_events_from_maps(blu_batches_mul.iter().collect::<Vec<_>>());
+
+        output.add_byte_lookup_events_from_maps(blu_batches.iter().collect::<Vec<_>>());
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -180,9 +185,7 @@ impl AddMul64Chip {
             // --- Add64 Witness Logic ---
             let mut carry_in: u16 = 0;
             for i in 0..WORD_SIZE {
-                let bi = b_word[i] as u16;
-                let ci = c_word[i] as u16;
-                let s = bi + ci + carry_in;
+                let s = (b_word[i] as u16) + (c_word[i] as u16) + carry_in;
                 let carry_out = s >> 8;
 
                 cols.carry[i] = F::from_canonical_u32(carry_out as u32);
@@ -247,13 +250,14 @@ where
 
         // --- ADD Operation Constraints ---
         {
+            let mut builder_add = builder.when(local.is_add);
             // 1. Carries must be boolean (specific to Add optimization)
             for i in 0..WORD_SIZE {
-                builder.when(local.is_add).assert_bool(local.carry[i]);
+                builder_add.assert_bool(local.carry[i]);
             }
             // 2. Upper carries (4..7) must be zero
             for i in WORD_SIZE..LONG_WORD_SIZE {
-                builder.when(local.is_add).assert_zero(local.carry[i]);
+                builder_add.assert_zero(local.carry[i]);
             }
 
             // 3. Addition Logic (Lower 32 bits)
@@ -262,17 +266,17 @@ where
                 let lhs = local.b[i].into() + local.c[i].into() + prev_carry.clone();
                 let rhs = local.a_lo[i].into() + local.carry[i].into() * base;
 
-                builder.when(local.is_add).assert_zero(lhs - rhs);
+                builder_add.assert_zero(lhs - rhs);
                 prev_carry = local.carry[i].into();
             }
 
             // 4. Upper 32 bits logic (Implicit zero-extension of inputs)
             // Result a_hi[0] must equal the carry out from the lower 32 bits.
-            builder.when(local.is_add).assert_eq(local.a_hi[0], prev_carry);
+            builder_add.assert_eq(local.a_hi[0], prev_carry);
 
             // The rest of a_hi must be zero.
             for i in 1..WORD_SIZE {
-                builder.when(local.is_add).assert_zero(local.a_hi[i]);
+                builder_add.assert_zero(local.a_hi[i]);
             }
         }
 
@@ -283,7 +287,7 @@ where
             // (Though Add carries are boolean, which satisfies u16, doing it selectively is
             // cleaner).
             builder.slice_range_check_u16(&local.carry, local.is_mul);
-
+            let mut builder_mul = builder.when(local.is_mul);
             // 2. Multiplication Grid (4x4)
             let mut m: Vec<AB::Expr> = vec![zero.clone(); LONG_WORD_SIZE];
             for i in 0..WORD_SIZE {
@@ -299,7 +303,7 @@ where
                 let lhs = m[i].clone() + prev_carry.clone();
 
                 // result = output_byte + 256 * new_carry
-                let out_byte: AB::Expr = if i < WORD_SIZE {
+                let out_byte = if i < WORD_SIZE {
                     local.a_lo[i].into()
                 } else {
                     local.a_hi[i - WORD_SIZE].into()
@@ -307,7 +311,7 @@ where
 
                 let rhs = out_byte + local.carry[i] * base;
 
-                builder.when(local.is_mul).assert_eq(lhs, rhs);
+                builder_mul.assert_eq(lhs, rhs);
                 prev_carry = local.carry[i].into();
             }
         }

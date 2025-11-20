@@ -820,7 +820,6 @@ impl<'a> Executor<'a> {
                 }
             }
         } else if opcode.is_64b_op() {
-            println!("emit_i64_event cpu");
             self.emit_i64_event(clk, pc, next_pc, opcode, res, res_hi, arg1, arg2, record);
         } else {
             println!("no event :ins:{:?},", opcode);
