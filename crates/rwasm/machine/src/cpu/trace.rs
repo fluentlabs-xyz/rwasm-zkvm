@@ -57,7 +57,6 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
                         let mut byte_lookup_events = Vec::new();
                         let event = &input.cpu_events[idx];
                         let instruction = input.program.fetch(event.pc);
-                        println!("i:{} j: {}idx:{} cpu event:{:?}", i, j, idx, event);
                         self.event_to_row(
                             event,
                             cols,

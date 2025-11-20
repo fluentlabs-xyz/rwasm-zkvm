@@ -45,7 +45,12 @@ where
         // Program constraints.
         // SAFETY: `local.is_real` is checked to be boolean in `eval_is_real`.
         // The `pc` and `instruction` is taken from the `ProgramChip`, where these are preprocessed.
-        builder.send_program(local.pc, local.instruction, local.is_real);
+        builder.send_program(
+            local.pc,
+            local.instruction.opcode,
+            local.instruction.aux_val,
+            local.is_real,
+        );
 
         // Assert the shard and clk to send.  Only the memory and syscall instructions need the
         // actual shard and clk values for memory access evals.
@@ -569,7 +574,8 @@ impl CpuChip {
             &local.op_arg1_access,
             local.instruction.is_brifeqz +
                 local.instruction.is_brifnez +
-                local.instruction.is_brtable,
+                local.instruction.is_brtable +
+                local.instruction.is_callindirect,
         );
 
         builder

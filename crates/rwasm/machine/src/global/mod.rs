@@ -101,9 +101,6 @@ impl<F: PrimeField32> MachineAir<F> for GlobalChip {
 
     fn generate_trace(&self, input: &Self::Record, _: &mut Self::Record) -> RowMajorMatrix<F> {
         let events = &input.global_interaction_events;
-        for (idx, event) in events.iter().enumerate() {
-            println!("global event:{:?} ,idx:{},", event, idx);
-        }
 
         let nb_rows = events.len();
         let padded_nb_rows = <GlobalChip as MachineAir<F>>::num_rows(self, input).unwrap();

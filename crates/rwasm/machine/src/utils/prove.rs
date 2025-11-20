@@ -226,11 +226,7 @@ where
                                         shape_config,
                                     )
                                 });
-                            println!("after trace record len:{}", records.len());
-                            for record in records.clone().iter() {
-                                println!("records stat:{:?}", record.stats());
-                            }
-                            println!("after traces records{:?} done? {}", records, done);
+
                             // Trace the checkpoint and reconstruct the execution records.
                             *report_aggregate.lock().unwrap() += report;
                             checkpoint
@@ -301,12 +297,9 @@ where
                                 }
 
                                 records_clone.append(&mut deferred);
-                                println!("records clone len:{:?}", records_clone.len());
-                                println!("records clone:{:?}", records_clone);
                                 // Generate the dependencies.
                                 tracing::debug_span!("generate dependencies", index).in_scope(
                                     || {
-                                        println!("deps records{:?}", records_clone);
                                         prover.machine().generate_dependencies(
                                             &mut records_clone,
                                             &opts,
@@ -421,7 +414,6 @@ where
                                         .collect::<Vec<_>>();
                                 });
                             } else {
-                                println!("main trace records{:?}", records);
                                 tracing::info_span!("generate main traces", index).in_scope(|| {
                                     main_traces = records
                                         .par_iter()
@@ -596,7 +588,6 @@ where
         #[cfg(feature = "debug")]
         {
             let all_records = all_records_rx.iter().flatten().collect::<Vec<_>>();
-            println!("all records:{:?}", all_records);
             let mut challenger = prover.machine().config().challenger();
             let pk_host = prover.pk_to_host(pk);
             prover.machine().debug_constraints(&pk_host, all_records, &mut challenger);
