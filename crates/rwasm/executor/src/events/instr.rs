@@ -238,7 +238,7 @@ pub struct I64AluEvent {
     /// riscv opcode
     pub opcode: Opcode,
     /// The result value
-    pub a: u32,
+    pub a_lo: u32,
     /// The result value's hi bits
     pub a_hi: u32,
     /// The second operand value.
@@ -268,6 +268,6 @@ impl I64AluEvent {
         res_hi_addr: u32,
         res_hi_access: Option<MemoryRecordEnum>,
     ) -> Self {
-        Self { pc, opcode, a, a_hi, b, c, code, res_hi_addr, res_hi_access }
+        Self { pc, opcode, a_lo: a, a_hi, b, c, code, res_hi_addr, res_hi_access }
     }
 }

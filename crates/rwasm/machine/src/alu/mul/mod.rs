@@ -28,7 +28,7 @@
 //! if lower_half:
 //!     assert_eq(a, m\[0..4\])
 
-mod utils;
+pub(crate) mod utils;
 
 use core::{
     borrow::{Borrow, BorrowMut},
@@ -103,7 +103,7 @@ pub struct MulCols<T> {
     /// The sign extension of `c`.
     pub c_sign_extend: T,
 
-    /// Flag indicating whether the opcode is `MUL` (`u32 x u32`).
+    /// Flag indicating whether the opcode is `MUL`  (`u32 x u32`).
     pub is_mul: T,
 
     /// Flag indicating whether the opcode is `MULH` (`i32 x i32`, upper half).

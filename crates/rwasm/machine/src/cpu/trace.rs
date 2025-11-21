@@ -139,6 +139,7 @@ impl CpuChip {
         );
         cols.is_syscall = F::from_bool(instruction.is_ecall_instruction());
         *cols.op_res_access.value_mut() = event.res.into();
+        *cols.op_res_hi_access.value_mut() = event.res_hi.into();
         *cols.op_arg1_access.value_mut() = event.arg1.into();
         *cols.op_arg2_access.value_mut() = event.arg2.into();
 
@@ -161,16 +162,14 @@ impl CpuChip {
             F::zero()
         };
 
-        // Populate memory accesses for a, b, and c.
-        if let Some(record) = event.res_record {
+        // Populate memory accesses for result (lo and optional hi for 64-bit ops).
+        if let Some(record_lo) = event.res_record {
             if instruction.is_ecall_instruction() {
-                // For ecall instructions, pass in a dummy byte lookup vector.  This syscall
-                // instruction chip also has a op_a_access field that will be
-                // populated and that will contribute to the byte lookup
-                // dependencies.
-                cols.op_res_access.populate(record, &mut Vec::new());
+                // For ecall instructions, pass in a dummy byte lookup vector.
+                cols.op_res_access.populate(record_lo, &mut Vec::new());
             } else {
-                cols.op_res_access.populate(record, blu_events);
+                // Lo write
+                cols.op_res_access.populate(record_lo, blu_events);
                 cols.op_res_addr.populate(
                     event.res_addr.unwrap().to_virtual_addr(),
                     blu_events,
@@ -178,6 +177,20 @@ impl CpuChip {
                 );
             }
         }
+        if let Some(record_hi) = event.res_hi_record {
+            // Hi write for 64-bit ops
+            if instruction.is_64b_op() {
+                cols.op_res_hi_access.populate(record_hi, blu_events);
+                cols.op_res_hi_addr.populate(
+                    event.res_hi_addr.unwrap().to_virtual_addr(),
+                    blu_events,
+                    true,
+                );
+            } else {
+                debug_assert!(false, "Missing res_hi_record for 64-bit op at pc={}", event.pc);
+            }
+        }
+        // Populate arg1/arg2 memory reads.
         if let Some(MemoryRecordEnum::Read(record)) = event.arg1_record {
             cols.op_arg1_access.populate(record, blu_events);
             cols.op_arg1_addr.populate(
@@ -221,30 +234,29 @@ impl CpuChip {
             cols.call_data.call_sp_is_zero = F::from_bool(event.call_sp == 0);
         }
 
-        // Populate range checks for a.
-        let a_bytes = cols
-            .op_res_access
-            .access
-            .value
-            .0
-            .iter()
-            .map(|x| x.as_canonical_u32())
-            .collect::<Vec<_>>();
-        blu_events.add_byte_lookup_event(ByteLookupEvent {
-            opcode: ByteOpcode::U8Range,
-            a1: 0,
-            a2: 0,
-            b: a_bytes[0] as u8,
-            c: a_bytes[1] as u8,
-        });
-        blu_events.add_byte_lookup_event(ByteLookupEvent {
-            opcode: ByteOpcode::U8Range,
-            a1: 0,
-            a2: 0,
-            b: a_bytes[2] as u8,
-            c: a_bytes[3] as u8,
-        });
-
+        // Populate range checks for lo (and hi if 64-bit).
+        let checks = if instruction.is_64b_op() {
+            vec![cols.op_res_access, cols.op_res_hi_access]
+        } else {
+            vec![cols.op_res_access]
+        };
+        for col in checks {
+            let bytes = col.access.value.0.iter().map(|x| x.as_canonical_u32()).collect::<Vec<_>>();
+            blu_events.add_byte_lookup_event(ByteLookupEvent {
+                opcode: ByteOpcode::U8Range,
+                a1: 0,
+                a2: 0,
+                b: bytes[0] as u8,
+                c: bytes[1] as u8,
+            });
+            blu_events.add_byte_lookup_event(ByteLookupEvent {
+                opcode: ByteOpcode::U8Range,
+                a1: 0,
+                a2: 0,
+                b: bytes[2] as u8,
+                c: bytes[3] as u8,
+            });
+        }
         // Assert that the instruction is not a no-op.
         cols.is_real = F::one();
     }

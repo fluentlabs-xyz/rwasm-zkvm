@@ -26,6 +26,12 @@ pub struct CpuEvent {
     pub res_record: Option<MemoryRecordEnum>,
     /// addr for operand result
     pub res_addr: Option<TypedAddress>,
+    /// The first operand.
+    pub res_hi: u32,
+    /// The first operand memory record.
+    pub res_hi_record: Option<MemoryRecordEnum>,
+    /// addr for operand result
+    pub res_hi_addr: Option<TypedAddress>,
     /// The second operand.
     pub arg1: u32,
     /// The second operand memory record.

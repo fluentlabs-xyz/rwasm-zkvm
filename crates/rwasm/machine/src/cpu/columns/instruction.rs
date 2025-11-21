@@ -69,6 +69,7 @@ pub struct InstructionCols<T> {
     pub is_callindirect: T,
     pub is_call: T,
     pub is_return: T,
+    pub is_64b_op: T,
 }
 
 impl<F: PrimeField> InstructionCols<F> {
@@ -81,6 +82,7 @@ impl<F: PrimeField> InstructionCols<F> {
         self.is_memory = F::from_bool(opcode.is_memory_instruction());
         self.is_branching = F::from_bool(opcode.is_branch_instruction());
         self.is_call_ins = F::from_bool(opcode.is_call_instruction());
+        self.is_64b_op = F::from_bool(opcode.is_64b_op());
         match opcode {
             Opcode::LocalGet(_) | Opcode::LocalSet(_) | Opcode::LocalTee(_) => {
                 self.is_local = F::one();
@@ -154,7 +156,6 @@ impl<F: PrimeField> InstructionCols<F> {
             Opcode::SignatureCheck(_) => self.is_skipped = F::one(),
             Opcode::Drop => self.is_skipped = F::one(),
             Opcode::TableGrow(_) => self.is_table_grow = F::one(),
-
             _ => {}
         }
     }
@@ -203,6 +204,7 @@ impl<T> IntoIterator for InstructionCols<T> {
             self.is_callinternal,
             self.is_return,
             self.is_skipped,
+            self.is_64b_op,
         ];
 
         columns.into_iter()

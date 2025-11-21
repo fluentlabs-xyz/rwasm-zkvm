@@ -1,3 +1,4 @@
+mod addmul64;
 mod call;
 mod comp;
 mod extend;

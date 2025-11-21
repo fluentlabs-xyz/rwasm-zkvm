@@ -729,6 +729,7 @@ impl<'a> Executor<'a> {
                 arg1,
                 opcode.aux_value(),
                 arg2,
+                res_hi,
                 record,
                 0u32,
                 call_data,
@@ -745,6 +746,7 @@ impl<'a> Executor<'a> {
                 arg1,
                 arg2,
                 res,
+                res_hi,
                 record,
                 0u32,
                 call_data,
@@ -839,6 +841,7 @@ impl<'a> Executor<'a> {
         arg1: u32,
         arg2: u32,
         res: u32,
+        res_hi: u32,
         record: MemoryAccessRecord,
         exit_code: u32,
         call_data: Option<TraceCallData>,
@@ -854,6 +857,9 @@ impl<'a> Executor<'a> {
             res,
             res_record: record.res_record,
             res_addr: record.res_addr,
+            res_hi,
+            res_hi_record: record.res_hi_record,
+            res_hi_addr: record.res_hi_addr,
             arg1,
             arg1_record: record.arg1_record,
             arg1_addr: record.arg1_addr,
@@ -1190,7 +1196,7 @@ impl<'a> Executor<'a> {
         pc: u32,
         next_pc: u32,
         opcode: Opcode,
-        res: u32,
+        res_lo: u32,
         res_hi: u32,
         arg1: u32,
         arg2: u32,
@@ -1199,7 +1205,7 @@ impl<'a> Executor<'a> {
         let event = I64AluEvent {
             pc,
             opcode,
-            a: res,
+            a_lo: res_lo,
             a_hi: res_hi,
             b: arg1,
             c: arg2,
@@ -1207,7 +1213,13 @@ impl<'a> Executor<'a> {
             res_hi_addr: memory_access.res_hi_addr.unwrap().to_virtual_addr(),
             res_hi_access: memory_access.res_hi_record,
         };
-        self.record.i64_events.push(event);
+        match opcode {
+            Opcode::I32Mul64 => self.record.mul64_events.push(event),
+            Opcode::I32Add64 => self.record.add64_events.push(event),
+            _ => {
+                unreachable!();
+            }
+        }
     }
 
     /// Execute an ecall opcode.
@@ -1343,7 +1355,7 @@ impl<'a> Executor<'a> {
             op_state.arg1,
             op_state.arg2,
             op_state.res,
-            op_state.res,
+            op_state.res_hi,
             op_state.memory_access,
             op_state.call_state,
             op_state.fat_op.clone(),
@@ -2027,7 +2039,7 @@ mod tests {
 
     use rwasm::{
         mem_index::{TypedAddress, SP_START, UNIT},
-        BranchOffset, Opcode,
+        BranchOffset, I64ValueSplit, Opcode,
     };
     use sp1_stark::SP1CoreOpts;
 
@@ -5158,6 +5170,7 @@ mod tests {
     }
     #[test]
     fn test_i32rot() {
+        let sp0 = SP_START;
         let b: u32 = 0x8000_0001u32;
         let c: u32 = 7u32;
         let program = Program::from_instrs(vec![
@@ -5173,6 +5186,7 @@ mod tests {
 
         let top = rt.state.memory.get(rt.state.sp).unwrap().value;
         assert_eq!(top, b, "recovery result mismatch");
+        assert_eq!(sp0, rt.state.sp + UNIT);
     }
 
     #[test]
@@ -5272,19 +5286,97 @@ mod tests {
 
     #[test]
     fn test_i32add64() {
-        let sp0 = SP_START;
-        let opcodes = vec![
-            Opcode::I32Const(u32::MAX.into()),
-            Opcode::I32Const(1u32.into()),
-            Opcode::I32Add64, // wraps to 0
-        ];
-        let program = Program::from_instrs(opcodes);
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
+        fn check(a: u32, b: u32) {
+            let sp0 = SP_START;
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(a.into()),
+                Opcode::I32Const(b.into()),
+                Opcode::I32Add64,
+            ]);
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
 
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
-        assert_eq!(rt.state.memory.get(rt.state.sp + 4).unwrap().value, 0);
-        assert_eq!(sp0 - 8, rt.state.sp);
+            let sum = (a as u64) + (b as u64);
+            let lo = (sum & 0xFFFF_FFFF) as u32;
+            let hi = (sum >> 32) as u32;
+
+            // Convention for 64-bit ops: top-of-stack = HI, next = LO.
+            assert_eq!(
+                rt.state.memory.get(rt.state.sp).unwrap().value,
+                hi,
+                "HI mismatch for a={:#x}, b={:#x}",
+                a,
+                b
+            );
+            assert_eq!(
+                rt.state.memory.get(rt.state.sp + 4).unwrap().value,
+                lo,
+                "LO mismatch for a={:#x}, b={:#x}",
+                a,
+                b
+            );
+            // Two 32-bit words were produced
+            assert_eq!(sp0, rt.state.sp + 2 * UNIT);
+        }
+
+        // Basic and edge cases
+        check(0, 0); // 0 + 0 -> (hi=0, lo=0)
+        check(u32::MAX, 0); // max + 0
+        check(u32::MAX, 1); // carry into HI -> (hi=1, lo=0)
+        check(u32::MAX, u32::MAX); // 0xFFFF_FFFF + 0xFFFF_FFFF -> (hi=1, lo=0xFFFF_FFFE)
+        check(0x7FFF_FFFF, 1); // boundary without HI carry -> (hi=0, lo=0x8000_0000)
+
+        // Cross terms around the carry boundary
+        check(0xFFFF_0000, 0x0000_FFFF); // no HI carry -> (hi=0, lo=0xFFFF_FFFF)
+        check(0xFFFF_0001, 0x0000_FFFF); // exact 2^32 -> (hi=1, lo=0)
+
+        // Symmetry / commutativity sanity
+        check(0x1234_5678, 0x9ABC_DEF0);
+        check(0x9ABC_DEF0, 0x1234_5678);
+    }
+    #[test]
+    fn test_i32mul64() {
+        fn check(a: u32, b: u32) {
+            let sp0 = SP_START;
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(a.into()),
+                Opcode::I32Const(b.into()),
+                Opcode::I32Mul64,
+            ]);
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
+
+            let prod = (a as i64).wrapping_mul(b as i64);
+            let (lo, hi) = prod.split_into_i32_tuple();
+
+            // After 64-bit ops, convention is: top-of-stack = HI, next = LO (see test_i32add64).
+            assert_eq!(
+                rt.state.memory.get(rt.state.sp).unwrap().value,
+                hi as u32,
+                "HI mismatch for a={:#x}, b={:#x}",
+                a,
+                b
+            );
+            assert_eq!(
+                rt.state.memory.get(rt.state.sp + 4).unwrap().value,
+                lo as u32,
+                "LO mismatch for a={:#x}, b={:#x}",
+                a,
+                b
+            );
+            // Two 32-bit words remain on the stack
+            assert_eq!(sp0, rt.state.sp + 2 * UNIT);
+        }
+
+        // Edge & sanity cases
+        check(0, 0); // zero * zero
+        check(u32::MAX, 1); // max * 1
+        check(u32::MAX, u32::MAX); // max * max -> hi = 0xFFFF_FFFE, lo = 1
+        check(0x8000_0000, 2); // 2^31 * 2 = 2^32 -> hi=1, lo=0
+        check(0xFFFF_0000, 0x0000_FFFF); // cross terms
+                                         // Random-ish sanity and commutativity
+        check(0x1234_5678, 0x9ABC_DEF0);
+        check(0x9ABC_DEF0, 0x1234_5678);
     }
     #[test]
     fn test_i32extend8s() {

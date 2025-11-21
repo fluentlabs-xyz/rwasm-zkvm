@@ -254,6 +254,85 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
             InteractionScope::Local,
         );
     }
+    /// Sends a 64-bit instruction to be processed.
+    #[allow(clippy::too_many_arguments)]
+    fn send_64_instruction(
+        &mut self,
+        shard: impl Into<Self::Expr> + Clone,
+        clk: impl Into<Self::Expr> + Clone,
+        pc: impl Into<Self::Expr>,
+        next_pc: impl Into<Self::Expr>,
+        num_extra_cycles: impl Into<Self::Expr>,
+        opcode: impl Into<Self::Expr>,
+        a: Word<impl Into<Self::Expr>>,
+        a_hi: Word<impl Into<Self::Expr>>,
+        b: Word<impl Into<Self::Expr>>,
+        c: Word<impl Into<Self::Expr>>,
+        is_memory: impl Into<Self::Expr>,
+        is_syscall: impl Into<Self::Expr>,
+        is_halt: impl Into<Self::Expr>,
+        multiplicity: impl Into<Self::Expr>,
+    ) {
+        let values = once(shard.into())
+            .chain(once(clk.into()))
+            .chain(once(pc.into()))
+            .chain(once(next_pc.into()))
+            .chain(once(num_extra_cycles.into()))
+            .chain(once(opcode.into()))
+            .chain(a.0.into_iter().map(Into::into))
+            .chain(a_hi.0.into_iter().map(Into::into))
+            .chain(b.0.into_iter().map(Into::into))
+            .chain(c.0.into_iter().map(Into::into))
+            .chain(once(is_memory.into()))
+            .chain(once(is_syscall.into()))
+            .chain(once(is_halt.into()))
+            .collect();
+
+        self.send(
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Instruction),
+            InteractionScope::Local,
+        );
+    }
+
+    /// Receives a 64-bit operation to be processed.
+    #[allow(clippy::too_many_arguments)]
+    fn receive_64_instruction(
+        &mut self,
+        shard: impl Into<Self::Expr> + Clone,
+        clk: impl Into<Self::Expr> + Clone,
+        pc: impl Into<Self::Expr>,
+        next_pc: impl Into<Self::Expr>,
+        num_extra_cycles: impl Into<Self::Expr>,
+        opcode: impl Into<Self::Expr>,
+        a: Word<impl Into<Self::Expr>>,
+        a_hi: Word<impl Into<Self::Expr>>,
+        b: Word<impl Into<Self::Expr>>,
+        c: Word<impl Into<Self::Expr>>,
+        is_memory: impl Into<Self::Expr>,
+        is_syscall: impl Into<Self::Expr>,
+        is_halt: impl Into<Self::Expr>,
+        multiplicity: impl Into<Self::Expr>,
+    ) {
+        let values = once(shard.into())
+            .chain(once(clk.into()))
+            .chain(once(pc.into()))
+            .chain(once(next_pc.into()))
+            .chain(once(num_extra_cycles.into()))
+            .chain(once(opcode.into()))
+            .chain(a.0.into_iter().map(Into::into))
+            .chain(a_hi.0.into_iter().map(Into::into))
+            .chain(b.0.into_iter().map(Into::into))
+            .chain(c.0.into_iter().map(Into::into))
+            .chain(once(is_memory.into()))
+            .chain(once(is_syscall.into()))
+            .chain(once(is_halt.into()))
+            .collect();
+
+        self.receive(
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Instruction),
+            InteractionScope::Local,
+        );
+    }
 
     /// Sends an syscall operation to be processed (with "ECALL" opcode).
     #[allow(clippy::too_many_arguments)]

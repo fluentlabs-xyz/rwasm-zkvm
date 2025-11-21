@@ -268,8 +268,8 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                     (air_id.to_string(), allowed_log2_height),
                     (
                         RwasmAir::<F>::SyscallPrecompile(SyscallChip::precompile()).name(),
-                        ((1 << allowed_log2_height)
-                            .div_ceil(&air_id.rows_per_event())
+                        (((1 << allowed_log2_height) as usize)
+                            .div_ceil(air_id.rows_per_event())
                             .next_power_of_two()
                             .ilog2() as usize)
                             .max(4),
@@ -604,6 +604,9 @@ fn derive_cluster_from_maximal_shape(shape: &Shape<RwasmAirId>) -> ShapeCluster<
     let extend_log_height = shape.log2_height(&RwasmAirId::Extend);
     maybe_log2_heights.insert(RwasmAirId::Extend, heuristic(extend_log_height, 1));
 
+    let addmul64_log_height = shape.log2_height(&RwasmAirId::AddMul64);
+    maybe_log2_heights.insert(RwasmAirId::AddMul64, heuristic(addmul64_log_height, 1));
+
     let mul_log_height = shape.log2_height(&RwasmAirId::Mul);
     maybe_log2_heights.insert(RwasmAirId::Mul, heuristic(mul_log_height, 1));
 
@@ -734,6 +737,7 @@ pub mod tests {
             (RwasmAirId::AddSub, 10),
             (RwasmAirId::Bitwise, 10),
             (RwasmAirId::Mul, 10),
+            (RwasmAirId::AddMul64, 12),
             (RwasmAirId::ShiftRight, 10),
             (RwasmAirId::ShiftLeft, 10),
             (RwasmAirId::Lt, 10),
