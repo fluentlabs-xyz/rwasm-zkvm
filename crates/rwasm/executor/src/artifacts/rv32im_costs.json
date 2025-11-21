@@ -46,7 +46,7 @@
   "MemoryInstrs": 93,
   "Secp256k1DoubleAssign": 4564,
   "Rotate": 256,
-  "TableInitFill": 10000,
+  "TableCopy": 10000,
   "TableGrow": 10000,
   "Trailing": 256,
   "Extend": 256,

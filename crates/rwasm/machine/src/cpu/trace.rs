@@ -44,7 +44,6 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_CPU_COLS);
 
         let chunk_size = std::cmp::max(input.cpu_events.len() / num_cpus::get(), 1);
-        println!("input.cpu_events{:?}", input.cpu_events);
         values.chunks_mut(chunk_size * NUM_CPU_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
                 rows.chunks_mut(NUM_CPU_COLS).enumerate().for_each(|(j, row)| {
@@ -213,6 +212,7 @@ impl CpuChip {
                 Opcode::Call(_) => instruction.aux_value(),
                 Opcode::TableInit(_) => SyscallCode::TABLE_INIT.syscall_id(),
                 Opcode::TableFill(_) => SyscallCode::TABLE_FILL.syscall_id(),
+                Opcode::TableCopy(..) => SyscallCode::TABLE_COPY.syscall_id(),
                 Opcode::TableGrow(_) => SyscallCode::TABLE_GROW.syscall_id(),
                 _ => unimplemented!(),
             };
@@ -227,7 +227,6 @@ impl CpuChip {
         }
 
         if let Some(call_data) = event.call_data {
-            println!("event.opcode:{},call_data:{:?}", instruction, event.call_data);
             cols.call_data.signature_id = F::from_canonical_u32(call_data.signature_id);
             cols.call_data.func_ref = F::from_canonical_u32(call_data.func_ref);
             cols.call_data.table_id = F::from_canonical_u32(call_data.table_id);

@@ -39,7 +39,6 @@ impl<F: PrimeField32> MachineAir<F> for CallChip {
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
         let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_CALL_COLS);
-        println!("!!! make call event");
         let blu_events = values
             .chunks_mut(chunk_size * NUM_CALL_COLS)
             .enumerate()

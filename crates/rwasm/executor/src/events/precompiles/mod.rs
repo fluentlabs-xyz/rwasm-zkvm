@@ -14,7 +14,7 @@ pub use edwards::*;
 pub use fptower::*;
 use hashbrown::HashMap;
 pub use keccak256_permute::*;
-use rwasm::event::{TableGrowEvent, TableInitFillEvent};
+use rwasm::event::{TableCopyEvent, TableGrowEvent};
 use serde::{Deserialize, Serialize};
 pub use sha256_compress::*;
 pub use sha256_extend::*;
@@ -76,7 +76,7 @@ pub enum PrecompileEvent {
     /// U256XU2048 mul precompile event.
     U256xU2048Mul(U256xU2048MulEvent),
 
-    TableInitFill(TableInitFillEvent),
+    TableCopy(TableCopyEvent),
 
     TableGrow(TableGrowEvent),
 }
@@ -139,7 +139,7 @@ impl PrecompileLocalMemory for Vec<(SyscallEvent, PrecompileEvent)> {
                 PrecompileEvent::Bls12381Fp2Mul(e) | PrecompileEvent::Bn254Fp2Mul(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
-                PrecompileEvent::TableInitFill(e) => {
+                PrecompileEvent::TableCopy(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
                 PrecompileEvent::TableGrow(e) => {

@@ -81,7 +81,6 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 ((event.value >> 16) & 255) as u32,
                 ((event.value >> 24) & 255) as u32,
             ];
-            println!("name:{},message:{:?}", name, message);
             GlobalInteractionEvent { message, is_receive, kind: InteractionKind::Memory as u8 }
         });
 

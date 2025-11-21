@@ -68,9 +68,7 @@ impl<F: PrimeField32> MachineAir<F> for TableGrowChip {
     /// Processes TABLE_GROW events in parallel to collect all byte lookup events
     /// required for constraint verification without generating actual trace rows.
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
-        println!("generate deps Table:");
         let events = input.get_precompile_events(SyscallCode::TABLE_GROW);
-        println!("table events:{:?}", events);
         let chunk_size = 1usize;
 
         // Process events in parallel chunks to collect byte lookup events efficiently

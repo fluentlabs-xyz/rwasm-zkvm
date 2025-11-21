@@ -9,11 +9,11 @@ pub fn test_base_case() {
     let ops = vec![
         Opcode::I32Const(0.into()),
         Opcode::I32Const(64.into()),
-        Opcode::TableGrow(0),
+        Opcode::TableGrow(1),
         Opcode::I32Const(1.into()),
         Opcode::I32Const(2.into()),
         Opcode::I32Const(3.into()),
-        Opcode::TableFill(0),
+        Opcode::TableFill(1),
         Opcode::I32Const(137.into()),
     ];
     let program = Program::from_instrs(ops);

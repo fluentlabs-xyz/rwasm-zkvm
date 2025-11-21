@@ -104,7 +104,6 @@ impl ExecutionState {
         println!("update state");
         println!("tracer:{:?}", tracer);
         for item in tracer.memory_records.iter() {
-            println!("addr{},record:{:?},", *item.0, *item.1);
             self.memory.insert(*item.0, *item.1);
         }
     }

@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 
-use crate::{air::MemoryAirBuilder, memory::ElementAddressCols};
+use crate::air::MemoryAirBuilder;
 
 use p3_air::{Air, AirBuilder, BaseAir};
 
@@ -16,12 +16,12 @@ pub use column::*;
 
 use rwasm::{
     mem_index::{TypedAddress, UNIT},
-    N_MAX_TABLE_SIZE,
+    N_MAX_ELEM_SEGMENTS_BITS, N_MAX_TABLE_SIZE,
 };
 
 #[derive(Default)]
-pub struct TableInitFillChip {}
-impl<AB> Air<AB> for TableInitFillChip
+pub struct TableCopyChip {}
+impl<AB> Air<AB> for TableCopyChip
 where
     AB: SP1AirBuilder,
 {
@@ -31,8 +31,8 @@ where
         let local: &TableInitCols<AB::Var> = (*local).borrow();
         let next: &TableInitCols<AB::Var> = (*next).borrow();
 
-        let is_real = local.is_table_init + local.is_table_fill;
-        let next_is_real = next.is_table_init + next.is_table_fill;
+        let is_real = local.is_table_init + local.is_table_fill + local.is_table_copy;
+        let next_is_real = next.is_table_init + next.is_table_fill + next.is_table_copy;
 
         self.eval_boolean_constraints(builder, local, is_real.clone());
 
@@ -41,7 +41,7 @@ where
         builder.when_first_row().assert_one(local.is_first);
 
         self.eval_real_row_constraints(builder, local, is_real.clone());
-        self.eval_operation_type_constraints(builder, local);
+        self.eval_opcode_and_aux_constraints(builder, local);
         self.eval_length_validation_constraints(builder, local);
 
         // Event Transition Constraints
@@ -65,11 +65,27 @@ where
         self.eval_initial_address_constraints(builder, local);
         self.eval_range_check_constraints(builder, local);
         self.eval_memory_access(local, builder);
-        self.eval_syscall_interactions(builder, local);
+
+        let syscall_id = local.is_table_init *
+            AB::Expr::from_canonical_u32(SyscallCode::TABLE_INIT.syscall_id() as u32) +
+            local.is_table_fill *
+                AB::Expr::from_canonical_u32(SyscallCode::TABLE_FILL.syscall_id() as u32) +
+            local.is_table_copy *
+                AB::Expr::from_canonical_u32(SyscallCode::TABLE_COPY.syscall_id() as u32);
+
+        builder.receive_syscall(
+            local.shard,
+            local.clk,
+            syscall_id,
+            AB::Expr::zero(),
+            local.aux_value,
+            local.is_first,
+            InteractionScope::Local,
+        );
     }
 }
 
-impl TableInitFillChip {
+impl TableCopyChip {
     // Boolean Constraints
     fn eval_boolean_constraints<AB: SP1AirBuilder>(
         &self,
@@ -80,11 +96,14 @@ impl TableInitFillChip {
         // Ensure all flag fields are boolean (0 or 1)
         builder.assert_bool(local.is_table_init);
         builder.assert_bool(local.is_table_fill);
+        builder.assert_bool(local.is_table_copy);
         builder.assert_bool(local.is_first);
         builder.assert_bool(local.is_last);
         builder.assert_bool(is_real);
         builder.assert_bool(local.is_non_zero_length);
-        builder.assert_bool(local.is_first_table_fill + local.is_first_table_init);
+        builder.assert_bool(local.should_read_elements);
+        builder.assert_bool(local.should_read_src_table);
+        builder.assert_bool(local.should_read_elements + local.should_read_src_table);
     }
 
     // Real Row Constraints
@@ -99,23 +118,28 @@ impl TableInitFillChip {
         builder.when(local.is_first).assert_one(is_real);
     }
 
-    // Operation Type Constraints
-    fn eval_operation_type_constraints<AB: SP1AirBuilder>(
+    // Opcode and Auxiliary Value Constraints
+
+    fn eval_opcode_and_aux_constraints<AB: SP1AirBuilder>(
         &self,
         builder: &mut AB,
         local: &TableInitCols<AB::Var>,
     ) {
-        // For table_fill operations: first row must be marked as is_first_table_fill
-        builder
-            .when(local.is_table_fill)
-            .when(local.is_first)
-            .assert_one(local.is_first_table_fill);
+        // TABLE_INIT: In rwasm, all elements are stored in segment 0, so aux_value must be zero
+        builder.when(local.is_first).when(local.is_table_init).assert_zero(local.aux_value);
 
-        // For table_init operations: first row must be marked as is_first_table_init
         builder
-            .when(local.is_table_init)
             .when(local.is_first)
-            .assert_one(local.is_first_table_init);
+            .when(local.is_table_fill)
+            .assert_eq(local.aux_value, local.dst_table_idx.value::<AB>());
+
+        // TABLE_COPY: aux_value encodes both table indices as (*dst_table_idx as u32) << 16 |
+        // (*src_table_idx as u32)
+        builder.when(local.is_first).when(local.is_table_copy).assert_eq(
+            local.aux_value,
+            local.dst_table_idx.value::<AB>() * AB::Expr::from_canonical_u32(1 << 16) +
+                local.src_table_idx.value::<AB>(),
+        );
     }
 
     // Length Validation Constraints
@@ -124,19 +148,30 @@ impl TableInitFillChip {
         builder: &mut AB,
         local: &TableInitCols<AB::Var>,
     ) {
-        // On first row: length field must match length from stack access
+        // For table_fill: should_read_src must be zero
         builder
-            .when(local.is_first)
-            .assert_eq(local.length.value::<AB>(), local.length_access.value().reduce::<AB>());
+            .when(local.is_table_fill)
+            .assert_zero(local.should_read_elements + local.should_read_src_table);
 
-        // For table_fill: should_read_elements must be zero
-        builder.when(local.is_table_fill).assert_zero(local.should_read_elements);
-
-        // For table_init with non-zero length: should_read_elements must be one
+        // For table_init and table_copy with non-zero length: should_read_src must be one
         builder
             .when(local.is_table_init)
             .when(local.is_non_zero_length)
             .assert_one(local.should_read_elements);
+
+        builder
+            .when(local.is_table_copy)
+            .when(local.is_non_zero_length)
+            .assert_one(local.should_read_src_table);
+
+        builder
+            .when(local.is_table_copy)
+            .when(local.is_first)
+            .assert_one(local.should_read_src_table_size);
+
+        builder
+            .when(local.is_table_fill + local.is_table_init)
+            .assert_zero(local.should_read_src_table_size);
 
         // For first row with zero length: length_access must be zero
         builder
@@ -167,13 +202,23 @@ impl TableInitFillChip {
             .when_not(local.is_last)
             .assert_eq(local.is_table_fill, next.is_table_fill);
         builder.when_transition().when_not(local.is_last).assert_word_eq(
-            *local.table_size_read_access.value(),
-            *next.table_size_read_access.value(),
+            *local.table_dst_size_read_access.value(),
+            *next.table_dst_size_read_access.value(),
+        );
+        builder.when_transition().when_not(local.is_last).assert_word_eq(
+            *local.table_src_size_read_access.value(),
+            *next.table_src_size_read_access.value(),
         );
         builder
             .when_transition()
             .when_not(local.is_last)
-            .assert_eq(local.table_idx.value::<AB>(), next.table_idx.value::<AB>());
+            .assert_eq(local.dst_table_idx.value::<AB>(), next.dst_table_idx.value::<AB>());
+        builder
+            .when_transition()
+            .when_not(local.is_last)
+            .when(local.is_table_copy)
+            .assert_eq(local.src_table_idx.value::<AB>(), next.src_table_idx.value::<AB>());
+
         builder
             .when_transition()
             .when_not(local.is_last)
@@ -200,7 +245,7 @@ impl TableInitFillChip {
     ) {
         // For table_init: value read from source must equal value written to destination
         builder
-            .when(local.is_table_init)
+            .when(local.is_table_init + local.is_table_copy)
             .assert_word_eq(*local.src_read_access.value(), *local.dst_write_access.value());
 
         // For table_fill with non-zero length
@@ -217,11 +262,15 @@ impl TableInitFillChip {
         local: &TableInitCols<AB::Var>,
     ) {
         // On last row with elements to read: src_address must equal src_access + length - 1
-        builder.when(local.is_last).when(local.should_read_elements).assert_eq(
-            local.src_access.value().reduce::<AB>() + local.length_access.value().reduce::<AB>() -
-                AB::Expr::one(),
-            local.src_address.value::<AB>(),
-        );
+        builder
+            .when(local.is_last)
+            .when(local.should_read_elements + local.should_read_src_table)
+            .assert_eq(
+                local.src_access.value().reduce::<AB>() +
+                    local.length_access.value().reduce::<AB>() -
+                    AB::Expr::one(),
+                local.src_address.value::<AB>(),
+            );
 
         // On last row with non-zero length: dst_address must equal dst_access + length - 1
         builder.when(local.is_last).when(local.is_non_zero_length).assert_eq(
@@ -240,10 +289,14 @@ impl TableInitFillChip {
         is_real: AB::Expr,
     ) {
         // For table_init within event: src_address increments by 1
-        builder.when_transition().when(local.is_table_init).when_not(local.is_last).assert_eq(
-            local.src_address.value::<AB>() + AB::Expr::one(),
-            next.src_address.value::<AB>(),
-        );
+        builder
+            .when_transition()
+            .when(local.is_table_init + local.is_table_copy)
+            .when_not(local.is_last)
+            .assert_eq(
+                local.src_address.value::<AB>() + AB::Expr::one(),
+                next.src_address.value::<AB>(),
+            );
 
         // For any real operation within event: dst_address increments by 1
         builder.when_transition().when(is_real).when_not(local.is_last).assert_eq(
@@ -261,7 +314,7 @@ impl TableInitFillChip {
         // For table_init first row: src_address must equal src_access
         builder
             .when(local.is_first)
-            .when(local.is_table_init)
+            .when(local.is_table_init + local.is_table_copy)
             .assert_eq(local.src_access.value().reduce::<AB>(), local.src_address.value::<AB>());
 
         // For first row: dst_address must equal dst_access
@@ -280,64 +333,58 @@ impl TableInitFillChip {
         StackAddressCols::<AB::Var>::range_check(builder, local.sp);
         builder.when(local.is_first).assert_one(local.sp.do_check::<AB>());
 
-        // Element address range check
-        ElementAddressCols::<AB::Var>::range_check(builder, local.src_address);
+        builder
+            .when(local.is_table_copy)
+            .assert_eq(local.src_end[0], local.table_src_size_read_access.value()[0]);
+        builder
+            .when(local.is_table_copy)
+            .assert_eq(local.src_end[1], local.table_src_size_read_access.value()[1]);
+
+        builder.when(local.is_table_init).assert_eq(
+            local.src_end[0],
+            AB::Expr::from_canonical_u8(N_MAX_ELEM_SEGMENTS_BITS as u8),
+        );
+
+        builder.when(local.is_table_init).assert_eq(
+            local.src_end[1],
+            AB::Expr::from_canonical_u8((N_MAX_ELEM_SEGMENTS_BITS >> 8) as u8),
+        );
+
+        DynamicSrcAddressCols::<AB::Var>::range_check(
+            builder,
+            local.src_address,
+            local.src_end[0].into(),
+            local.src_end[1].into(),
+        );
         builder
             .when(local.is_first)
-            .when(local.is_table_init)
+            .when(local.is_table_init + local.is_table_copy)
             .assert_one(local.src_address.do_check::<AB>());
         builder
             .when(local.is_last)
-            .when(local.is_table_init)
+            .when(local.is_table_init + local.is_table_copy)
             .assert_one(local.src_address.do_check::<AB>());
 
         // Dynamic table address range check
-        let table_size_value = local.table_size_read_access.value();
-        DynamicTableAddressCols::<AB::Var>::range_check(
+        let dst_table_size_value = local.table_dst_size_read_access.value();
+        DynamicDstAddressCols::<AB::Var>::range_check(
             builder,
             local.dst_address,
-            table_size_value[0].into(),
-            table_size_value[1].into(),
+            dst_table_size_value[0].into(),
+            dst_table_size_value[1].into(),
         );
         builder.when(local.is_first).assert_one(local.dst_address.do_check::<AB>());
         builder.when(local.is_last).assert_one(local.dst_address.do_check::<AB>());
 
+        TableIdxCols::<AB::Var>::range_check(builder, local.src_table_idx);
+        builder
+            .when(local.is_table_copy)
+            .when(local.is_first)
+            .assert_one(local.src_table_idx.do_check::<AB>());
+
         // Table index range check
-        TableIdxCols::<AB::Var>::range_check(builder, local.table_idx);
-        builder.when(local.is_first).assert_one(local.table_idx.do_check::<AB>());
-
-        // Length range check
-        LengthCols::<AB::Var>::range_check(builder, local.length);
-        builder.when(local.is_first).assert_one(local.length.do_check::<AB>());
-    }
-
-    // Syscall Interactions
-    fn eval_syscall_interactions<AB: SP1AirBuilder>(
-        &self,
-        builder: &mut AB,
-        local: &TableInitCols<AB::Var>,
-    ) {
-        // Receive TABLE_INIT syscall
-        builder.receive_syscall(
-            local.shard,
-            local.clk,
-            AB::Expr::from_canonical_u32(SyscallCode::TABLE_INIT.syscall_id() as u32),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            local.is_first_table_init,
-            InteractionScope::Local,
-        );
-
-        // Receive TABLE_FILL syscall
-        builder.receive_syscall(
-            local.shard,
-            local.clk,
-            AB::Expr::from_canonical_u32(SyscallCode::TABLE_FILL.syscall_id() as u32),
-            AB::Expr::zero(),
-            local.table_idx.value::<AB>(),
-            local.is_first_table_fill,
-            InteractionScope::Local,
-        );
+        TableIdxCols::<AB::Var>::range_check(builder, local.dst_table_idx);
+        builder.when(local.is_first).assert_one(local.dst_table_idx.do_check::<AB>());
     }
 
     // Memory Access Constraints
@@ -372,42 +419,67 @@ impl TableInitFillChip {
             local.is_first,
         );
 
-        let src_addr = AB::Expr::from_canonical_u32(TypedAddress::Element(0).to_virtual_addr()) +
-            local.src_address.value::<AB>() * unit.clone();
+        let elements_src_addr =
+            AB::Expr::from_canonical_u32(TypedAddress::Element(0).to_virtual_addr()) +
+                local.src_address.value::<AB>() * unit.clone();
 
-        let table_addr = AB::Expr::from_canonical_u32(TypedAddress::Table(0).to_virtual_addr()) +
-            (local.dst_address.value::<AB>() +
-                local.table_idx.value::<AB>() * AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE)) *
+        builder.eval_memory_access(
+            local.shard,
+            local.clk,
+            elements_src_addr,
+            &local.src_read_access,
+            local.should_read_elements,
+        );
+
+        let src_table_addr = AB::Expr::from_canonical_u32(TypedAddress::Table(0).to_virtual_addr()) +
+            (local.src_address.value::<AB>() +
+                local.src_table_idx.value::<AB>() *
+                    AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE)) *
                 unit.clone();
 
         builder.eval_memory_access(
             local.shard,
             local.clk,
-            src_addr,
+            src_table_addr,
             &local.src_read_access,
-            local.should_read_elements,
+            local.should_read_src_table,
+        );
+
+        builder.eval_memory_access(
+            local.shard,
+            local.clk + AB::Expr::one(),
+            AB::Expr::from_canonical_u32(TypedAddress::TableSize(0).to_virtual_addr()) +
+                local.src_table_idx.value::<AB>() * unit.clone(),
+            &local.table_src_size_read_access,
+            local.should_read_src_table_size,
         );
 
         builder.eval_memory_access(
             local.shard,
             local.clk,
             AB::Expr::from_canonical_u32(TypedAddress::TableSize(0).to_virtual_addr()) +
-                local.table_idx.value::<AB>() * unit,
-            &local.table_size_read_access,
+                local.dst_table_idx.value::<AB>() * unit.clone(),
+            &local.table_dst_size_read_access,
             local.is_first,
         );
 
+        let dst_addr = AB::Expr::from_canonical_u32(TypedAddress::Table(0).to_virtual_addr()) +
+            (local.dst_address.value::<AB>() +
+                local.dst_table_idx.value::<AB>() *
+                    AB::Expr::from_canonical_u32(N_MAX_TABLE_SIZE)) *
+                unit.clone();
+
         builder.eval_memory_access(
             local.shard,
-            local.clk + AB::Expr::from_canonical_u32(1),
-            table_addr,
+            local.clk + AB::Expr::one(),
+            dst_addr,
             &local.dst_write_access,
             local.is_non_zero_length,
         );
     }
 }
 
-impl<F> BaseAir<F> for TableInitFillChip {
+impl<F> BaseAir<F> for TableCopyChip {
     fn width(&self) -> usize {
         NUM_TABLE_INIT_SIZE
     }
@@ -452,7 +524,7 @@ mod test {
                 malicious_record.precompile_events.events.get_mut(&SyscallCode::TABLE_INIT)
             {
                 event.first_mut().map(|(_, event)| {
-                    let event = if let PrecompileEvent::TableInitFill(event) = event {
+                    let event = if let PrecompileEvent::TableCopy(event) = event {
                         event
                     } else {
                         unreachable!()

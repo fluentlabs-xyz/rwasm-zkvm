@@ -6022,7 +6022,7 @@ dependencies = [
 [[package]]
 name = "rwasm"
 version = "0.0.0"
-source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ftable-fill#39704d16aefcaaf89d8734826e2ac99cfa605724"
+source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ftable-copy#9307896bfea0b127f170d8c1c52a868d6ca7e4ec"
 dependencies = [
  "anyhow",
  "bincode 2.0.1",

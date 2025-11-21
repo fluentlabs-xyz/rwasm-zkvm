@@ -163,6 +163,9 @@ pub enum SyscallCode {
     /// Executes the `TableFill` FatOp.
     TABLE_FILL = 0x00_00_01_92,
 
+    /// Executes the `TableCopy` FatOp.
+    TABLE_COPY = 0x00_00_01_95,
+
     /// Executes the `TableInit` FatOp.
     TABLE_INIT = 0x00_02_01_96,
 }
@@ -212,6 +215,7 @@ impl SyscallCode {
             0x00_00_01_2D => SyscallCode::SECP256R1_DOUBLE,
             0x00_00_01_2E => SyscallCode::SECP256R1_DECOMPRESS,
             0x00_00_01_91 => SyscallCode::TABLE_GROW,
+            0x00_00_01_95 => SyscallCode::TABLE_COPY,
             0x00_02_01_96 => SyscallCode::TABLE_INIT,
             0x00_00_01_92 => SyscallCode::TABLE_FILL,
             _ => panic!("invalid syscall number: {value}"),
@@ -287,8 +291,9 @@ impl SyscallCode {
             SyscallCode::SECP256R1_ADD => RwasmAirId::Secp256r1AddAssign,
             SyscallCode::SECP256R1_DOUBLE => RwasmAirId::Secp256r1DoubleAssign,
             SyscallCode::SECP256R1_DECOMPRESS => RwasmAirId::Secp256r1Decompress,
-            SyscallCode::TABLE_INIT => RwasmAirId::TableInitFill,
-            SyscallCode::TABLE_FILL => RwasmAirId::TableInitFill,
+            SyscallCode::TABLE_INIT | SyscallCode::TABLE_COPY | SyscallCode::TABLE_FILL => {
+                RwasmAirId::TableCopy
+            }
             SyscallCode::TABLE_GROW => RwasmAirId::TableGrow,
             SyscallCode::HALT |
             SyscallCode::WRITE |

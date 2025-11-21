@@ -763,6 +763,7 @@ impl<'a> Executor<'a> {
             let syscall_code = match opcode {
                 Opcode::TableInit(_) => SyscallCode::TABLE_INIT,
                 Opcode::TableFill(_) => SyscallCode::TABLE_FILL,
+                Opcode::TableCopy(..) => SyscallCode::TABLE_COPY,
                 Opcode::TableGrow(_) => SyscallCode::TABLE_GROW,
                 _ => syscall_code,
             };
@@ -987,7 +988,6 @@ impl<'a> Executor<'a> {
         res: u32,
         record: MemoryAccessRecord,
     ) {
-        println!("record in emit:{:?}", record.memory.expect("Must have memory access"));
         let event = MemInstrEvent {
             shard: self.shard(),
             clk: self.state.clk,
@@ -999,7 +999,6 @@ impl<'a> Executor<'a> {
             mem_access: record.memory.expect("Must have memory access"),
             mem_access_hi: record.memory_hi,
         };
-        println!("mem event:{:?}", event);
         self.record.memory_instr_events.push(event);
         emit_memory_dependencies(self, event);
     }
@@ -1008,7 +1007,6 @@ impl<'a> Executor<'a> {
     #[inline]
     fn emit_branch_event(&mut self, opcode: Opcode, arg1: u32, arg2: u32, res: u32, next_pc: u32) {
         let event = BranchEvent { pc: self.state.pc, next_pc, opcode, res, arg1, arg2 };
-        println!("br event:{:?}", event);
         self.record.branch_events.push(event);
 
         emit_branch_dependencies(self, event);
@@ -1119,16 +1117,18 @@ impl<'a> Executor<'a> {
             SyscallCode::SECP256R1_ADD => todo!(),
             SyscallCode::SECP256R1_DOUBLE => todo!(),
             SyscallCode::SECP256R1_DECOMPRESS => todo!(),
-            SyscallCode::TABLE_INIT | SyscallCode::TABLE_FILL => match fat_op.unwrap() {
-                FatOpEvent::TableInitFill(event) => self.record.precompile_events.add_event(
-                    syscall_code,
-                    syscall_event,
-                    PrecompileEvent::TableInitFill(event),
-                ),
-                _ => {
-                    unreachable!();
+            SyscallCode::TABLE_INIT | SyscallCode::TABLE_FILL | SyscallCode::TABLE_COPY => {
+                match fat_op.unwrap() {
+                    FatOpEvent::TableCopy(event) => self.record.precompile_events.add_event(
+                        syscall_code,
+                        syscall_event,
+                        PrecompileEvent::TableCopy(event),
+                    ),
+                    _ => {
+                        unreachable!();
+                    }
                 }
-            },
+            }
             SyscallCode::TABLE_GROW => match fat_op.unwrap() {
                 FatOpEvent::TableGrow(table_grow_event) => self.record.precompile_events.add_event(
                     SyscallCode::TABLE_GROW,
@@ -1543,8 +1543,6 @@ impl<'a> Executor<'a> {
         self.state.proof_stream = proof_stream;
 
         let done = tracing::debug_span!("execute").in_scope(|| self.execute())?;
-        println!("cpu events:{:?}", self.record.cpu_events);
-        println!("data_op events{:?}", self.record.dataop_events);
         // Create a checkpoint using `memory_checkpoint`. Just include all memory if `done` since we
         // need it all for MemoryFinalize.
         let next_pc = self.state.pc;
@@ -1867,7 +1865,6 @@ impl<'a> Executor<'a> {
 
             for addr in self.state.memory.page_table.keys() {
                 if !self.program.memory_image.contains_key(&addr) {
-                    println!("addr:{}", addr);
                     self.report.touched_memory_addresses += 1;
 
                     // Program memory is initialized in the MemoryProgram chip and doesn't require
@@ -1877,13 +1874,11 @@ impl<'a> Executor<'a> {
                     let initial_value = self.state.uninitialized_memory.get(addr).unwrap_or(&0);
                     let init_event =
                         MemoryInitializeFinalizeEvent::initialize(addr, *initial_value, true);
-                    println!("init_event:{:?}", init_event);
                     memory_initialize_events.push(init_event);
                 }
                 let record = *self.state.memory.get(addr).unwrap();
                 let final_event =
                     MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record);
-                println!("final_event:{:?}", final_event);
                 memory_finalize_events.push(final_event);
             }
         }
@@ -1897,7 +1892,7 @@ impl<'a> Executor<'a> {
 
             if let Some(op_state) = self.store.tracer.logs.last() {
                 let addrs = match &op_state.fat_op {
-                    Some(FatOpEvent::TableInitFill(event)) => &event.local_mem_access_addr,
+                    Some(FatOpEvent::TableCopy(event)) => &event.local_mem_access_addr,
                     Some(FatOpEvent::TableGrow(event)) => &event.local_mem_access_addr,
                     _ => &Vec::new(),
                 };
@@ -2048,14 +2043,14 @@ mod tests {
         let start = SP_START;
         for idx in 1..16 {
             let rec = rt.state.memory.get(SP_START - 4 * idx);
-            match rec {
-                Some(rec) => {
-                    println!("addr: {}, pos:{},val:{}", SP_START - 4 * idx, idx, rec.value);
-                }
-                None => {
-                    println!("pos:{},empty", idx);
-                }
-            }
+            // match rec {
+            //     Some(rec) => {
+            //         println!("addr: {}, pos:{},val:{}", SP_START - 4 * idx, idx, rec.value);
+            //     }
+            //     None => {
+            //         println!("pos:{},empty", idx);
+            //     }
+            // }
         }
         for idx in 1..16 {
             let rec = rt.state.memory.get(SP_START + 4 * idx);
@@ -4964,6 +4959,27 @@ mod tests {
             Opcode::I32Const(5.into()),
             Opcode::TableFill(0),
             Opcode::TableGet(0),
+        ];
+        let program = Program::from_instrs(ops);
+
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+
+        rt.run().unwrap();
+    }
+
+    #[test]
+    fn test_table_copy() {
+        let ops = vec![
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(100.into()),
+            Opcode::TableGrow(0),
+            Opcode::I32Const(1.into()),
+            Opcode::I32Const(100.into()),
+            Opcode::TableGrow(1),
+            Opcode::I32Const(1.into()),
+            Opcode::I32Const(1.into()),
+            Opcode::I32Const(80.into()),
+            Opcode::TableCopy(0, 1),
         ];
         let program = Program::from_instrs(ops);
 

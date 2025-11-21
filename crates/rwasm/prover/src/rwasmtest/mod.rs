@@ -3,6 +3,7 @@ mod call;
 mod comp;
 mod extend;
 mod rotate;
+mod table_copy;
 mod table_fill;
 mod table_grow;
 mod table_init;
