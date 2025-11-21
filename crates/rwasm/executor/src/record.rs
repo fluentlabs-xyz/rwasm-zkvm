@@ -39,6 +39,8 @@ pub struct ExecutionRecord {
     pub add_events: Vec<AluEvent>,
     /// A trace of the MUL events.
     pub mul_events: Vec<AluEvent>,
+    /// A trace of the I32Wrap64 events.
+    pub wrap64_events: Vec<AluEvent>,
     /// A trace of the SUB events.
     pub sub_events: Vec<AluEvent>,
     /// A trace of the XOR, XORI, OR, ORI, AND, and ANDI events.

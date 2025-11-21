@@ -972,6 +972,9 @@ impl<'a> Executor<'a> {
             Opcode::I32Extend8S | Opcode::I32Extend16S => {
                 self.record.extend_events.push(event);
             }
+            Opcode::I32WrapI64 => {
+                self.record.wrap64_events.push(event);
+            }
             _ => unreachable!(),
         }
     }
@@ -5434,5 +5437,50 @@ mod tests {
                 assert_eq!(top, expected, "I32Extend16S({:#010x}) mismatch", input);
             }
         }
+    }
+    #[test]
+    fn test_i32wrap64() {
+        fn check(hi: u32, lo: u32) {
+            let sp0 = SP_START;
+
+            // Stack layout before I32Wrap64:
+            //   [..., lo, hi]  (hi on top)
+            let program = Program::from_instrs(vec![
+                Opcode::I32Const(lo.into()),
+                Opcode::I32Const(hi.into()),
+                Opcode::I32WrapI64,
+            ]);
+
+            let mut rt = Executor::new(program, SP1CoreOpts::default());
+            rt.run().unwrap();
+
+            // In Wasm, i32.wrap_i64 keeps the low 32 bits (mod 2^32).
+            let expected: u32 = lo;
+
+            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            assert_eq!(
+                top, expected,
+                "I32WrapI64 result mismatch for hi={:#010x}, lo={:#010x}",
+                hi, lo
+            );
+
+            // One 32-bit word should remain on the stack.
+            assert_eq!(sp0, rt.state.sp + UNIT); //
+        }
+
+        // Basic and edge cases
+        check(0x0000_0000, 0x0000_0000); // 0 -> 0
+        check(0x0000_0000, 0xFFFF_FFFF); // low all ones
+        check(0xFFFF_FFFF, 0x0000_0000); // sign-only hi, low zero
+        check(0xFFFF_FFFF, 0xFFFF_FFFF); // -1_i64 -> 0xFFFF_FFFF
+
+        // Mixed hi/lo patterns
+        check(0x0000_0001, 0x8000_0000); // 2^32 + 2^31 -> low 0x8000_0000
+        check(0x7FFF_FFFF, 0x1234_5678); // large positive i64
+        check(0x8000_0000, 0x89AB_CDEF); // negative i64
+
+        // Random-ish sanity values
+        check(0xDEAD_BEEF, 0xCAFE_BABE);
+        check(0x0123_4567, 0x89AB_CDEF);
     }
 }
