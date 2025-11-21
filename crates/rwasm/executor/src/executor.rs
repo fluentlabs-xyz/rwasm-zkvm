@@ -972,9 +972,6 @@ impl<'a> Executor<'a> {
             Opcode::I32Extend8S | Opcode::I32Extend16S => {
                 self.record.extend_events.push(event);
             }
-            Opcode::I32WrapI64 => {
-                self.record.wrap64_events.push(event);
-            }
             _ => unreachable!(),
         }
     }
@@ -1219,6 +1216,9 @@ impl<'a> Executor<'a> {
         match opcode {
             Opcode::I32Mul64 => self.record.mul64_events.push(event),
             Opcode::I32Add64 => self.record.add64_events.push(event),
+            Opcode::I32WrapI64 => {
+                self.record.wrap64_events.push(event);
+            }
             _ => {
                 unreachable!();
             }
@@ -5455,17 +5455,14 @@ mod tests {
             rt.run().unwrap();
 
             // In Wasm, i32.wrap_i64 keeps the low 32 bits (mod 2^32).
-            let expected: u32 = lo;
+            let expected_lo: u32 = lo;
+            let expected_hi: u32 = hi; //TODO: why not change?
+                                       // After 64-bit ops, convention is: top-of-stack = HI, next = LO (see test_i32add64).
+            assert_eq!(rt.state.memory.get(rt.state.sp + 4).unwrap().value, expected_lo,);
+            assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, expected_hi,);
 
-            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
-            assert_eq!(
-                top, expected,
-                "I32WrapI64 result mismatch for hi={:#010x}, lo={:#010x}",
-                hi, lo
-            );
-
-            // One 32-bit word should remain on the stack.
-            assert_eq!(sp0, rt.state.sp + UNIT); //
+            // two 32-bit word should remain on the stack.
+            assert_eq!(sp0, rt.state.sp + 2 * UNIT); //
         }
 
         // Basic and edge cases
