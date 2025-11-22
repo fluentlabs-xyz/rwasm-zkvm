@@ -192,39 +192,39 @@ impl ByteRecord for EmptyByteRecord {
     fn add_byte_lookup_event(&mut self, _event: ByteLookupEvent) {
         // do nothing
     }
-
+    #[inline(always)]
     fn add_byte_lookup_events_from_maps(
         &mut self,
         new_blu_events_vec: Vec<&HashMap<ByteLookupEvent, usize>>,
     ) {
-        todo!()
+        // do nothing
     }
-
+    #[inline(always)]
     fn add_byte_lookup_events(&mut self, blu_events: Vec<ByteLookupEvent>) {
-        todo!()
+        // do nothing
     }
-
+    #[inline(always)]
     fn add_u8_range_check(&mut self, a: u8, b: u8) {
-        todo!()
+        // do nothing
     }
-
+    #[inline(always)]
     fn add_u16_range_check(&mut self, a: u16) {
-        todo!()
+        // do nothing
     }
-
+    #[inline(always)]
     fn add_u8_range_checks(&mut self, bytes: &[u8]) {
-        todo!()
+        // do nothing
     }
-
+    #[inline(always)]
     fn add_u8_range_checks_field<F: PrimeField32>(&mut self, field_values: &[F]) {
-        todo!()
+        // do nothing
     }
-
+    #[inline(always)]
     fn add_u16_range_checks(&mut self, ls: &[u16]) {
-        todo!()
+        // do nothing
     }
-
+    #[inline(always)]
     fn lookup_or(&mut self, b: u8, c: u8) {
-        todo!()
+        // do nothing
     }
 }
