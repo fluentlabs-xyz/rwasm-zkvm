@@ -152,15 +152,17 @@ impl BitwiseChip {
         cols.is_or = F::from_bool(event.opcode == Opcode::I32Or);
         cols.is_and = F::from_bool(event.opcode == Opcode::I32And);
 
-        for ((b_a, b_b), b_c) in a.into_iter().zip(b).zip(c) {
-            let byte_event = ByteLookupEvent {
-                opcode: ByteOpcode::from(event.opcode),
-                a1: b_a as u16,
-                a2: 0,
-                b: b_b,
-                c: b_c,
-            };
-            blu.add_byte_lookup_event(byte_event);
+        if blu.is_enabled() {
+            for ((b_a, b_b), b_c) in a.into_iter().zip(b).zip(c) {
+                let byte_event = ByteLookupEvent {
+                    opcode: ByteOpcode::from(event.opcode),
+                    a1: b_a as u16,
+                    a2: 0,
+                    b: b_b,
+                    c: b_c,
+                };
+                blu.add_byte_lookup_event(byte_event);
+            }
         }
     }
 }
