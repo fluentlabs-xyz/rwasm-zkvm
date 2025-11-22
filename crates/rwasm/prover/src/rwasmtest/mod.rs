@@ -3,6 +3,7 @@ mod addsub;
 mod call;
 mod comp;
 mod extend;
+mod mul;
 mod rotate;
 mod table_grow;
 mod table_init;
