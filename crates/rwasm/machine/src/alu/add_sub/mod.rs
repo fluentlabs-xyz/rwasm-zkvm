@@ -11,7 +11,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 use rwasm::Opcode;
 use rwasm_executor::{
-    events::{AluEvent, ByteLookupEvent, ByteRecord},
+    events::{AluEvent, ByteLookupEvent, ByteRecord, EmptyByteRecord},
     ExecutionRecord, Program, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
@@ -105,8 +105,10 @@ impl<F: PrimeField32> MachineAir<F> for AddSubChip {
                             &input.sub_events[idx - num_add_events]
                         };
 
-                        let mut byte_lookup_events = Vec::new();
-                        self.event_to_row(event, cols, &mut byte_lookup_events);
+                        // Pass the "nil" recorder. The compiler will optimize away the lookup
+                        // generation logic.
+                        let mut blu = EmptyByteRecord;
+                        self.event_to_row(event, cols, &mut blu);
                     }
                 });
             },
