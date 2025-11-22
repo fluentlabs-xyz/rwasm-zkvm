@@ -37,8 +37,7 @@ impl<F: Field> AddOperation<F> {
         let overflow = a[0].wrapping_add(b[0]).wrapping_sub(expected.to_le_bytes()[0]) as u32;
         debug_assert_eq!(overflow.wrapping_mul(overflow.wrapping_sub(base)), 0);
 
-        // Range check
-        {
+        if record.is_enabled() {
             record.add_u8_range_checks(&a);
             record.add_u8_range_checks(&b);
             record.add_u8_range_checks(&expected.to_le_bytes());

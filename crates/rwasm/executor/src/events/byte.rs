@@ -30,6 +30,9 @@ pub struct ByteLookupEvent {
 
 /// A type that can record byte lookup events.
 pub trait ByteRecord {
+    fn is_enabled(&self) -> bool {
+        true
+    } // Default true
     /// Adds a new [`ByteLookupEvent`] to the record.
     fn add_byte_lookup_event(&mut self, blu_event: ByteLookupEvent);
 
@@ -188,6 +191,10 @@ impl ByteOpcode {
 pub struct EmptyByteRecord;
 
 impl ByteRecord for EmptyByteRecord {
+    #[inline(always)]
+    fn is_enabled(&self) -> bool {
+        false
+    } // Default true
     #[inline(always)]
     fn add_byte_lookup_event(&mut self, _event: ByteLookupEvent) {
         // do nothing
