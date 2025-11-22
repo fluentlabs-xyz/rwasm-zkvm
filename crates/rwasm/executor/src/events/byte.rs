@@ -184,3 +184,47 @@ impl ByteOpcode {
         F::from_canonical_u8(self as u8)
     }
 }
+
+pub struct EmptyByteRecord;
+
+impl ByteRecord for EmptyByteRecord {
+    #[inline(always)]
+    fn add_byte_lookup_event(&mut self, _event: ByteLookupEvent) {
+        // do nothing
+    }
+
+    fn add_byte_lookup_events_from_maps(
+        &mut self,
+        new_blu_events_vec: Vec<&HashMap<ByteLookupEvent, usize>>,
+    ) {
+        todo!()
+    }
+
+    fn add_byte_lookup_events(&mut self, blu_events: Vec<ByteLookupEvent>) {
+        todo!()
+    }
+
+    fn add_u8_range_check(&mut self, a: u8, b: u8) {
+        todo!()
+    }
+
+    fn add_u16_range_check(&mut self, a: u16) {
+        todo!()
+    }
+
+    fn add_u8_range_checks(&mut self, bytes: &[u8]) {
+        todo!()
+    }
+
+    fn add_u8_range_checks_field<F: PrimeField32>(&mut self, field_values: &[F]) {
+        todo!()
+    }
+
+    fn add_u16_range_checks(&mut self, ls: &[u16]) {
+        todo!()
+    }
+
+    fn lookup_or(&mut self, b: u8, c: u8) {
+        todo!()
+    }
+}
