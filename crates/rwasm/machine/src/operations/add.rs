@@ -57,6 +57,10 @@ impl<F: Field> AddOperation<F> {
         builder.slice_range_check_u8(&cols.value.0, is_real.clone());
 
         let mut builder_is_real = builder.when(is_real.clone());
+        // Constrain Carries to be boolean (0 or 1)
+        builder_is_real.assert_bool(cols.carry[0]);
+        builder_is_real.assert_bool(cols.carry[1]);
+        builder_is_real.assert_bool(cols.carry[2]);
 
         // Arithmetic Constraints
         // We enforce: a[i] + b[i] + carry_in = value[i] + 256 * carry_out

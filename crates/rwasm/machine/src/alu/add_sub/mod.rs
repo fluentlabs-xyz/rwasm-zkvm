@@ -164,23 +164,16 @@ impl AddSubChip {
 
         let is_add = event.opcode == Opcode::I32Add;
         cols.is_add = F::from_bool(is_add);
-        cols.is_sub = F::from_bool(!is_add);
+        cols.is_sub = F::from_bool(event.opcode == Opcode::I32Sub);
 
+        // b + c = a
+        // b - c = a ==> a + c = b
         let operand_1 = if is_add { event.b } else { event.a };
         let operand_2 = event.c;
 
         cols.add_operation.populate(blu, operand_1, operand_2);
         cols.operand_1 = Word::from(operand_1);
         cols.operand_2 = Word::from(operand_2);
-        let base = [1, 1 << 8, 1 << 16, 1 << 24];
-        let value: F = cols
-            .add_operation
-            .value
-            .0
-            .iter()
-            .enumerate()
-            .map(|(i, x)| F::from_canonical_u32(base[i]) * *x)
-            .sum();
     }
 }
 
