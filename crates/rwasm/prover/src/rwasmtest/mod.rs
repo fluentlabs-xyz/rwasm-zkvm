@@ -1,4 +1,5 @@
 mod addmul64;
+mod addsub;
 mod call;
 mod comp;
 mod extend;
@@ -6,6 +7,7 @@ mod rotate;
 mod table_grow;
 mod table_init;
 mod trailing;
+
 use rwasm_executor::Program;
 use rwasm_machine::utils::setup_logger;
 

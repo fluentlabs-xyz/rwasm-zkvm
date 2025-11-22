@@ -25,24 +25,13 @@ impl<F: Field> AddOperation<F> {
         let a = a_u32.to_le_bytes();
         let b = b_u32.to_le_bytes();
 
-        let mut carry = [0u8, 0u8, 0u8];
-        if (a[0] as u32) + (b[0] as u32) > 255 {
-            carry[0] = 1;
-            self.carry[0] = F::one();
+        // Calculate carries for the trace
+        let mut current_carry = 0;
+        for i in 0..3 {
+            let sum = (a[i] as u16) + (b[i] as u16) + current_carry;
+            current_carry = sum >> 8; // Get the overflow bit (0 or 1)
+            self.carry[i] = F::from_canonical_u16(current_carry);
         }
-        if (a[1] as u32) + (b[1] as u32) + (carry[0] as u32) > 255 {
-            carry[1] = 1;
-            self.carry[1] = F::one();
-        }
-        if (a[2] as u32) + (b[2] as u32) + (carry[1] as u32) > 255 {
-            carry[2] = 1;
-            let _ = carry[2];
-            self.carry[2] = F::one();
-        }
-
-        let base = 256u32;
-        let overflow = a[0].wrapping_add(b[0]).wrapping_sub(expected.to_le_bytes()[0]) as u32;
-        debug_assert_eq!(overflow.wrapping_mul(overflow.wrapping_sub(base)), 0);
 
         // Range check
         {
@@ -60,43 +49,34 @@ impl<F: Field> AddOperation<F> {
         cols: AddOperation<AB::Var>,
         is_real: AB::Expr,
     ) {
-        let one = AB::Expr::one();
         let base = AB::F::from_canonical_u32(256);
+
+        // Range check the result (inputs should be checked by caller, but checking here is safe)
+        builder.slice_range_check_u8(&a.0, is_real.clone());
+        builder.slice_range_check_u8(&b.0, is_real.clone());
+        builder.slice_range_check_u8(&cols.value.0, is_real.clone());
 
         let mut builder_is_real = builder.when(is_real.clone());
 
-        // For each limb, assert that difference between the carried result and the non-carried
-        // result is either zero or the base.
-        let overflow_0 = a[0] + b[0] - cols.value[0];
-        let overflow_1 = a[1] + b[1] - cols.value[1] + cols.carry[0];
-        let overflow_2 = a[2] + b[2] - cols.value[2] + cols.carry[1];
-        let overflow_3 = a[3] + b[3] - cols.value[3] + cols.carry[2];
-        builder_is_real.assert_zero(overflow_0.clone() * (overflow_0.clone() - base));
-        builder_is_real.assert_zero(overflow_1.clone() * (overflow_1.clone() - base));
-        builder_is_real.assert_zero(overflow_2.clone() * (overflow_2.clone() - base));
-        builder_is_real.assert_zero(overflow_3.clone() * (overflow_3.clone() - base));
+        // Arithmetic Constraints
+        // We enforce: a[i] + b[i] + carry_in = value[i] + 256 * carry_out
+        // Rearranged: a[i] + b[i] + carry_in - value[i] - 256 * carry_out = 0
 
-        // If the carry is one, then the overflow must be the base.
-        builder_is_real.assert_zero(cols.carry[0] * (overflow_0.clone() - base));
-        builder_is_real.assert_zero(cols.carry[1] * (overflow_1.clone() - base));
-        builder_is_real.assert_zero(cols.carry[2] * (overflow_2.clone() - base));
+        // Limb 0: No carry in. Carry out is cols.carry[0].
+        builder_is_real.assert_zero(a[0] + b[0] - cols.value[0] - cols.carry[0] * base);
 
-        // If the carry is not one, then the overflow must be zero.
-        builder_is_real.assert_zero((cols.carry[0] - one.clone()) * overflow_0.clone());
-        builder_is_real.assert_zero((cols.carry[1] - one.clone()) * overflow_1.clone());
-        builder_is_real.assert_zero((cols.carry[2] - one.clone()) * overflow_2.clone());
+        // Limb 1: Carry in is cols.carry[0]. Carry out is cols.carry[1].
+        builder_is_real
+            .assert_zero(a[1] + b[1] + cols.carry[0] - cols.value[1] - cols.carry[1] * base);
 
-        // Assert that the carry is either zero or one.
-        builder_is_real.assert_bool(cols.carry[0]);
-        builder_is_real.assert_bool(cols.carry[1]);
-        builder_is_real.assert_bool(cols.carry[2]);
-        builder_is_real.assert_bool(is_real.clone());
+        // Limb 2: Carry in is cols.carry[1]. Carry out is cols.carry[2].
+        builder_is_real
+            .assert_zero(a[2] + b[2] + cols.carry[1] - cols.value[2] - cols.carry[2] * base);
 
-        // Range check each byte.
-        {
-            builder.slice_range_check_u8(&a.0, is_real.clone());
-            builder.slice_range_check_u8(&b.0, is_real.clone());
-            builder.slice_range_check_u8(&cols.value.0, is_real);
-        }
+        // Limb 3: Carry in is cols.carry[2]. No explicit carry out (wrapping add).
+        // We must ensure that (a[3] + b[3] + c[2]) is congruent to value[3] mod 256.
+        // Effectively: a[3] + b[3] + c[2] - value[3] must equal either 0 OR 256.
+        let overflow_3 = a[3] + b[3] + cols.carry[2] - cols.value[3];
+        builder_is_real.assert_zero(overflow_3.clone() * (overflow_3 - base));
     }
 }

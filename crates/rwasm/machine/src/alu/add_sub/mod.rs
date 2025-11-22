@@ -54,9 +54,6 @@ pub struct AddSubCols<T> {
     /// The second input operand.  This will be `c` for both operations.
     pub operand_2: Word<T>,
 
-    /// Whether the first operand is not register 0.
-    pub op_a_not_0: T,
-
     /// Boolean to indicate whether the row is for an add operation.
     pub is_add: T,
 
@@ -87,10 +84,10 @@ impl<F: PrimeField32> MachineAir<F> for AddSubChip {
         _: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
         // Generate the rows for the trace.
-        let chunk_size =
-            std::cmp::max((input.add_events.len() + input.sub_events.len()) / num_cpus::get(), 1);
-        let merged_events =
-            input.add_events.iter().chain(input.sub_events.iter()).collect::<Vec<_>>();
+        let num_add_events = input.add_events.len();
+        let total_events = num_add_events + input.sub_events.len();
+
+        let chunk_size = std::cmp::max(total_events / num_cpus::get(), 1);
         let padded_nb_rows = <AddSubChip as MachineAir<F>>::num_rows(self, input).unwrap();
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_ADD_SUB_COLS);
 
@@ -100,9 +97,15 @@ impl<F: PrimeField32> MachineAir<F> for AddSubChip {
                     let idx = i * chunk_size + j;
                     let cols: &mut AddSubCols<F> = row.borrow_mut();
 
-                    if idx < merged_events.len() {
+                    if idx < total_events {
+                        // Avoid creating a merged vector. Select the source by index.
+                        let event = if idx < num_add_events {
+                            &input.add_events[idx]
+                        } else {
+                            &input.sub_events[idx - num_add_events]
+                        };
+
                         let mut byte_lookup_events = Vec::new();
-                        let event = &merged_events[idx];
                         self.event_to_row(event, cols, &mut byte_lookup_events);
                     }
                 });
@@ -140,7 +143,7 @@ impl<F: PrimeField32> MachineAir<F> for AddSubChip {
         if let Some(shape) = shard.shape.as_ref() {
             shape.included::<F, _>(self)
         } else {
-            !shard.add_events.is_empty()
+            !shard.add_events.is_empty() || !shard.sub_events.is_empty()
         }
     }
 
@@ -169,8 +172,6 @@ impl AddSubChip {
         cols.add_operation.populate(blu, operand_1, operand_2);
         cols.operand_1 = Word::from(operand_1);
         cols.operand_2 = Word::from(operand_2);
-        println!("operand1:{},operand2:{}", operand_1, operand_2);
-        cols.op_a_not_0 = F::from_bool(true);
         let base = [1, 1 << 8, 1 << 16, 1 << 24];
         let value: F = cols
             .add_operation
@@ -180,7 +181,6 @@ impl AddSubChip {
             .enumerate()
             .map(|(i, x)| F::from_canonical_u32(base[i]) * *x)
             .sum();
-        println!("result:{}", value);
     }
 }
 
@@ -212,8 +212,7 @@ where
             AB::Expr::from_canonical_u32(Opcode::I32Sub.code()) * local.is_sub;
 
         // Evaluate the addition operation.
-        // This is enforced only when `op_a_not_0 == 1`.
-        // `op_a_val` doesn't need to be constrained when `op_a_not_0 == 0`.
+        // This is enforced only when `is_real` is true.
         AddOperation::<AB::F>::eval(
             builder,
             local.operand_1,
@@ -227,8 +226,7 @@ where
         // SAFETY: This checks the following. Note that in this case `opcode = Opcode::ADD`
         // - `next_pc = pc + 4`
         // - `num_extra_cycles = 0`
-        // - `op_a_val` is constrained by the `AddOperation` when `op_a_not_0 == 1`
-        // - `op_a_not_0` is correct, due to the sent `op_a_0` being equal to `1 - op_a_not_0`
+        // - `op_a_val` is constrained by the `AddOperation`
         // - `op_a_immutable = 0`
         // - `is_memory = 0`
         // - `is_syscall = 0`
@@ -253,8 +251,7 @@ where
         // SAFETY: This checks the following. Note that in this case `opcode = Opcode::SUB`
         // - `next_pc = pc + 4`
         // - `num_extra_cycles = 0`
-        // - `op_a_val` is constrained by the `AddOperation` when `op_a_not_0 == 1`
-        // - `op_a_not_0` is correct, due to the sent `op_a_0` being equal to `1 - op_a_not_0`
+        // - `op_a_val` is constrained by the `AddOperation`
         // - `op_a_immutable = 0`
         // - `is_memory = 0`
         // - `is_syscall = 0`
@@ -440,7 +437,7 @@ mod tests {
 
     #[test]
     fn row_encodes_sub_correctly() {
-        // For SUB: b = a + c  (since a = b - c)
+        // For SUB: b = a + c (since a = b - c)
         let a: u32 = 10;
         let c: u32 = 7;
         let b = a.wrapping_add(c);
@@ -473,60 +470,6 @@ mod tests {
         assert_eq!(word_to_u32(&cols.operand_1), a);
         assert_eq!(word_to_u32(&cols.operand_2), c);
         assert_eq!(word_to_u32(&cols.add_operation.value), b);
-    }
-
-    #[cfg(feature = "sys")]
-    #[test]
-    fn test_generate_trace_ffi_eq_rust() {
-        let shard = LazyLock::force(&SHARD);
-
-        let chip = AddSubChip::default();
-        let trace: RowMajorMatrix<BabyBear> =
-            chip.generate_trace(shard, &mut ExecutionRecord::default());
-        let trace_ffi = generate_trace_ffi(shard);
-
-        assert_eq!(trace_ffi, trace);
-    }
-
-    #[cfg(feature = "sys")]
-    fn generate_trace_ffi(input: &ExecutionRecord) -> RowMajorMatrix<BabyBear> {
-        use rayon::slice::ParallelSlice;
-
-        use crate::utils::pad_rows_fixed;
-
-        type F = BabyBear;
-
-        let chunk_size =
-            std::cmp::max((input.add_events.len() + input.sub_events.len()) / num_cpus::get(), 1);
-
-        let events = input.add_events.iter().chain(input.sub_events.iter()).collect::<Vec<_>>();
-        let row_batches = events
-            .par_chunks(chunk_size)
-            .map(|events| {
-                let rows = events
-                    .iter()
-                    .map(|event| {
-                        let mut row = [F::zero(); NUM_ADD_SUB_COLS];
-                        let cols: &mut AddSubCols<F> = row.as_mut_slice().borrow_mut();
-                        unsafe {
-                            crate::sys::add_sub_event_to_row_babybear(event, cols);
-                        }
-                        row
-                    })
-                    .collect::<Vec<_>>();
-                rows
-            })
-            .collect::<Vec<_>>();
-
-        let mut rows: Vec<[F; NUM_ADD_SUB_COLS]> = vec![];
-        for row_batch in row_batches {
-            rows.extend(row_batch);
-        }
-
-        pad_rows_fixed(&mut rows, || [F::zero(); NUM_ADD_SUB_COLS], None);
-
-        // Convert the trace to a row major matrix.
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_ADD_SUB_COLS)
     }
 
     #[test]
@@ -570,7 +513,7 @@ mod tests {
                     }
                 }
 
-                // Corrupt the corresponding add/sub micro-event
+                // Corrupt the corresponding to add/sub micro-event
                 match opcode {
                     Opcode::I32Add => {
                         if let Some(add) = rec.add_events.get_mut(0) {

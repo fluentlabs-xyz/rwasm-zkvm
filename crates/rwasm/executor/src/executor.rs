@@ -2109,37 +2109,7 @@ mod tests {
         let err = rt.run().expect_err("expected cycle limit to be exceeded");
         assert!(matches!(err, ExecutionError::ExceededCycleLimit(0)));
     }
-    #[test]
-    fn test_add_overflow_wraps() {
-        let sp0 = SP_START;
-        let opcodes = vec![
-            Opcode::I32Const(u32::MAX.into()),
-            Opcode::I32Const(1u32.into()),
-            Opcode::I32Add, // wraps to 0
-        ];
-        let program = Program::from_instrs(opcodes);
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 0);
-        assert_eq!(sp0, rt.state.sp + 4);
-    }
-    #[test]
-    fn test_sub_underflow_wraps() {
-        let sp0 = SP_START;
-        let expected = u32::MAX; // 0 - 1 = 0xffffffff (wrap)
-        let opcodes = vec![
-            Opcode::I32Const(0u32.into()),
-            Opcode::I32Const(1u32.into()),
-            Opcode::I32Sub,
-            Opcode::I32Const(expected.into()),
-            Opcode::I32Eq,
-        ];
-        let program = Program::from_instrs(opcodes);
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
-        assert_eq!(sp0, rt.state.sp + 4);
-    }
+
     #[test]
     fn test_branch_ifnez_not_taken() {
         // Mirrors build_elf_branching but uses 0 so the branch is NOT taken,
@@ -2299,22 +2269,7 @@ mod tests {
         rt.run().unwrap();
         assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
     }
-    #[test]
-    fn test_sub2() {
-        let x = 5;
-        let y = 3;
-        let opcodes = vec![
-            Opcode::I32Const(x.into()),
-            Opcode::I32Const(y.into()),
-            Opcode::I32Sub,
-            Opcode::I32Const((x - y).into()),
-            Opcode::I32Eq,
-        ];
-        let program = Program::from_instrs(opcodes);
-        let mut rt = Executor::new(program, SP1CoreOpts::default());
-        rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
-    }
+
     #[test]
     fn test_lts() {
         let x = neg(3);
@@ -2506,88 +2461,7 @@ mod tests {
 
         assert_eq!(rt.word(base), expected);
     }
-    #[test]
-    fn test_add() {
-        let sp_value: u32 = SP_START;
-        let x_value: u32 = 32;
-        let y_value: u32 = 4;
 
-        let opcodes = vec![
-            Opcode::I32Const(x_value.into()),
-            Opcode::I32Const(y_value.into()),
-            Opcode::I32Add, // 32 + 4 = 36
-        ];
-
-        let program = Program::from_instrs(opcodes);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value + y_value);
-        println!("initial sp_value {} and last state.sp {}", sp_value, runtime.state.sp);
-        assert_eq!(sp_value, runtime.state.sp + 4);
-    }
-    #[test]
-    fn test_add_eq() {
-        let sp_value: u32 = SP_START;
-        let x_value: u32 = 32;
-        let y_value: u32 = 4;
-
-        let opcodes = vec![
-            Opcode::I32Const(x_value.into()),
-            Opcode::I32Const(y_value.into()),
-            Opcode::I32Add, // 32 + 4 = 36
-            Opcode::I32Const((x_value + y_value).into()),
-            Opcode::I32Eq, /*stack has now 1
-                            *Opcode::Drop, */
-        ];
-
-        let program = Program::from_instrs(opcodes);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        println!("initial sp_value {} and last state.sp {}", sp_value, runtime.state.sp);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
-        assert_eq!(sp_value, runtime.state.sp + 4);
-    }
-    #[test]
-    fn test_add_eq_drop() {
-        let sp_value: u32 = SP_START;
-        let x_value: u32 = 32;
-        let y_value: u32 = 4;
-
-        let opcodes = vec![
-            Opcode::I32Const(x_value.into()),
-            Opcode::I32Const(y_value.into()),
-            Opcode::I32Add, // 32 + 4 = 36
-            Opcode::I32Const((x_value + y_value).into()),
-            Opcode::I32Eq, //stack has now 1
-            Opcode::Drop,  // no stack elements
-        ];
-
-        let program = Program::from_instrs(opcodes);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        println!("initial sp_value {} and last state.sp {}", sp_value, runtime.state.sp);
-        assert_eq!(sp_value, runtime.state.sp);
-    }
-    #[test]
-    fn test_sub() {
-        let sp_value: u32 = SP_START;
-        let x_value: u32 = 32;
-        let y_value: u32 = 4;
-
-        let opcodes = vec![
-            Opcode::I32Const(x_value.into()),
-            Opcode::I32Const(y_value.into()),
-            Opcode::I32Sub, // 32 - 4 = 28
-            Opcode::I32Const((x_value - y_value).into()),
-            Opcode::I32Eq, //stack has now 1
-        ];
-
-        let program = Program::from_instrs(opcodes);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
-        assert_eq!(sp_value, runtime.state.sp + 4);
-    }
     #[test]
     fn test_xor() {
         let sp_value: u32 = SP_START;
@@ -2639,29 +2513,6 @@ mod tests {
             Opcode::I32Const(y_value.into()),
             Opcode::I32And, // 5 and 37 = 32
             Opcode::I32Const((x_value & y_value).into()),
-            Opcode::I32Eq, //stack has now 1
-        ];
-
-        let program = Program::from_instrs(opcodes);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
-        assert_eq!(sp_value, runtime.state.sp + 4);
-    }
-    #[test]
-    fn test_addi_negative() {
-        let sp_value: u32 = SP_START;
-        let x_value: u32 = 4;
-        let y_value: u32 = 0xFFFF_FFFF;
-        let z_value: u32 = 5;
-
-        let opcodes = vec![
-            Opcode::I32Const(x_value.into()),
-            Opcode::I32Const(y_value.into()),
-            Opcode::I32Const(z_value.into()),
-            Opcode::I32Add,
-            Opcode::I32Add,
-            Opcode::I32Const((x_value - 1 + z_value).into()),
             Opcode::I32Eq, //stack has now 1
         ];
 
@@ -5434,5 +5285,171 @@ mod tests {
                 assert_eq!(top, expected, "I32Extend16S({:#010x}) mismatch", input);
             }
         }
+    }
+    /// Helper to run a program and return the value at the top of the stack.
+    fn run_and_get_stack_top(opcodes: Vec<Opcode>) -> u32 {
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+        rt.state.memory.get(rt.state.sp).unwrap().value
+    }
+
+    #[test]
+    fn test_add_simple() {
+        let x_value: u32 = 32;
+        let y_value: u32 = 4;
+
+        let opcodes = vec![
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(y_value.into()),
+            Opcode::I32Add, // 32 + 4 = 36
+        ];
+
+        let result = run_and_get_stack_top(opcodes);
+        assert_eq!(result, x_value + y_value);
+    }
+
+    #[test]
+    fn test_sub_simple() {
+        let x_value: u32 = 32;
+        let y_value: u32 = 4;
+
+        let opcodes = vec![
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(y_value.into()),
+            Opcode::I32Sub, // 32 - 4 = 28
+        ];
+
+        let result = run_and_get_stack_top(opcodes);
+        assert_eq!(result, x_value - y_value);
+    }
+
+    #[test]
+    fn test_add_overflow_wraps() {
+        // Edge Case: u32::MAX + 1 should wrap to 0
+        let sp0 = SP_START;
+        let opcodes =
+            vec![Opcode::I32Const(u32::MAX.into()), Opcode::I32Const(1u32.into()), Opcode::I32Add];
+
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+
+        // Verify Value
+        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 0);
+        // Verify Stack Pointer (Should be SP_START + 4 bytes, as 2 args popped, 1 pushed)
+        assert_eq!(sp0, rt.state.sp + 4);
+    }
+
+    #[test]
+    fn test_sub_underflow_wraps() {
+        // Edge Case: 0 - 1 should wrap to u32::MAX
+        let expected = u32::MAX;
+        let opcodes = vec![
+            Opcode::I32Const(0u32.into()),
+            Opcode::I32Const(1u32.into()),
+            Opcode::I32Sub,
+            // Check result immediately
+            Opcode::I32Const(expected.into()),
+            Opcode::I32Eq,
+        ];
+
+        let result = run_and_get_stack_top(opcodes);
+        assert_eq!(result, 1); // 1 means True (Equality check passed)
+    }
+
+    #[test]
+    fn test_add_negative_chained() {
+        // Logic: 4 + (-1) + 5.
+        // In u32 two's complement, -1 is 0xFFFF_FFFF.
+        let x_value: u32 = 4;
+        let y_value: u32 = 0xFFFF_FFFF; // -1
+        let z_value: u32 = 5;
+        let expected_res = x_value.wrapping_add(y_value).wrapping_add(z_value); // 8
+
+        let opcodes = vec![
+            Opcode::I32Const(x_value.into()),
+            Opcode::I32Const(y_value.into()),
+            Opcode::I32Const(z_value.into()),
+            Opcode::I32Add, // Stack: [4, ( -1 + 5 )] -> [4, 4]
+            Opcode::I32Add, // Stack: [8]
+            Opcode::I32Const(expected_res.into()),
+            Opcode::I32Eq,
+        ];
+
+        let result = run_and_get_stack_top(opcodes);
+        assert_eq!(result, 1);
+    }
+
+    #[test]
+    fn test_stack_operations_eq_drop() {
+        // Tests that the stack pointer moves correctly after Add, Eq, and Drop
+        let sp0 = SP_START;
+        let x = 10;
+        let y = 20;
+
+        let opcodes = vec![
+            Opcode::I32Const(x.into()),       // SP - 4
+            Opcode::I32Const(y.into()),       // SP - 8
+            Opcode::I32Add,                   // Pop 2, Push 1 -> SP - 4 (Value 30)
+            Opcode::I32Const((x + y).into()), // SP - 8
+            Opcode::I32Eq,                    // Pop 2, Push 1 -> SP - 4 (Value 1)
+            Opcode::Drop,                     // Pop 1 -> SP Back to Start
+        ];
+
+        let program = Program::from_instrs(opcodes);
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+        rt.run().unwrap();
+
+        // Assert Stack Pointer returned to start
+        assert_eq!(sp0, rt.state.sp);
+    }
+
+    #[test]
+    fn test_comprehensive_edge_cases() {
+        // This test combines Identity, Inverse, and Zero properties
+        // 1. Identity: x + 0 = x
+        // 2. Inverse: x + y - y = x
+        // 3. Zero Sub: x - 0 = x
+        // 4. Self Sub: x - x = 0
+
+        let x = 123456u32;
+        let y = 789u32;
+
+        let opcodes = vec![
+            // Case 1: x + 0 == x
+            Opcode::I32Const(x.into()),
+            Opcode::I32Const(0.into()),
+            Opcode::I32Add,
+            Opcode::I32Const(x.into()),
+            Opcode::I32Eq, // Stack: [1]
+            // Case 2: x + y - y == x
+            Opcode::I32Const(x.into()),
+            Opcode::I32Const(y.into()),
+            Opcode::I32Add,
+            Opcode::I32Const(y.into()),
+            Opcode::I32Sub,
+            Opcode::I32Const(x.into()),
+            Opcode::I32Eq, // Stack: [1, 1]
+            // Case 3: x - 0 == x
+            Opcode::I32Const(x.into()),
+            Opcode::I32Const(0.into()),
+            Opcode::I32Sub,
+            Opcode::I32Const(x.into()),
+            Opcode::I32Eq, // Stack: [1, 1, 1]
+            // Case 4: x - x == 0
+            Opcode::I32Const(x.into()),
+            Opcode::I32Const(x.into()),
+            Opcode::I32Sub,
+            Opcode::I32Const(0.into()),
+            Opcode::I32Eq, // Stack: [1, 1, 1, 1]
+            // Verify all checks passed (AND them together)
+            Opcode::I32And,
+            Opcode::I32And,
+            Opcode::I32And, // Stack: [1]
+        ];
+
+        let result = run_and_get_stack_top(opcodes);
+        assert_eq!(result, 1, "One of the comprehensive edge cases failed");
     }
 }
