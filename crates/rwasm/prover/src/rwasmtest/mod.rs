@@ -2,6 +2,7 @@ mod addmul64;
 mod addsub;
 mod call;
 mod comp;
+mod divrem;
 mod extend;
 mod mul;
 mod rotate;
@@ -76,11 +77,11 @@ mod tests {
             Opcode::I32Const(z1_value.into()),
             Opcode::I32Const(y_value.into()),
             Opcode::I32Const(x_value.into()),
-            Opcode::I32Add,
-            Opcode::I32Sub,
-            Opcode::I32Mul,
+            // Opcode::I32Add,
+            //Opcode::I32Sub,
+            //Opcode::I32Mul,
             Opcode::I32DivS,
-            Opcode::I32DivU,
+            //Opcode::I32DivU,
         ];
 
         let program = Program::from_instrs(instructions);

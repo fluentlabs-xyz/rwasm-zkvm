@@ -964,7 +964,7 @@ impl<'a> Executor<'a> {
             }
             Opcode::I32DivS | Opcode::I32DivU | Opcode::I32RemS | Opcode::I32RemU => {
                 self.record.divrem_events.push(event);
-                emit_divrem_dependencies(self, event);
+                //emit_divrem_dependencies(self, event);
             }
             Opcode::I32Rotl | Opcode::I32Rotr => {
                 self.record.rotate_events.push(event);

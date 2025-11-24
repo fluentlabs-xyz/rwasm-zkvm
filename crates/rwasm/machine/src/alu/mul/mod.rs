@@ -176,7 +176,7 @@ where
         let local = main.row_slice(0);
         let local: &MulCols<AB::Var> = (*local).borrow();
         let base = AB::F::from_canonical_u32(1 << 8);
-        let zero: AB::Expr = AB::F::zero().into();
+        let zero = AB::Expr::zero();
 
         builder.assert_bool(local.is_real);
 
@@ -208,6 +208,7 @@ where
         builder.slice_range_check_u8(&local.b.0, local.is_real);
         builder.slice_range_check_u8(&local.c.0, local.is_real);
 
+        let opcode: AB::Expr = AB::F::from_canonical_u32(Opcode::I32Mul.code()).into();
         // 4. Receive Instruction
         builder.receive_instruction(
             AB::Expr::zero(),
@@ -215,7 +216,7 @@ where
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
             AB::Expr::zero(),
-            AB::F::from_canonical_u32(Opcode::I32Mul.code()),
+            opcode,
             local.a,
             local.b,
             local.c,
