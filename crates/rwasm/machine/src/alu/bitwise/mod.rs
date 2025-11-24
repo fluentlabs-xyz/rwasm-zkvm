@@ -152,7 +152,7 @@ impl BitwiseChip {
         cols.is_or = F::from_bool(event.opcode == Opcode::I32Or);
         cols.is_and = F::from_bool(event.opcode == Opcode::I32And);
 
-        if blu.is_enabled() {
+        if !blu.as_any().is::<EmptyByteRecord>() {
             for ((b_a, b_b), b_c) in a.into_iter().zip(b).zip(c) {
                 let byte_event = ByteLookupEvent {
                     opcode: ByteOpcode::from(event.opcode),
