@@ -152,7 +152,7 @@ impl MulChip {
         }
 
         // Range checks
-        if blu.is_enabled() {
+        if !blu.as_any().is::<EmptyByteRecord>() {
             blu.add_u16_range_checks(&carry_vals);
             blu.add_u8_range_checks(&a_word);
             blu.add_u8_range_checks(&b_word);

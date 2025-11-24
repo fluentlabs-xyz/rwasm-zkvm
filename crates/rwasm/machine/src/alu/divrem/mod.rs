@@ -223,7 +223,7 @@ impl DivRemChip {
         // failure.
         cols.a = Word(event.a.to_le_bytes().map(F::from_canonical_u8));
 
-        if blu.is_enabled() {
+        if !blu.as_any().is::<EmptyByteRecord>() {
             blu.add_u8_range_checks(&cols.b_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u8_range_checks(&cols.c_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u8_range_checks(&cols.q_abs.0.map(|x| x.as_canonical_u32() as u8));
