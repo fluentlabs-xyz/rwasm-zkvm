@@ -9,7 +9,7 @@ use sp1_stark::{
     MachineRecord, SP1CoreOpts, SplitOpts,
 };
 use std::{mem::take, str::FromStr, sync::Arc};
-
+use std::any::Any;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -355,6 +355,7 @@ impl MachineRecord for ExecutionRecord {
 }
 
 impl ByteRecord for ExecutionRecord {
+    fn as_any(&self) -> &dyn Any { self }
     fn add_byte_lookup_event(&mut self, blu_event: ByteLookupEvent) {
         *self.byte_lookups.entry(blu_event).or_insert(0) += 1;
     }
