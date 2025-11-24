@@ -183,13 +183,12 @@ impl DivRemChip {
         cols.pc = F::from_canonical_u32(event.pc);
         let b_val = event.b;
         let c_val = event.c;
-        let opcode_enum = event.opcode;
 
-        cols.b = Word(event.b.to_le_bytes().map(F::from_canonical_u8));
-        cols.c = Word(event.c.to_le_bytes().map(F::from_canonical_u8));
+        cols.b = event.b.into();
+        cols.c = event.c.into();
 
         let mut is_signed = false;
-        match opcode_enum {
+        match event.opcode {
             Opcode::I32DivS => {
                 cols.is_div_s = F::one();
                 is_signed = true;
@@ -229,13 +228,13 @@ impl DivRemChip {
 
         cols.b_sign = F::from_bool(b_sign);
         cols.c_sign = F::from_bool(c_sign);
-        cols.b_abs = Word(b_abs_val.to_le_bytes().map(F::from_canonical_u8));
-        cols.c_abs = Word(c_abs_val.to_le_bytes().map(F::from_canonical_u8));
-        cols.q_abs = Word(q_abs_val.to_le_bytes().map(F::from_canonical_u8));
-        cols.r_abs = Word(r_abs_val.to_le_bytes().map(F::from_canonical_u8));
+        cols.b_abs = b_abs_val.into();
+        cols.c_abs = c_abs_val.into();
+        cols.q_abs = q_abs_val.into();
+        cols.r_abs = r_abs_val.into();
 
         let diff_val = c_abs_val.wrapping_sub(r_abs_val).wrapping_sub(1);
-        cols.diff = Word(diff_val.to_le_bytes().map(F::from_canonical_u8));
+        cols.diff = diff_val.into();
 
         let mut borrow = 0u32;
         let r_bytes = r_abs_val.to_le_bytes();
@@ -270,7 +269,7 @@ impl DivRemChip {
         cols.q_sign = F::from_bool(q_sign_bool);
         cols.r_sign = F::from_bool(r_sign_bool);
 
-        cols.a = Word(event.a.to_le_bytes().map(F::from_canonical_u8));
+        cols.a = event.a.into();
 
         if !blu.as_any().is::<EmptyByteRecord>() {
             blu.add_u8_range_checks(&cols.b_abs.0.map(|x| x.as_canonical_u32() as u8));
@@ -587,6 +586,8 @@ mod tests {
             (100, 0),
             (0, 0),
             (u32::MAX, 0),
+            (0x80000000u32, -1i32 as u32),
+            (-1i32 as u32,0x80000000u32),
         ];
 
         let opcodes = vec![Opcode::I32DivU, Opcode::I32DivS, Opcode::I32RemU, Opcode::I32RemS];
