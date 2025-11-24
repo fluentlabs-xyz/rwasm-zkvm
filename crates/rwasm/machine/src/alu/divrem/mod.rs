@@ -3,9 +3,13 @@ use core::{
     mem::size_of,
 };
 
+use crate::{
+    air::SP1CoreAirBuilder,
+    utils::{pad_rows_fixed, word_to_expr},
+};
 use hashbrown::HashMap;
 use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::{AbstractField, PrimeField, PrimeField32};
+use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
 use rwasm::Opcode;
@@ -14,12 +18,10 @@ use rwasm_executor::{
     ExecutionRecord, Program, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
-use sp1_primitives::consts::{BYTE_SIZE, WORD_SIZE};
-use sp1_stark::{air::MachineAir, Word};
-use sp1_stark::air::BaseAirBuilder;
-use crate::{
-    air::SP1CoreAirBuilder,
-    utils::{pad_rows_fixed, word_to_expr},
+use sp1_primitives::consts::WORD_SIZE;
+use sp1_stark::{
+    air::{BaseAirBuilder, MachineAir},
+    Word,
 };
 
 pub const NUM_DIV_REM_COLS: usize = size_of::<DivRemCols<u8>>();
@@ -134,20 +136,34 @@ impl DivRemChip {
 
         let mut is_signed = false;
         match opcode_enum {
-            Opcode::I32DivS => { cols.is_div_s = F::one(); is_signed = true; }
-            Opcode::I32DivU => { cols.is_div_u = F::one(); }
-            Opcode::I32RemS => { cols.is_rem_s = F::one(); is_signed = true; }
-            Opcode::I32RemU => { cols.is_rem_u = F::one(); }
+            Opcode::I32DivS => {
+                cols.is_div_s = F::one();
+                is_signed = true;
+            }
+            Opcode::I32DivU => {
+                cols.is_div_u = F::one();
+            }
+            Opcode::I32RemS => {
+                cols.is_rem_s = F::one();
+                is_signed = true;
+            }
+            Opcode::I32RemU => {
+                cols.is_rem_u = F::one();
+            }
             _ => panic!("Invalid opcode for DivRemChip"),
         }
 
         let (b_abs_val, b_sign) = if is_signed && (b_val as i32) < 0 {
             (b_val.wrapping_neg(), true)
-        } else { (b_val, false) };
+        } else {
+            (b_val, false)
+        };
 
         let (c_abs_val, c_sign) = if is_signed && (c_val as i32) < 0 {
             (c_val.wrapping_neg(), true)
-        } else { (c_val, false) };
+        } else {
+            (c_val, false)
+        };
 
         cols.sign_xor = F::from_bool(b_sign ^ c_sign);
 
@@ -172,7 +188,9 @@ impl DivRemChip {
         let diff_bytes = diff_val.to_le_bytes();
         for i in 0..WORD_SIZE {
             let mut sum = (r_bytes[i] as u32) + (diff_bytes[i] as u32) + borrow;
-            if i == 0 { sum += 1; }
+            if i == 0 {
+                sum += 1;
+            }
             cols.diff_borrow[i] = F::from_canonical_u32(sum / 256);
             borrow = sum / 256;
         }
@@ -201,7 +219,8 @@ impl DivRemChip {
 
         // IMPORTANT: We use the 'event.a' directly for the output column.
         // In honest execution, event.a matches the calculated q/r logic.
-        // In malicious tests, event.a is spoofed, causing a mismatch with q/r logic -> constraint failure.
+        // In malicious tests, event.a is spoofed, causing a mismatch with q/r logic -> constraint
+        // failure.
         cols.a = Word(event.a.to_le_bytes().map(F::from_canonical_u8));
 
         if blu.is_enabled() {
@@ -280,7 +299,8 @@ where
         }
 
         // --- Sign Logic ---
-        let computed_xor = local.b_sign + local.c_sign - (AB::Expr::from(two) * local.b_sign * local.c_sign);
+        let computed_xor =
+            local.b_sign + local.c_sign - (AB::Expr::from(two) * local.b_sign * local.c_sign);
         builder.when(is_real.clone()).assert_eq(local.sign_xor, computed_xor);
 
         let q_abs_expr = word_to_expr::<AB>(&local.q_abs);
@@ -308,8 +328,10 @@ where
         let c_expr = word_to_expr::<AB>(&local.c);
         let c_abs_expr = word_to_expr::<AB>(&local.c_abs);
 
-        let term_b = b_abs_expr.clone() + local.b_sign * (p32.clone() - AB::Expr::from(two) * b_abs_expr);
-        let term_c = c_abs_expr.clone() + local.c_sign * (p32.clone() - AB::Expr::from(two) * c_abs_expr);
+        let term_b =
+            b_abs_expr.clone() + local.b_sign * (p32.clone() - AB::Expr::from(two) * b_abs_expr);
+        let term_c =
+            c_abs_expr.clone() + local.c_sign * (p32.clone() - AB::Expr::from(two) * c_abs_expr);
 
         builder.when(is_real.clone()).assert_eq(b_expr, term_b);
         builder.when(is_real.clone()).assert_eq(c_expr, term_c);
@@ -317,8 +339,10 @@ where
         // --- Output Binding ---
         let a_expr = word_to_expr::<AB>(&local.a);
 
-        let q_signed = q_abs_expr.clone() + local.q_sign * (p32.clone() - AB::Expr::from(two) * q_abs_expr.clone());
-        let r_signed = r_abs_expr.clone() + local.r_sign * (p32.clone() - AB::Expr::from(two) * r_abs_expr.clone());
+        let q_signed = q_abs_expr.clone() +
+            local.q_sign * (p32.clone() - AB::Expr::from(two) * q_abs_expr.clone());
+        let r_signed = r_abs_expr.clone() +
+            local.r_sign * (p32.clone() - AB::Expr::from(two) * r_abs_expr.clone());
 
         let term_div = (local.is_div_s + local.is_div_u) * q_signed;
         let term_rem = (local.is_rem_s + local.is_rem_u) * r_signed;
@@ -337,9 +361,19 @@ where
             local.is_div_s * op_div_s;
 
         builder.receive_instruction(
-            zero.clone(), zero.clone(), local.pc, local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-            zero.clone(), calculated_opcode, local.a, local.b, local.c,
-            zero.clone(), zero.clone(), zero.clone(), is_real,
+            zero.clone(),
+            zero.clone(),
+            local.pc,
+            local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            zero.clone(),
+            calculated_opcode,
+            local.a,
+            local.b,
+            local.c,
+            zero.clone(),
+            zero.clone(),
+            zero.clone(),
+            is_real,
         );
     }
 }
@@ -516,8 +550,8 @@ mod tests {
 
                 // 2. Corrupt the CPU Bus Event
                 // We also update the CPU to expect A_malicious.
-                // If we didn't do this, the test might fail earlier on a "Bus Interaction" mismatch.
-                // We want to verify the Chip's *math* checks are working.
+                // If we didn't do this, the test might fail earlier on a "Bus Interaction"
+                // mismatch. We want to verify the Chip's *math* checks are working.
                 if mal_rec.cpu_events.len() > 2 {
                     mal_rec.cpu_events[2].res = a_malicious;
                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
