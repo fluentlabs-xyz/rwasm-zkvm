@@ -575,8 +575,6 @@ mod tests {
             (i32::MIN as u32, i32::MIN as u32), // INT_MIN / INT_MIN
             // --- Signed Overflow Case ---
             // In WASM/x86, INT_MIN / -1 traps or overflows.
-            // Your chip logic should handle it via wrapping (if standard rust wrapping is used)
-            // or return the specific defined behavior.
             (i32::MIN as u32, u32::MAX), // INT_MIN / -1
             // --- Signed Negative Operands ---
             // -5 / 2   = -2 rem -1 (Rem sign follows Dividend)
