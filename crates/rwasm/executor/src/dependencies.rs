@@ -6,7 +6,8 @@ use crate::{
     events::{AluEvent, BranchEvent, MemInstrEvent},
     //utils::{get_msb, get_quotient_and_remainder, is_signed_operation},
     Executor,
-    UNUSED_PC, //I32MULHU_CODE, I32MULH_CODE,
+    UNUSED_PC,
+    //I32MULHU_CODE, I32MULH_CODE,
 };
 use rwasm::mem_index::GLOBAL_MEM_START;
 /*/// Emits the dependencies for division and remainder operations.
