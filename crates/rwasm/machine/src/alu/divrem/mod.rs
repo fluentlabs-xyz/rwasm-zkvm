@@ -15,7 +15,7 @@ use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, Paralle
 use rwasm::Opcode;
 use rwasm_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord, EmptyByteRecord},
-    ExecutionRecord, Program, DEFAULT_PC_INC,
+    ExecutionRecord, Program, DEFAULT_PC_INC, UNUSED_PC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::WORD_SIZE;
@@ -35,25 +35,10 @@ pub struct DivRemChip;
 /// This chip proves the relationship: `Dividend = Quotient * Divisor + Remainder`
 /// subject to `0 <= Remainder < Divisor`.
 ///
-/// Since standard division logic is hard to constrain directly, we operate on **Absolute Values**
-/// (Magnitudes) and handle signs separately.
-///
-/// ## Core Equation (Unsigned/Absolute)
-/// We prove: `|B| = |Q| * |C| + |R|`
-///
-/// Since these are 32-bit integers, we cannot multiply them directly in the field.
-/// We use **Byte-Slicing (Base 256)**:
-///
-/// For each byte position `k` (0..3):
-/// `Sum(Q[i] * C[j]) + R[k] + Carry_in = B[k] + Carry_out * 256`
-/// where `i + j = k`.
-///
-/// ## Inequality Check (`|R| < |C|`)
-/// To ensure the division is unique, we must prove the remainder is smaller than the divisor.
-/// We do this by computing a difference variable `diff` such that:
-/// `|C| - |R| - 1 = diff`
-///
-/// If `diff` exists and is non-negative, then `|C| > |R|`.
+/// ## Optimization: Inequality Check (`|R| < |C|`)
+/// Previously, this chip used local subtraction (`|C| - |R| - 1`) which cost 8 columns.
+/// **Now**, we offload this check to the `LtChip` via the bus.
+/// We send: `Lt(R, C) == 1`.
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct DivRemCols<T> {
@@ -73,39 +58,23 @@ pub struct DivRemCols<T> {
     pub is_rem_s: T, // Signed Rem
 
     // --- Sign Handling ---
-    /// Boolean: 1 if inputs have different signs (b_sign ^ c_sign). Used for Quotient sign.
     pub sign_xor: T,
-    /// Boolean: 1 if Dividend is negative.
     pub b_sign: T,
-    /// Boolean: 1 if Divisor is negative.
     pub c_sign: T,
-    /// Boolean: 1 if the resulting Quotient should be negative.
     pub q_sign: T,
-    /// Boolean: 1 if the resulting Remainder should be negative.
     pub r_sign: T,
 
     // --- Absolute Values (The Working Variables) ---
-    /// Magnitude of Dividend |B|.
     pub b_abs: Word<T>,
-    /// Magnitude of Divisor |C|.
     pub c_abs: Word<T>,
-    /// Magnitude of Quotient |Q|.
     pub q_abs: Word<T>,
-    /// Magnitude of Remainder |R|.
     pub r_abs: Word<T>,
 
     // --- Intermediate Calculation Columns ---
-    /// The difference helper: `diff = |C| - |R| - 1`.
-    /// Used to prove |R| < |C|.
-    pub diff: Word<T>,
-
+    // REMOVED: diff (4 cols) and diff_borrow (4 cols)
+    // SAVED: 8 Columns total.
     /// Carry values for the multiplication/addition equation: `|Q|*|C| + |R|`.
-    /// Stores the overflow (sum / 256) passing to the next byte.
     pub carry: [T; WORD_SIZE],
-
-    /// Borrow values for the inequality check: `|C| - |R| - 1`.
-    /// Stores the underflow passing to the next byte.
-    pub diff_borrow: [T; WORD_SIZE],
 }
 
 impl<F: PrimeField32> MachineAir<F> for DivRemChip {
@@ -128,7 +97,8 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 let mut row = [F::zero(); NUM_DIV_REM_COLS];
                 let cols: &mut DivRemCols<F> = row.as_mut_slice().borrow_mut();
                 let mut blu = EmptyByteRecord;
-                self.event_to_row(event, cols, &mut blu);
+                let mut lt = vec![];
+                self.event_to_row(event, cols, &mut blu, &mut lt);
                 row
             })
             .collect::<Vec<_>>();
@@ -149,15 +119,20 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
             .par_chunks(chunk_size)
             .map(|events| {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
+                let mut lt = vec![];
                 events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_DIV_REM_COLS];
                     let cols: &mut DivRemCols<F> = row.as_mut_slice().borrow_mut();
-                    self.event_to_row(event, cols, &mut blu);
+                    self.event_to_row(event, cols, &mut blu, &mut lt);
                 });
-                blu
+                (blu, lt)
             })
             .collect::<Vec<_>>();
-        output.add_byte_lookup_events_from_maps(blu_batches.iter().collect::<Vec<_>>());
+        output.add_byte_lookup_events_from_maps(
+            blu_batches.iter().map(|(blu, _)| blu).collect::<Vec<_>>(),
+        );
+        let lts = blu_batches.iter().map(|(_, lt)| lt).collect::<Vec<_>>();
+        output.lt_events.extend(lts.into_iter().flatten());
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -179,6 +154,7 @@ impl DivRemChip {
         event: &AluEvent,
         cols: &mut DivRemCols<F>,
         blu: &mut impl ByteRecord,
+        lt: &mut Vec<AluEvent>,
     ) {
         cols.pc = F::from_canonical_u32(event.pc);
         let b_val = event.b;
@@ -233,23 +209,13 @@ impl DivRemChip {
         cols.q_abs = q_abs_val.into();
         cols.r_abs = r_abs_val.into();
 
-        let diff_val = c_abs_val.wrapping_sub(r_abs_val).wrapping_sub(1);
-        cols.diff = diff_val.into();
-
-        let mut borrow = 0u32;
-        let r_bytes = r_abs_val.to_le_bytes();
-        let diff_bytes = diff_val.to_le_bytes();
-        for i in 0..WORD_SIZE {
-            let mut sum = (r_bytes[i] as u32) + (diff_bytes[i] as u32) + borrow;
-            if i == 0 {
-                sum += 1;
-            }
-            cols.diff_borrow[i] = F::from_canonical_u32(sum / 256);
-            borrow = sum / 256;
-        }
+        // --- OPTIMIZATION: Logic Removed ---
+        // We no longer calculate `diff_val`, `borrow`, `diff`, or `diff_borrow` here.
+        // The inequality check happens via the Bus in `eval`.
 
         let q_bytes = q_abs_val.to_le_bytes();
         let c_bytes = c_abs_val.to_le_bytes();
+        let r_bytes = r_abs_val.to_le_bytes();
         let mut carry = 0u32;
         for k in 0..WORD_SIZE {
             let mut sum = carry + (r_bytes[k] as u32);
@@ -276,8 +242,17 @@ impl DivRemChip {
             blu.add_u8_range_checks(&cols.c_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u8_range_checks(&cols.q_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u8_range_checks(&cols.r_abs.0.map(|x| x.as_canonical_u32() as u8));
-            blu.add_u8_range_checks(&cols.diff.0.map(|x| x.as_canonical_u32() as u8));
+            // Removed diff range checks
             blu.add_u16_range_checks(&cols.carry.map(|x| x.as_canonical_u32() as u16));
+
+            lt.push(AluEvent {
+                pc: UNUSED_PC,
+                opcode: Opcode::I32LtU,
+                a: 1,
+                b: r_abs_val,
+                c: c_abs_val,
+                code: Opcode::I32LtU.code(),
+            });
         }
     }
 }
@@ -298,15 +273,13 @@ where
         let local: &DivRemCols<AB::Var> = (*local).borrow();
 
         let zero = AB::Expr::zero();
-        let one = AB::Expr::one();
         let base = AB::F::from_canonical_u32(256);
         let two = AB::F::from_canonical_u32(2);
 
         // Constant 2^32 used for Two's Complement reconstruction.
-        let p32 = AB::Expr::from(AB::F::from_canonical_u32(268435454)); // Note: Field specific value
+        let p32 = AB::Expr::from(AB::F::from_canonical_u32(268435454));
 
         // 1. Selector Constraints
-        // Ensure that exactly one operation is active (if row is real), or none.
         let is_real = local.is_div_u + local.is_div_s + local.is_rem_u + local.is_rem_s;
         builder.assert_bool(is_real.clone());
 
@@ -316,67 +289,52 @@ where
         builder.when(is_real.clone()).assert_bool(local.is_rem_s);
 
         // 2. Sign Logic (Inputs)
-        // Ensure sign bits are boolean and consistent.
-        // If operation is Unsigned, sign bits MUST be 0.
         let is_signed = local.is_div_s + local.is_rem_s;
-
         builder.when(is_real.clone()).assert_bool(local.b_sign);
         builder.when(is_real.clone()).assert_bool(local.c_sign);
         builder.when(is_real.clone()).assert_bool(local.sign_xor);
-
         builder.when(is_real.clone()).when_not(is_signed.clone()).assert_zero(local.b_sign);
         builder.when(is_real.clone()).when_not(is_signed.clone()).assert_zero(local.c_sign);
 
         // 3. Core Math: |B| = |Q| * |C| + |R|
-        // This validates the division equation using absolute values.
-        // We perform the check byte-by-byte (Base 256) to handle the carry chain.
-
-        // Step A: Calculate Partial Products for multiplication |Q| * |C|
-        // m[k] accumulates all terms Q[i]*C[j] where i+j=k (Standard polynomial multiplication)
         let mut m: Vec<AB::Expr> = vec![zero.clone(); WORD_SIZE];
         for i in 0..WORD_SIZE {
             for j in 0..WORD_SIZE {
                 if i + j < WORD_SIZE {
-                    // Only sum terms that fall within the 32-bit window
                     m[i + j] = m[i + j].clone() + local.q_abs[i].into() * local.c_abs[j].into();
                 }
             }
         }
-
-        // Step B: Validate the Equation for each byte
-        // Equation: Partial_Products + Remainder + Prev_Carry = Dividend + Next_Carry * 256
         for i in 0..WORD_SIZE {
             let prev_carry = if i == 0 { zero.clone() } else { local.carry[i - 1].into() };
-
-            // LHS: Everything contributing to the value at byte `i`
             let lhs = m[i].clone() + local.r_abs[i].into() + prev_carry;
-
-            // RHS: The actual byte `i` of the Dividend, plus overflow (carry) to `i+1`
             let rhs = local.b_abs[i].into() + local.carry[i].into() * base;
-
             builder.when(is_real.clone()).assert_eq(lhs, rhs);
         }
 
         // 4. Inequality Check: |R| < |C|
-        // We prove this by asserting: |C| - |R| - 1 >= 0
-        // We implement the subtraction logic using a borrow chain:
-        // |R| + diff + 1 + Borrow_In = |C| + Borrow_Out * 256
-        for i in 0..WORD_SIZE {
-            let carry_in = if i == 0 { zero.clone() } else { local.diff_borrow[i - 1].into() };
-
-            // Add '1' only at the least significant byte (subtracting 1 implies adding 1 to RHS
-            // conceptually) Actually, logic is: C - R - 1 = diff => C = R + diff + 1
-            let extra = if i == 0 { one.clone() } else { zero.clone() };
-
-            let lhs = local.r_abs[i].into() + local.diff[i].into() + extra + carry_in;
-            let rhs = local.c_abs[i].into() + local.diff_borrow[i].into() * base;
-
-            builder.when(is_real.clone()).assert_eq(lhs, rhs);
-        }
+        // --- OPTIMIZATION ---
+        // Instead of local arithmetic, we send a request to the LtChip.
+        // We assert that LtU(R, C) == 1 (True).
+        let lt_opcode = AB::Expr::from_canonical_u32(Opcode::I32LtU.code());
+        let one = AB::Expr::one();
+        builder.send_instruction(
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNUSED_PC),
+            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
+            AB::Expr::zero(),
+            lt_opcode,
+            Word::extend_expr::<AB>(one),
+            local.r_abs,
+            local.c_abs,
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            is_real.clone(),
+        );
 
         // 5. Sign Logic (Results)
-        // Enforce XOR logic: sign_xor = b_sign XOR c_sign
-        // Arithmetic XOR: A + B - 2AB
         let computed_xor =
             local.b_sign + local.c_sign - (AB::Expr::from(two) * local.b_sign * local.c_sign);
         builder.when(is_real.clone()).assert_eq(local.sign_xor, computed_xor);
@@ -384,37 +342,21 @@ where
         let q_abs_expr = word_to_expr::<AB>(&local.q_abs);
         let r_abs_expr = word_to_expr::<AB>(&local.r_abs);
 
-        // Quotient Sign Rule: Negative if (b_sign != c_sign) AND (Q != 0)
         let expected_q_sign = is_signed.clone() * local.sign_xor;
-        // Remainder Sign Rule: Takes the sign of the Dividend (b_sign) if (R != 0)
         let expected_r_sign = is_signed.clone() * local.b_sign;
 
-        // Multiply by magnitude to handle the "if Q!=0" logic implicitly.
-        // (If magnitude is 0, sign doesn't matter, so we can clamp it to 0).
         builder.assert_eq(local.q_sign * q_abs_expr.clone(), expected_q_sign * q_abs_expr.clone());
         builder.assert_eq(local.r_sign * r_abs_expr.clone(), expected_r_sign * r_abs_expr.clone());
 
         // 6. Range Checks
-        // Ensure all byte decompositions are valid u8 (0..255)
-        // Ensure carries are valid u16 (allows for accumulation of partial products)
         builder.slice_range_check_u8(&local.b_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.c_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.q_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.r_abs.0, is_real.clone());
-        builder.slice_range_check_u8(&local.diff.0, is_real.clone());
+        // Removed range checks for diff
         builder.slice_range_check_u16(&local.carry, is_real.clone());
-        // Borrow bit is strictly boolean (0 or 1)
-        for i in 0..WORD_SIZE {
-            builder.when(is_real.clone()).assert_bool(local.diff_borrow[i]);
-        }
 
         // 7. Input Binding: Absolute to Signed
-        // Reconstruct the raw inputs `b` and `c` from their absolute values and signs.
-        //
-        // Formula for Two's Complement:
-        // if sign=0: val = abs
-        // if sign=1: val = 2^32 - abs
-        // Combined: val = abs + sign * (2^32 - 2 * abs)
         let b_expr = word_to_expr::<AB>(&local.b);
         let b_abs_expr = word_to_expr::<AB>(&local.b_abs);
         let c_expr = word_to_expr::<AB>(&local.c);
@@ -429,7 +371,6 @@ where
         builder.when(is_real.clone()).assert_eq(c_expr, term_c);
 
         // 8. Output Binding: Q and R to Result `a`
-        // Similar reconstruction for Q and R, then select which one acts as `a`.
         let a_expr = word_to_expr::<AB>(&local.a);
 
         let q_signed = q_abs_expr.clone() +
@@ -437,20 +378,17 @@ where
         let r_signed = r_abs_expr.clone() +
             local.r_sign * (p32.clone() - AB::Expr::from(two) * r_abs_expr.clone());
 
-        // Mux: If Div op, result is Q. If Rem op, result is R.
         let term_div = (local.is_div_s + local.is_div_u) * q_signed;
         let term_rem = (local.is_rem_s + local.is_rem_u) * r_signed;
 
         builder.assert_eq(a_expr, term_div + term_rem);
 
         // 9. Instruction Interaction
-        // Connect this chip's state to the main CPU bus.
         let op_rem_u = AB::Expr::from_canonical_u32(Opcode::I32RemU.code());
         let op_div_u = AB::Expr::from_canonical_u32(Opcode::I32DivU.code());
         let op_rem_s = AB::Expr::from_canonical_u32(Opcode::I32RemS.code());
         let op_div_s = AB::Expr::from_canonical_u32(Opcode::I32DivS.code());
 
-        // Reconstruct the actual Opcode value from the flags
         let calculated_opcode = local.is_rem_u * op_rem_u +
             local.is_div_u * op_div_u +
             local.is_rem_s * op_rem_s +
@@ -587,7 +525,7 @@ mod tests {
             (0, 0),
             (u32::MAX, 0),
             (0x80000000u32, -1i32 as u32),
-            (-1i32 as u32,0x80000000u32),
+            (-1i32 as u32, 0x80000000u32),
         ];
 
         let opcodes = vec![Opcode::I32DivU, Opcode::I32DivS, Opcode::I32RemU, Opcode::I32RemS];
