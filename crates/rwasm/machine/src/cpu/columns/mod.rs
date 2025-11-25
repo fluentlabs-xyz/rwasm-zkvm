@@ -43,6 +43,10 @@ pub struct CpuCols<T: Copy> {
 
     pub sp: T,
     pub next_sp: T,
+    /// The last signature id, only need when call indirect is invoked.
+    pub last_signagure_id: T,
+    /// next last signature id
+    pub next_last_signature_id: T,
 
     /// Columns related to the instruction.
     pub instruction: InstructionCols<T>,

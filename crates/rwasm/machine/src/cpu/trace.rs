@@ -132,6 +132,9 @@ impl CpuChip {
         cols.next_sp = F::from_canonical_u32(event.next_sp);
         cols.call_data.call_sp = F::from_canonical_u32(event.call_sp);
         cols.call_data.next_call_sp = F::from_canonical_u32(event.next_call_sp);
+        cols.last_signagure_id = F::from_canonical_u32(event.last_sig_id);
+        cols.next_last_signature_id = F::from_canonical_u32(event.next_last_sig_id);
+
         cols.instruction.populate(instruction);
 
         cols.is_memory = F::from_bool(

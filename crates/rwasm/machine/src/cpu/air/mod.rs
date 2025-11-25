@@ -742,6 +742,17 @@ impl CpuChip {
                 local.instruction.is_callindirect +
                 local.instruction.is_return,
         );
+
+        builder
+            .when(local.instruction.is_callindirect)
+            .assert_eq(local.instruction.aux_val.reduce::<AB>(), local.next_last_signature_id);
+        builder
+            .when_transition()
+            .when(next.is_real)
+            .assert_eq(local.next_last_signature_id, next.last_signagure_id);
+        builder
+            .when_not(local.instruction.is_callindirect)
+            .assert_eq(local.last_signagure_id, local.next_last_signature_id);
         builder
             .when(
                 AB::Expr::one() -
