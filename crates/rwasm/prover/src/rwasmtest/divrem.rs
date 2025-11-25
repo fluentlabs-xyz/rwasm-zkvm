@@ -2,6 +2,25 @@ use crate::rwasmtest::run_rwasm_prover;
 use rwasm_executor::{Opcode, Program};
 
 #[test]
+#[should_panic]
+pub fn test_base_case_for_divide_by_zero() {
+    let ops = vec![Opcode::I32Const(0x8000u32.into()), Opcode::I32Const(0.into()), Opcode::I32DivS];
+    let program = Program::from_instrs(ops);
+    run_rwasm_prover(program);
+}
+#[test]
+#[should_panic]
+pub fn test_base_case_for_div_mintrap() {
+    let ops = vec![
+        Opcode::I32Const(0x80000000u32.into()),
+        Opcode::I32Const(0xffffffffu32.into()),
+        Opcode::I32DivS,
+    ];
+    let program = Program::from_instrs(ops);
+    run_rwasm_prover(program);
+}
+
+#[test]
 pub fn test_base_case_for_divu() {
     // 100 / 3 = 33
     // 0x64 / 0x03 = 0x21

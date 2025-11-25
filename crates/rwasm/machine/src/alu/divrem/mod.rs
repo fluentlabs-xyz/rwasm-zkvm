@@ -14,7 +14,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
 use rwasm::Opcode;
 use rwasm_executor::{
-    events::{AluEvent, ByteLookupEvent, ByteRecord, EmptyByteRecord},
+    events::{AluEvent, ByteRecord, EmptyByteRecord},
     ExecutionRecord, Program, DEFAULT_PC_INC, UNUSED_PC,
 };
 use sp1_derive::AlignedBorrow;
@@ -24,6 +24,7 @@ use sp1_stark::{
     Word,
 };
 
+/// The total width of the chip trace.
 pub const NUM_DIV_REM_COLS: usize = size_of::<DivRemCols<u8>>();
 
 #[derive(Default)]
@@ -31,14 +32,12 @@ pub struct DivRemChip;
 
 /// Layout for the Division/Remainder Chip.
 ///
-/// # Mathematical Strategy
-/// This chip proves the relationship: `Dividend = Quotient * Divisor + Remainder`
-/// subject to `0 <= Remainder < Divisor`.
-///
-/// ## Optimization: Inequality Check (`|R| < |C|`)
-/// Previously, this chip used local subtraction (`|C| - |R| - 1`) which cost 8 columns.
-/// **Now**, we offload this check to the `LtChip` via the bus.
-/// We send: `Lt(R, C) == 1`.
+/// # Mathematical Model
+/// We prove: `Dividend (B) = Quotient (Q) * Divisor (C) + Remainder (R)`
+/// Constraints:
+/// 1. `0 <= R < C` (Ensures uniqueness of division).
+/// 2. `|Q| * |C| + |R| = |B|` (Core arithmetic).
+/// 3. `Inputs` <-> `Absolute Values` + `Signs` (Two's Complement consistencies).
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct DivRemCols<T> {
@@ -52,28 +51,38 @@ pub struct DivRemCols<T> {
     pub a: Word<T>,
 
     // --- Selectors (One-Hot Encoded) ---
+    // These select exactly one operation per row.
     pub is_div_u: T, // Unsigned Div
     pub is_div_s: T, // Signed Div
     pub is_rem_u: T, // Unsigned Rem
     pub is_rem_s: T, // Signed Rem
 
+    /// Flag: 1 if Divisor is 0.
+    /// Used to disable mathematical checks that would fail on div-by-zero (which traps
+    /// externally).
+    pub c_is_zero: T,
+
+    /// Stores the boolean result of: `is_signed_div AND result_is_positive`.
+    /// Required to keep the Bus Constraint (LogUp) at Degree 3.
+    pub check_overflow: T,
+
     // --- Sign Handling ---
-    pub sign_xor: T,
-    pub b_sign: T,
-    pub c_sign: T,
-    pub q_sign: T,
-    pub r_sign: T,
+    pub sign_xor: T, // Stores `b_sign ^ c_sign`
+    pub b_sign: T,   // 1 if Dividend < 0
+    pub c_sign: T,   // 1 if Divisor < 0
+    pub q_sign: T,   // 1 if Quotient should be negative
+    pub r_sign: T,   // 1 if Remainder should be negative
 
     // --- Absolute Values (The Working Variables) ---
+    // All arithmetic is performed on these magnitudes.
     pub b_abs: Word<T>,
     pub c_abs: Word<T>,
     pub q_abs: Word<T>,
     pub r_abs: Word<T>,
 
     // --- Intermediate Calculation Columns ---
-    // REMOVED: diff (4 cols) and diff_borrow (4 cols)
-    // SAVED: 8 Columns total.
-    /// Carry values for the multiplication/addition equation: `|Q|*|C| + |R|`.
+    /// Carry values for the byte-sliced polynomial addition: `|Q|*|C| + |R|`.
+    /// `carry[i]` represents the overflow from byte `i` to byte `i+1`.
     pub carry: [T; WORD_SIZE],
 }
 
@@ -90,6 +99,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
         input: &ExecutionRecord,
         _: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
+        // Parallel trace generation for performance.
         let mut rows = input
             .divrem_events
             .par_iter()
@@ -97,12 +107,13 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 let mut row = [F::zero(); NUM_DIV_REM_COLS];
                 let cols: &mut DivRemCols<F> = row.as_mut_slice().borrow_mut();
                 let mut blu = EmptyByteRecord;
-                let mut lt = vec![];
+                let mut lt = vec![]; // Local buffer for Lt events
                 self.event_to_row(event, cols, &mut blu, &mut lt);
                 row
             })
             .collect::<Vec<_>>();
 
+        // Pad the trace to a power of 2 for the FFT.
         pad_rows_fixed(
             &mut rows,
             || [F::zero(); NUM_DIV_REM_COLS],
@@ -113,26 +124,28 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
+        // Calculates interactions with the ByteLookup and Lt chips.
         let chunk_size = std::cmp::max(input.divrem_events.len() / num_cpus::get(), 1);
-        let blu_batches = input
+
+        let (blu_batches, lt_batches): (Vec<_>, Vec<_>) = input
             .divrem_events
             .par_chunks(chunk_size)
             .map(|events| {
-                let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-                let mut lt = vec![];
+                let mut lt = Vec::with_capacity(events.len());
+                let mut blu = HashMap::new();
+                let mut row = [F::zero(); NUM_DIV_REM_COLS];
+
                 events.iter().for_each(|event| {
-                    let mut row = [F::zero(); NUM_DIV_REM_COLS];
                     let cols: &mut DivRemCols<F> = row.as_mut_slice().borrow_mut();
                     self.event_to_row(event, cols, &mut blu, &mut lt);
                 });
                 (blu, lt)
             })
-            .collect::<Vec<_>>();
-        output.add_byte_lookup_events_from_maps(
-            blu_batches.iter().map(|(blu, _)| blu).collect::<Vec<_>>(),
-        );
-        let lts = blu_batches.iter().map(|(_, lt)| lt).collect::<Vec<_>>();
-        output.lt_events.extend(lts.into_iter().flatten());
+            .unzip();
+
+        output.add_byte_lookup_events_from_maps(blu_batches.iter().collect::<Vec<_>>());
+        output.lt_events.reserve(input.divrem_events.len());
+        output.lt_events.extend(lt_batches.into_iter().flatten());
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -162,7 +175,9 @@ impl DivRemChip {
 
         cols.b = event.b.into();
         cols.c = event.c.into();
+        cols.c_is_zero = F::from_bool(event.c == 0);
 
+        // 1. Decode Opcode
         let mut is_signed = false;
         match event.opcode {
             Opcode::I32DivS => {
@@ -182,6 +197,8 @@ impl DivRemChip {
             _ => panic!("Invalid opcode for DivRemChip"),
         }
 
+        // 2. Handle Signed Inputs (Two's Complement)
+        // If input is negative, we store its magnitude (wrapping_neg) and set the sign bit.
         let (b_abs_val, b_sign) = if is_signed && (b_val as i32) < 0 {
             (b_val.wrapping_neg(), true)
         } else {
@@ -196,8 +213,9 @@ impl DivRemChip {
 
         cols.sign_xor = F::from_bool(b_sign ^ c_sign);
 
+        // 3. Perform Arithmetic on Magnitudes
         let (q_abs_val, r_abs_val) = if c_abs_val == 0 {
-            (0, b_abs_val)
+            (0, b_abs_val) // Trap behavior: Result is 0 (or undefined), R preserves B.
         } else {
             (b_abs_val / c_abs_val, b_abs_val % c_abs_val)
         };
@@ -209,10 +227,8 @@ impl DivRemChip {
         cols.q_abs = q_abs_val.into();
         cols.r_abs = r_abs_val.into();
 
-        // --- OPTIMIZATION: Logic Removed ---
-        // We no longer calculate `diff_val`, `borrow`, `diff`, or `diff_borrow` here.
-        // The inequality check happens via the Bus in `eval`.
-
+        // 4. Compute Carries for the constraints
+        // We simulate the polynomial multiplication Q(x) * C(x) + R(x) base 256.
         let q_bytes = q_abs_val.to_le_bytes();
         let c_bytes = c_abs_val.to_le_bytes();
         let r_bytes = r_abs_val.to_le_bytes();
@@ -230,6 +246,7 @@ impl DivRemChip {
             carry = sum / 256;
         }
 
+        // 5. Determine Result Signs
         let q_sign_bool = if is_signed && q_abs_val != 0 { b_sign ^ c_sign } else { false };
         let r_sign_bool = if is_signed && r_abs_val != 0 { b_sign } else { false };
         cols.q_sign = F::from_bool(q_sign_bool);
@@ -237,22 +254,43 @@ impl DivRemChip {
 
         cols.a = event.a.into();
 
+        // 6. Set Degree Optimization Flag
+        // Flag is True if: Op is Signed Div AND Quotient is Positive.
+        // This catches the specific overflow case: INT_MIN / -1 = 2^31 (Positive).
+        // 2^31 cannot fit in a signed 32-bit int, so this must be constrained.
+        let check_overflow_bool = is_signed && !q_sign_bool && (cols.is_div_s == F::one());
+        cols.check_overflow = F::from_bool(check_overflow_bool);
+
         if !blu.as_any().is::<EmptyByteRecord>() {
             blu.add_u8_range_checks(&cols.b_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u8_range_checks(&cols.c_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u8_range_checks(&cols.q_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u8_range_checks(&cols.r_abs.0.map(|x| x.as_canonical_u32() as u8));
-            // Removed diff range checks
             blu.add_u16_range_checks(&cols.carry.map(|x| x.as_canonical_u32() as u16));
 
-            lt.push(AluEvent {
-                pc: UNUSED_PC,
-                opcode: Opcode::I32LtU,
-                a: 1,
-                b: r_abs_val,
-                c: c_abs_val,
-                code: Opcode::I32LtU.code(),
-            });
+            // Bus Interaction: Inequality Check
+            if c_abs_val != 0 {
+                lt.push(AluEvent {
+                    pc: UNUSED_PC,
+                    opcode: Opcode::I32LtU,
+                    a: 1, // Expect True: |R| < |C|
+                    b: r_abs_val,
+                    c: c_abs_val,
+                    code: Opcode::I32LtU.code(),
+                });
+            }
+
+            // Bus Interaction: Signed Overflow Check
+            if check_overflow_bool {
+                lt.push(AluEvent {
+                    pc: UNUSED_PC,
+                    opcode: Opcode::I32LtU,
+                    a: 1, // Expect True: |Q| < 2^31
+                    b: q_abs_val,
+                    c: 1u32 << 31,
+                    code: Opcode::I32LtU.code(),
+                });
+            }
         }
     }
 }
@@ -267,22 +305,27 @@ impl<AB> Air<AB> for DivRemChip
 where
     AB: SP1CoreAirBuilder,
 {
+    /// Mathematical Constraints
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let local = main.row_slice(0);
         let local: &DivRemCols<AB::Var> = (*local).borrow();
 
         let zero = AB::Expr::zero();
+        let one = AB::Expr::one();
         let base = AB::F::from_canonical_u32(256);
         let two = AB::F::from_canonical_u32(2);
-
-        // Constant 2^32 used for Two's Complement reconstruction.
+        // p32 = 2^32. Used for Two's Complement reconstruction.
         let p32 = AB::Expr::from(AB::F::from_canonical_u32(268435454));
 
-        // 1. Selector Constraints
+        // 1. Selector Integrity
+        // Ensure exactly one op is active, or all are zero (padding row).
         let is_real = local.is_div_u + local.is_div_s + local.is_rem_u + local.is_rem_s;
         builder.assert_bool(is_real.clone());
+        // If active, Divisor (C) must not be zero (DivByZero traps before this chip).
+        builder.when(is_real.clone()).assert_zero(local.c_is_zero);
 
+        // Ensure flags are boolean
         builder.when(is_real.clone()).assert_bool(local.is_div_u);
         builder.when(is_real.clone()).assert_bool(local.is_div_s);
         builder.when(is_real.clone()).assert_bool(local.is_rem_u);
@@ -293,10 +336,17 @@ where
         builder.when(is_real.clone()).assert_bool(local.b_sign);
         builder.when(is_real.clone()).assert_bool(local.c_sign);
         builder.when(is_real.clone()).assert_bool(local.sign_xor);
+        // If operation is unsigned, sign bits must be forced to 0.
         builder.when(is_real.clone()).when_not(is_signed.clone()).assert_zero(local.b_sign);
         builder.when(is_real.clone()).when_not(is_signed.clone()).assert_zero(local.c_sign);
 
-        // 3. Core Math: |B| = |Q| * |C| + |R|
+        // 3. Core Math: Polynomial Convolution
+        // We prove: |B| = |Q| * |C| + |R|
+        // The numbers are decomposed into 4 bytes (Base 256).
+        // This is equivalent to polynomial multiplication P_Q(x) * P_C(x) evaluated at x=256.
+
+        // Step A: Calculate Partial Products
+        // m[k] accumulates terms Q[i]*C[j] where i+j=k.
         let mut m: Vec<AB::Expr> = vec![zero.clone(); WORD_SIZE];
         for i in 0..WORD_SIZE {
             for j in 0..WORD_SIZE {
@@ -305,6 +355,10 @@ where
                 }
             }
         }
+
+        // Step B: Verify Equation Byte-by-Byte with Carry propagation
+        // LHS: Partial_Products + Remainder + Carry_In
+        // RHS: Dividend_Byte + Carry_Out * 256
         for i in 0..WORD_SIZE {
             let prev_carry = if i == 0 { zero.clone() } else { local.carry[i - 1].into() };
             let lhs = m[i].clone() + local.r_abs[i].into() + prev_carry;
@@ -313,11 +367,42 @@ where
         }
 
         // 4. Inequality Check: |R| < |C|
-        // --- OPTIMIZATION ---
-        // Instead of local arithmetic, we send a request to the LtChip.
-        // We assert that LtU(R, C) == 1 (True).
+        // Offloaded to LtChip to save columns.
         let lt_opcode = AB::Expr::from_canonical_u32(Opcode::I32LtU.code());
-        let one = AB::Expr::one();
+
+        // Constraint Degree:
+        // `is_real` (Deg 1) * BusFingerprint (Deg ~2) = Deg 3. Safe.
+        builder.send_instruction(
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNUSED_PC),
+            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
+            AB::Expr::zero(),
+            lt_opcode.clone(),
+            Word::extend_expr::<AB>(one.clone()), // Expected Result: 1 (True)
+            local.r_abs,                          // A
+            local.c_abs,                          // B -> Checks A < B
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            is_real.clone(),
+        );
+
+        // 5. Overflow Check: |Q| < 2^31
+        // Used to detect Signed Overflow (e.g., INT_MIN / -1).
+
+        // Constraint A: Verify flag logic (Deg 3)
+        let check_overflow_logic = local.is_div_s * (one.clone() - local.q_sign);
+        builder.when(is_real.clone()).assert_eq(local.check_overflow, check_overflow_logic);
+
+        // Constraint B: Send to Bus (Deg 3)
+        let val_p31 = Word([
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(128), // 0x80 in byte 3 = 0x80000000
+        ]);
+
         builder.send_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -325,38 +410,49 @@ where
             AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
             AB::Expr::zero(),
             lt_opcode,
-            Word::extend_expr::<AB>(one),
-            local.r_abs,
-            local.c_abs,
+            Word::extend_expr::<AB>(one.clone()),
+            local.q_abs,
+            val_p31,
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
-            is_real.clone(),
+            local.check_overflow, // Used as Degree 1 selector
         );
 
-        // 5. Sign Logic (Results)
+        // 6. Sign Logic Results
+        // XOR Arithmetic: A ^ B = A + B - 2AB
         let computed_xor =
             local.b_sign + local.c_sign - (AB::Expr::from(two) * local.b_sign * local.c_sign);
         builder.when(is_real.clone()).assert_eq(local.sign_xor, computed_xor);
 
+        // Verify Quotient Sign:
+        // Q_sign = (B_sign ^ C_sign) IF Q != 0.
+        // We enforce: Q_sign * Q_abs = (Sign_XOR) * Q_abs
         let q_abs_expr = word_to_expr::<AB>(&local.q_abs);
-        let r_abs_expr = word_to_expr::<AB>(&local.r_abs);
-
         let expected_q_sign = is_signed.clone() * local.sign_xor;
-        let expected_r_sign = is_signed.clone() * local.b_sign;
-
         builder.assert_eq(local.q_sign * q_abs_expr.clone(), expected_q_sign * q_abs_expr.clone());
+
+        // Verify Remainder Sign:
+        // R_sign = B_sign IF R != 0.
+        // We enforce: R_sign * R_abs = B_sign * R_abs
+        let r_abs_expr = word_to_expr::<AB>(&local.r_abs);
+        let expected_r_sign = is_signed.clone() * local.b_sign;
         builder.assert_eq(local.r_sign * r_abs_expr.clone(), expected_r_sign * r_abs_expr.clone());
 
-        // 6. Range Checks
+        // 7. Range Checks
         builder.slice_range_check_u8(&local.b_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.c_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.q_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.r_abs.0, is_real.clone());
-        // Removed range checks for diff
         builder.slice_range_check_u16(&local.carry, is_real.clone());
+        builder.when(is_real.clone()).assert_bool(local.check_overflow);
 
-        // 7. Input Binding: Absolute to Signed
+        // Critical: The last carry must be 0. If 1, the result exceeded 32 bits.
+        builder.when(is_real.clone()).assert_zero(local.carry[WORD_SIZE - 1]);
+
+        // 8. Input Binding: Reconstruct Signed Inputs
+        // Formula: Val = Abs + Sign * (2^32 - 2*Abs)
+        // If Sign=0, Val=Abs. If Sign=1, Val = 2^32 - Abs.
         let b_expr = word_to_expr::<AB>(&local.b);
         let b_abs_expr = word_to_expr::<AB>(&local.b_abs);
         let c_expr = word_to_expr::<AB>(&local.c);
@@ -370,20 +466,22 @@ where
         builder.when(is_real.clone()).assert_eq(b_expr, term_b);
         builder.when(is_real.clone()).assert_eq(c_expr, term_c);
 
-        // 8. Output Binding: Q and R to Result `a`
+        // 9. Output Binding: Reconstruct Output 'a'
         let a_expr = word_to_expr::<AB>(&local.a);
-
         let q_signed = q_abs_expr.clone() +
             local.q_sign * (p32.clone() - AB::Expr::from(two) * q_abs_expr.clone());
         let r_signed = r_abs_expr.clone() +
             local.r_sign * (p32.clone() - AB::Expr::from(two) * r_abs_expr.clone());
 
-        let term_div = (local.is_div_s + local.is_div_u) * q_signed;
-        let term_rem = (local.is_rem_s + local.is_rem_u) * r_signed;
+        // Output Mux: If Div, result is Q. If Rem, result is R.
+        let is_div = local.is_div_u + local.is_div_s;
+        let is_rem = local.is_rem_u + local.is_rem_s;
 
-        builder.assert_eq(a_expr, term_div + term_rem);
+        builder.when(is_div).assert_eq(a_expr.clone(), q_signed);
+        builder.when(is_rem).assert_eq(a_expr.clone(), r_signed);
 
-        // 9. Instruction Interaction
+        // 10. Instruction Interaction
+        // Verifies that the trace row matches the opcode received from the CPU.
         let op_rem_u = AB::Expr::from_canonical_u32(Opcode::I32RemU.code());
         let op_div_u = AB::Expr::from_canonical_u32(Opcode::I32DivU.code());
         let op_rem_s = AB::Expr::from_canonical_u32(Opcode::I32RemS.code());
@@ -510,21 +608,11 @@ mod tests {
             (i32::MIN as u32, 1),               // INT_MIN / 1
             (i32::MAX as u32, 1),               // INT_MAX / 1
             (i32::MIN as u32, i32::MIN as u32), // INT_MIN / INT_MIN
-            // --- Signed Overflow Case ---
-            // In WASM/x86, INT_MIN / -1 traps or overflows.
-            (i32::MIN as u32, u32::MAX), // INT_MIN / -1
-            // --- Signed Negative Operands ---
-            // -5 / 2   = -2 rem -1 (Rem sign follows Dividend)
             ((-5i32) as u32, 2),
             // 5 / -2   = -2 rem 1
             (5, (-2i32) as u32),
             // -5 / -2  = 2 rem -1
             ((-5i32) as u32, (-2i32) as u32),
-            // --- Division by Zero ---
-            (100, 0),
-            (0, 0),
-            (u32::MAX, 0),
-            (0x80000000u32, -1i32 as u32),
             (-1i32 as u32, 0x80000000u32),
         ];
 
@@ -603,5 +691,29 @@ mod tests {
             assert!(result.is_err());
             assert!(result.unwrap_err().is_constraints_failing(&name));
         }
+    }
+    #[test]
+    fn test_divrem_divide_by_zero_trap_compliance() {
+        // 1. Setup the inputs that MUST trap according to WASM Spec
+        let b = 3232u32;
+        let c = 0;
+        let op = Opcode::I32DivS;
+
+        let mut shard = ExecutionRecord::default();
+        shard.divrem_events.push(AluEvent::new(0, op, 0x800000, b, c, op.code()));
+
+        // 2. Generate Trace
+        let chip = DivRemChip::default();
+        let trace = chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        // 3. Run the Prover
+        // According to WASM spec, this operation is invalid.
+        // Therefore, the STARK constraints MUST NOT be satisfiable.
+        let config = BabyBearPoseidon2::new();
+        let mut challenger = config.challenger();
+        let proof = prove::<BabyBearPoseidon2, _>(&config, &chip, &mut challenger, trace);
+        let mut challenger = config.challenger();
+        let result = verify(&config, &chip, &mut challenger, &proof);
+        assert!(result.is_err(), "Violation of WASM Spec: divide by zero did not trap!");
     }
 }
