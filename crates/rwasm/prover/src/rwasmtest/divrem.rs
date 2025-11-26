@@ -2,6 +2,94 @@ use crate::rwasmtest::run_rwasm_prover;
 use rwasm_executor::{Opcode, Program};
 
 #[test]
+pub fn test_base_case_for_div_case() {
+    let ops = vec![
+        // 1. I32DivS, b=61725, c=12
+        Opcode::I32Const(61725.into()),
+        Opcode::I32Const(12.into()),
+        Opcode::I32DivS,
+        // 2. I32RemU, b=74070, c=4294967283
+        Opcode::I32Const(74070.into()),
+        Opcode::I32Const(4294967283u32.into()),
+        Opcode::I32RemU,
+        // 3. I32RemS, b=86415, c=14
+        Opcode::I32Const(86415.into()),
+        Opcode::I32Const(14.into()),
+        Opcode::I32RemS,
+        // 4. I32DivU, b=98760, c=4294967281
+        Opcode::I32Const(98760.into()),
+        Opcode::I32Const(4294967281u32.into()),
+        Opcode::I32DivU,
+        // 5. I32DivS, b=111105, c=16
+        Opcode::I32Const(111105.into()),
+        Opcode::I32Const(16.into()),
+        Opcode::I32DivS,
+        // 6. I32RemU, b=123450, c=4294967279
+        Opcode::I32Const(123450.into()),
+        Opcode::I32Const(4294967279u32.into()),
+        Opcode::I32RemU,
+        // 7. I32RemS, b=135795, c=18
+        Opcode::I32Const(135795.into()),
+        Opcode::I32Const(18.into()),
+        Opcode::I32RemS,
+        // 8. I32DivU, b=148140, c=4294967277
+        Opcode::I32Const(148140.into()),
+        Opcode::I32Const(4294967277u32.into()),
+        Opcode::I32DivU,
+        // 9. I32DivS, b=160485, c=20
+        Opcode::I32Const(160485.into()),
+        Opcode::I32Const(20.into()),
+        Opcode::I32DivS,
+        // 10. I32RemU, b=172830, c=4294967275
+        Opcode::I32Const(172830.into()),
+        Opcode::I32Const(4294967275u32.into()),
+        Opcode::I32RemU,
+        // 11. I32RemS, b=185175, c=22
+        Opcode::I32Const(185175.into()),
+        Opcode::I32Const(22.into()),
+        Opcode::I32RemS,
+        // 12. I32DivU, b=197520, c=4294967273
+        Opcode::I32Const(197520.into()),
+        Opcode::I32Const(4294967273u32.into()),
+        Opcode::I32DivU,
+        // 13. I32DivS, b=209865, c=24
+        Opcode::I32Const(209865.into()),
+        Opcode::I32Const(24.into()),
+        Opcode::I32DivS,
+        // 14. I32RemU, b=222210, c=4294967271
+        Opcode::I32Const(222210.into()),
+        Opcode::I32Const(4294967271u32.into()),
+        Opcode::I32RemU,
+        // 15. I32RemS, b=234555, c=26
+        Opcode::I32Const(234555.into()),
+        Opcode::I32Const(26.into()),
+        Opcode::I32RemS,
+        // 16. I32DivU, b=246900, c=4294967269
+        Opcode::I32Const(246900.into()),
+        Opcode::I32Const(4294967269u32.into()),
+        Opcode::I32DivU,
+        // 17. I32DivS, b=259245, c=28
+        Opcode::I32Const(259245.into()),
+        Opcode::I32Const(28.into()),
+        Opcode::I32DivS,
+        // 18. I32RemU, b=271590, c=4294967267
+        Opcode::I32Const(271590.into()),
+        Opcode::I32Const(4294967267u32.into()),
+        Opcode::I32RemU,
+        // 19. I32RemS, b=283935, c=30
+        Opcode::I32Const(283935.into()),
+        Opcode::I32Const(30.into()),
+        Opcode::I32RemS,
+        // 20. I32DivU, b=296280, c=4294967265
+        Opcode::I32Const(296280.into()),
+        Opcode::I32Const(4294967265u32.into()),
+        Opcode::I32DivU,
+    ];
+    let program = Program::from_instrs(ops);
+    run_rwasm_prover(program);
+}
+
+#[test]
 #[should_panic]
 pub fn test_base_case_for_divide_by_zero() {
     let ops = vec![Opcode::I32Const(0x8000u32.into()), Opcode::I32Const(0.into()), Opcode::I32DivS];

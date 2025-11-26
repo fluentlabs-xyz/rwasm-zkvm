@@ -5,6 +5,7 @@ use core::{
 
 use crate::{
     air::SP1CoreAirBuilder,
+    operations::IsEqualWordOperation,
     utils::{pad_rows_fixed, word_to_expr},
 };
 use hashbrown::HashMap;
@@ -62,9 +63,15 @@ pub struct DivRemCols<T> {
     /// externally).
     pub c_is_zero: T,
 
-    /// Stores the boolean result of: `is_signed_div AND result_is_positive`.
-    /// Required to keep the Bus Constraint (LogUp) at Degree 3.
-    pub check_overflow: T,
+    pub is_overflow: T,
+
+    /// Flag for whether the value of `b` matches the unique overflow case `b = -2^31` and `c =
+    /// -1`.
+    pub is_overflow_b: IsEqualWordOperation<T>,
+
+    /// Flag for whether the value of `c` matches the unique overflow case `b = -2^31` and `c =
+    /// -1`.
+    pub is_overflow_c: IsEqualWordOperation<T>,
 
     // --- Sign Handling ---
     pub sign_xor: T, // Stores `b_sign ^ c_sign`
@@ -254,12 +261,12 @@ impl DivRemChip {
 
         cols.a = event.a.into();
 
-        // 6. Set Degree Optimization Flag
-        // Flag is True if: Op is Signed Div AND Quotient is Positive.
-        // This catches the specific overflow case: INT_MIN / -1 = 2^31 (Positive).
-        // 2^31 cannot fit in a signed 32-bit int, so this must be constrained.
-        let check_overflow_bool = is_signed && !q_sign_bool && (cols.is_div_s == F::one());
-        cols.check_overflow = F::from_bool(check_overflow_bool);
+        cols.is_overflow_b.populate(event.b, i32::MIN as u32);
+        cols.is_overflow_c.populate(event.c, -1i32 as u32);
+
+        if is_signed {
+            cols.is_overflow = F::from_bool(event.b as i32 == i32::MIN && event.c as i32 == -1);
+        }
 
         if !blu.as_any().is::<EmptyByteRecord>() {
             blu.add_u8_range_checks(&cols.b_abs.0.map(|x| x.as_canonical_u32() as u8));
@@ -269,28 +276,16 @@ impl DivRemChip {
             blu.add_u16_range_checks(&cols.carry.map(|x| x.as_canonical_u32() as u16));
 
             // Bus Interaction: Inequality Check
-            if c_abs_val != 0 {
-                lt.push(AluEvent {
-                    pc: UNUSED_PC,
-                    opcode: Opcode::I32LtU,
-                    a: 1, // Expect True: |R| < |C|
-                    b: r_abs_val,
-                    c: c_abs_val,
-                    code: Opcode::I32LtU.code(),
-                });
-            }
-
-            // Bus Interaction: Signed Overflow Check
-            if check_overflow_bool {
-                lt.push(AluEvent {
-                    pc: UNUSED_PC,
-                    opcode: Opcode::I32LtU,
-                    a: 1, // Expect True: |Q| < 2^31
-                    b: q_abs_val,
-                    c: 1u32 << 31,
-                    code: Opcode::I32LtU.code(),
-                });
-            }
+            // This event is sent regardless of whether C is zero. If C is zero, the Lt chip will
+            // fail while trying to prove |R| < 0, which is the desired behavior.
+            lt.push(AluEvent {
+                pc: UNUSED_PC,
+                opcode: Opcode::I32LtU,
+                a: 1, // Expect True: |R| < |C|
+                b: r_abs_val,
+                c: c_abs_val,
+                code: Opcode::I32LtU.code(),
+            });
         }
     }
 }
@@ -388,36 +383,31 @@ where
             is_real.clone(),
         );
 
-        // 5. Overflow Check: |Q| < 2^31
-        // Used to detect Signed Overflow (e.g., INT_MIN / -1).
+        // Calculate is_overflow. is_overflow = is_equal(b, -2^{31}) * is_equal(c, -1) * is_signed
+        {
+            IsEqualWordOperation::<AB::F>::eval(
+                builder,
+                local.b.map(|x| x.into()),
+                Word::from(i32::MIN as u32).map(|x: AB::F| x.into()),
+                local.is_overflow_b,
+                is_real.clone(),
+            );
 
-        // Constraint A: Verify flag logic (Deg 3)
-        let check_overflow_logic = local.is_div_s * (one.clone() - local.q_sign);
-        builder.when(is_real.clone()).assert_eq(local.check_overflow, check_overflow_logic);
+            IsEqualWordOperation::<AB::F>::eval(
+                builder,
+                local.c.map(|x| x.into()),
+                Word::from(-1i32 as u32).map(|x: AB::F| x.into()),
+                local.is_overflow_c,
+                is_real.clone(),
+            );
 
-        // Constraint B: Send to Bus (Deg 3)
-        let val_p31 = Word([
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::from_canonical_u32(128), // 0x80 in byte 3 = 0x80000000
-        ]);
-
-        builder.send_instruction(
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::from_canonical_u32(UNUSED_PC),
-            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
-            AB::Expr::zero(),
-            lt_opcode,
-            Word::extend_expr::<AB>(one.clone()),
-            local.q_abs,
-            val_p31,
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            local.check_overflow, // Used as Degree 1 selector
-        );
+            builder.assert_eq(
+                local.is_overflow,
+                local.is_overflow_b.is_diff_zero.result *
+                    local.is_overflow_c.is_diff_zero.result *
+                    is_signed.clone(),
+            );
+        }
 
         // 6. Sign Logic Results
         // XOR Arithmetic: A ^ B = A + B - 2AB
@@ -445,7 +435,10 @@ where
         builder.slice_range_check_u8(&local.q_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.r_abs.0, is_real.clone());
         builder.slice_range_check_u16(&local.carry, is_real.clone());
-        builder.when(is_real.clone()).assert_bool(local.check_overflow);
+
+        // Ensure flags are boolean (0 or 1)
+        builder.when(is_real.clone()).assert_bool(local.q_sign);
+        builder.when(is_real.clone()).assert_bool(local.r_sign);
 
         // Critical: The last carry must be 0. If 1, the result exceeded 32 bits.
         builder.when(is_real.clone()).assert_zero(local.carry[WORD_SIZE - 1]);
@@ -541,7 +534,7 @@ mod tests {
             }
             Opcode::I32RemU => {
                 if c == 0 {
-                    b
+                    0
                 } else {
                     b % c
                 }
@@ -555,7 +548,7 @@ mod tests {
             }
             Opcode::I32RemS => {
                 if c == 0 {
-                    b
+                    0
                 } else {
                     (b as i32).wrapping_rem(c as i32) as u32
                 }
