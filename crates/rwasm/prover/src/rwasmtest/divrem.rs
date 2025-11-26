@@ -98,11 +98,43 @@ pub fn test_base_case_for_divide_by_zero() {
 }
 #[test]
 #[should_panic]
-pub fn test_base_case_for_div_mintrap() {
+pub fn test_base_case_for_divs_mintrap() {
     let ops = vec![
         Opcode::I32Const(0x80000000u32.into()),
         Opcode::I32Const(0xffffffffu32.into()),
         Opcode::I32DivS,
+    ];
+    let program = Program::from_instrs(ops);
+    run_rwasm_prover(program);
+}
+
+#[test]
+pub fn test_base_case_for_divu_mintrap() {
+    let ops = vec![
+        Opcode::I32Const(0x80000000u32.into()),
+        Opcode::I32Const(0xffffffffu32.into()),
+        Opcode::I32DivU,
+    ];
+    let program = Program::from_instrs(ops);
+    run_rwasm_prover(program);
+}
+
+#[test]
+pub fn test_base_case_for_rems_mintrap() {
+    let ops = vec![
+        Opcode::I32Const(0x80000000u32.into()),
+        Opcode::I32Const(0xffffffffu32.into()),
+        Opcode::I32RemS,
+    ];
+    let program = Program::from_instrs(ops);
+    run_rwasm_prover(program);
+}
+#[test]
+pub fn test_base_case_for_remu_mintrap() {
+    let ops = vec![
+        Opcode::I32Const(0x80000000u32.into()),
+        Opcode::I32Const(0xffffffffu32.into()),
+        Opcode::I32RemU,
     ];
     let program = Program::from_instrs(ops);
     run_rwasm_prover(program);
