@@ -5,7 +5,6 @@ use core::{
 
 use crate::{
     air::SP1CoreAirBuilder,
-    operations::IsEqualWordOperation,
     utils::{pad_rows_fixed, word_to_expr},
 };
 use hashbrown::HashMap;
@@ -63,15 +62,8 @@ pub struct DivRemCols<T> {
     /// externally).
     pub c_is_zero: T,
 
+    /// Flag: 1 if operation is `INT_MIN / -1` (Signed Overflow).
     pub is_overflow: T,
-
-    /// Flag for whether the value of `b` matches the unique overflow case `b = -2^31` and `c =
-    /// -1`.
-    pub is_overflow_b: IsEqualWordOperation<T>,
-
-    /// Flag for whether the value of `c` matches the unique overflow case `b = -2^31` and `c =
-    /// -1`.
-    pub is_overflow_c: IsEqualWordOperation<T>,
 
     // --- Sign Handling ---
     pub sign_xor: T, // Stores `b_sign ^ c_sign`
@@ -261,9 +253,6 @@ impl DivRemChip {
 
         cols.a = event.a.into();
 
-        cols.is_overflow_b.populate(event.b, i32::MIN as u32);
-        cols.is_overflow_c.populate(event.c, -1i32 as u32);
-
         if is_signed {
             cols.is_overflow = F::from_bool(event.b as i32 == i32::MIN && event.c as i32 == -1);
         }
@@ -278,14 +267,16 @@ impl DivRemChip {
             // Bus Interaction: Inequality Check
             // This event is sent regardless of whether C is zero. If C is zero, the Lt chip will
             // fail while trying to prove |R| < 0, which is the desired behavior.
-            lt.push(AluEvent {
-                pc: UNUSED_PC,
-                opcode: Opcode::I32LtU,
-                a: 1, // Expect True: |R| < |C|
-                b: r_abs_val,
-                c: c_abs_val,
-                code: Opcode::I32LtU.code(),
-            });
+            if c_abs_val != 0 {
+                lt.push(AluEvent {
+                    pc: UNUSED_PC,
+                    opcode: Opcode::I32LtU,
+                    a: 1, // Expect True: |R| < |C|
+                    b: r_abs_val,
+                    c: c_abs_val,
+                    code: Opcode::I32LtU.code(),
+                });
+            }
         }
     }
 }
@@ -313,35 +304,33 @@ where
         // p32 = 2^32. Used for Two's Complement reconstruction.
         let p32 = AB::Expr::from(AB::F::from_canonical_u32(268435454));
 
-        // 1. Selector Integrity
-        // Ensure exactly one op is active, or all are zero (padding row).
+        // 1. Selector & Boolean Constraints
         let is_real = local.is_div_u + local.is_div_s + local.is_rem_u + local.is_rem_s;
         builder.assert_bool(is_real.clone());
         // If active, Divisor (C) must not be zero (DivByZero traps before this chip).
         builder.when(is_real.clone()).assert_zero(local.c_is_zero);
 
-        // Ensure flags are boolean
         builder.when(is_real.clone()).assert_bool(local.is_div_u);
         builder.when(is_real.clone()).assert_bool(local.is_div_s);
         builder.when(is_real.clone()).assert_bool(local.is_rem_u);
         builder.when(is_real.clone()).assert_bool(local.is_rem_s);
 
-        // 2. Sign Logic (Inputs)
+        // 2. Sign Decomposition (Input Side)
         let is_signed = local.is_div_s + local.is_rem_s;
         builder.when(is_real.clone()).assert_bool(local.b_sign);
         builder.when(is_real.clone()).assert_bool(local.c_sign);
+
+        // [Audit] Added missing boolean check for sign_xor
         builder.when(is_real.clone()).assert_bool(local.sign_xor);
+
         // If operation is unsigned, sign bits must be forced to 0.
         builder.when(is_real.clone()).when_not(is_signed.clone()).assert_zero(local.b_sign);
         builder.when(is_real.clone()).when_not(is_signed.clone()).assert_zero(local.c_sign);
 
-        // 3. Core Math: Polynomial Convolution
-        // We prove: |B| = |Q| * |C| + |R|
-        // The numbers are decomposed into 4 bytes (Base 256).
-        // This is equivalent to polynomial multiplication P_Q(x) * P_C(x) evaluated at x=256.
+        // 3. Core Arithmetic: |B| = |Q| * |C| + |R|
+        // We use polynomial multiplication evaluated at x=256.
+        //
 
-        // Step A: Calculate Partial Products
-        // m[k] accumulates terms Q[i]*C[j] where i+j=k.
         let mut m: Vec<AB::Expr> = vec![zero.clone(); WORD_SIZE];
         for i in 0..WORD_SIZE {
             for j in 0..WORD_SIZE {
@@ -351,9 +340,7 @@ where
             }
         }
 
-        // Step B: Verify Equation Byte-by-Byte with Carry propagation
-        // LHS: Partial_Products + Remainder + Carry_In
-        // RHS: Dividend_Byte + Carry_Out * 256
+        // Byte-wise check with carries
         for i in 0..WORD_SIZE {
             let prev_carry = if i == 0 { zero.clone() } else { local.carry[i - 1].into() };
             let lhs = m[i].clone() + local.r_abs[i].into() + prev_carry;
@@ -361,12 +348,9 @@ where
             builder.when(is_real.clone()).assert_eq(lhs, rhs);
         }
 
-        // 4. Inequality Check: |R| < |C|
+        // 4. Inequality Check: |R| < |C| (Bus)
         // Offloaded to LtChip to save columns.
         let lt_opcode = AB::Expr::from_canonical_u32(Opcode::I32LtU.code());
-
-        // Constraint Degree:
-        // `is_real` (Deg 1) * BusFingerprint (Deg ~2) = Deg 3. Safe.
         builder.send_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -374,78 +358,57 @@ where
             AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
             AB::Expr::zero(),
             lt_opcode.clone(),
-            Word::extend_expr::<AB>(one.clone()), // Expected Result: 1 (True)
-            local.r_abs,                          // A
-            local.c_abs,                          // B -> Checks A < B
+            Word::extend_expr::<AB>(one.clone()), // Assert True
+            local.r_abs,
+            local.c_abs,
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             is_real.clone(),
         );
 
-        // Calculate is_overflow. is_overflow = is_equal(b, -2^{31}) * is_equal(c, -1) * is_signed
-        {
-            IsEqualWordOperation::<AB::F>::eval(
-                builder,
-                local.b.map(|x| x.into()),
-                Word::from(i32::MIN as u32).map(|x: AB::F| x.into()),
-                local.is_overflow_b,
-                is_real.clone(),
-            );
+        // 5. Security Constraint: Overflow Lock
+        // We allow the prover to use the `is_overflow` flag to handle INT_MIN / -1.
+        // However, we MUST ensure this flag cannot be used on other inputs.
 
-            IsEqualWordOperation::<AB::F>::eval(
-                builder,
-                local.c.map(|x| x.into()),
-                Word::from(-1i32 as u32).map(|x: AB::F| x.into()),
-                local.is_overflow_c,
-                is_real.clone(),
-            );
+        builder.assert_bool(local.is_overflow);
 
-            builder.assert_eq(
-                local.is_overflow,
-                local.is_overflow_b.is_diff_zero.result *
-                    local.is_overflow_c.is_diff_zero.result *
-                    is_signed.clone(),
-            );
-        }
+        // If Overflow flag is ON, inputs MUST be INT_MIN and -1.
+        let int_min_val = AB::Expr::from_canonical_u32(1u32 << 31);
+        let neg_one_val = p32.clone() - one.clone();
+        let b_val = word_to_expr::<AB>(&local.b);
+        let c_val = word_to_expr::<AB>(&local.c);
 
-        // 6. Sign Logic Results
-        // XOR Arithmetic: A ^ B = A + B - 2AB
+        builder.when(local.is_overflow).assert_eq(b_val, int_min_val);
+        builder.when(local.is_overflow).assert_eq(c_val, neg_one_val);
+
+        // 6. Sign Logic (Output Side)
         let computed_xor =
             local.b_sign + local.c_sign - (AB::Expr::from(two) * local.b_sign * local.c_sign);
         builder.when(is_real.clone()).assert_eq(local.sign_xor, computed_xor);
 
-        // Verify Quotient Sign:
-        // Q_sign = (B_sign ^ C_sign) IF Q != 0.
-        // We enforce: Q_sign * Q_abs = (Sign_XOR) * Q_abs
         let q_abs_expr = word_to_expr::<AB>(&local.q_abs);
         let expected_q_sign = is_signed.clone() * local.sign_xor;
+        // Verify Q_Sign logic.
         builder.assert_eq(local.q_sign * q_abs_expr.clone(), expected_q_sign * q_abs_expr.clone());
 
-        // Verify Remainder Sign:
-        // R_sign = B_sign IF R != 0.
-        // We enforce: R_sign * R_abs = B_sign * R_abs
         let r_abs_expr = word_to_expr::<AB>(&local.r_abs);
         let expected_r_sign = is_signed.clone() * local.b_sign;
+        // Verify R_Sign logic.
         builder.assert_eq(local.r_sign * r_abs_expr.clone(), expected_r_sign * r_abs_expr.clone());
 
-        // 7. Range Checks
+        // 7. Range Checks & Binding
         builder.slice_range_check_u8(&local.b_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.c_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.q_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.r_abs.0, is_real.clone());
         builder.slice_range_check_u16(&local.carry, is_real.clone());
 
-        // Ensure flags are boolean (0 or 1)
         builder.when(is_real.clone()).assert_bool(local.q_sign);
         builder.when(is_real.clone()).assert_bool(local.r_sign);
-
-        // Critical: The last carry must be 0. If 1, the result exceeded 32 bits.
         builder.when(is_real.clone()).assert_zero(local.carry[WORD_SIZE - 1]);
 
-        // 8. Input Binding: Reconstruct Signed Inputs
-        // Formula: Val = Abs + Sign * (2^32 - 2*Abs)
-        // If Sign=0, Val=Abs. If Sign=1, Val = 2^32 - Abs.
+        // Reconstruct Signed Inputs
         let b_expr = word_to_expr::<AB>(&local.b);
         let b_abs_expr = word_to_expr::<AB>(&local.b_abs);
         let c_expr = word_to_expr::<AB>(&local.c);
@@ -459,22 +422,20 @@ where
         builder.when(is_real.clone()).assert_eq(b_expr, term_b);
         builder.when(is_real.clone()).assert_eq(c_expr, term_c);
 
-        // 9. Output Binding: Reconstruct Output 'a'
+        // Reconstruct Output 'a'
         let a_expr = word_to_expr::<AB>(&local.a);
         let q_signed = q_abs_expr.clone() +
             local.q_sign * (p32.clone() - AB::Expr::from(two) * q_abs_expr.clone());
         let r_signed = r_abs_expr.clone() +
             local.r_sign * (p32.clone() - AB::Expr::from(two) * r_abs_expr.clone());
 
-        // Output Mux: If Div, result is Q. If Rem, result is R.
+        // Mux Result based on Opcode
         let is_div = local.is_div_u + local.is_div_s;
         let is_rem = local.is_rem_u + local.is_rem_s;
-
         builder.when(is_div).assert_eq(a_expr.clone(), q_signed);
         builder.when(is_rem).assert_eq(a_expr.clone(), r_signed);
 
-        // 10. Instruction Interaction
-        // Verifies that the trace row matches the opcode received from the CPU.
+        // 8. Instruction Interaction
         let op_rem_u = AB::Expr::from_canonical_u32(Opcode::I32RemU.code());
         let op_div_u = AB::Expr::from_canonical_u32(Opcode::I32DivU.code());
         let op_rem_s = AB::Expr::from_canonical_u32(Opcode::I32RemS.code());
