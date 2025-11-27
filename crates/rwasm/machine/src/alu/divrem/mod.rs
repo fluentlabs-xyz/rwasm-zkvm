@@ -8,7 +8,7 @@ use core::{
 };
 use hashbrown::HashMap;
 use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::{AbstractField, PrimeField32};
+use p3_field::{AbstractField, PrimeField32}; // Added Field for inverse()
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
 use rwasm::Opcode;
@@ -30,13 +30,6 @@ pub const NUM_DIV_REM_COLS: usize = size_of::<DivRemCols<u8>>();
 pub struct DivRemChip;
 
 /// Layout for the Division/Remainder Chip.
-///
-/// # Mathematical Model
-/// We prove: `Dividend (B) = Quotient (Q) * Divisor (C) + Remainder (R)`
-/// Constraints:
-/// 1. `0 <= R < C` (Ensures uniqueness of division).
-/// 2. `|Q| * |C| + |R| = |B|` (Core arithmetic).
-/// 3. `Inputs` <-> `Absolute Values` + `Signs` (Two's Complement consistencies).
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct DivRemCols<T> {
@@ -50,22 +43,25 @@ pub struct DivRemCols<T> {
     pub a: Word<T>,
 
     // --- Selectors (One-Hot Encoded) ---
-    // These select exactly one operation per row.
     pub is_div_u: T, // Unsigned Div
     pub is_div_s: T, // Signed Div
     pub is_rem_u: T, // Unsigned Rem
     pub is_rem_s: T, // Signed Rem
 
     /// Flag: 1 if Divisor is 0.
-    /// Used to disable mathematical checks that would fail on div-by-zero (which traps
-    /// externally).
     pub c_is_zero: T,
 
     /// Flag: 1 if operation is `INT_MIN / -1` (Signed Overflow).
     pub is_overflow: T,
-    pub is_b_int_min: T,
-    /// 1 if c == -1 (0xFFFF_FFFF) in this row, else 0.
-    pub is_c_neg_one: T,
+
+    // --- Overflow Helpers ---
+    pub is_b_int_min: T, // 1 if b == INT_MIN
+    pub is_c_neg_one: T, // 1 if c == -1
+
+    // Inverse helpers to force the flags above:
+    // if is_b_int_min is 0, b_diff_inv must be (b - INT_MIN)^-1
+    pub b_diff_inv: T,
+    pub c_diff_inv: T,
 
     // --- Sign Handling ---
     pub sign_xor: T, // Stores `b_sign ^ c_sign`
@@ -74,16 +70,13 @@ pub struct DivRemCols<T> {
     pub q_sign: T,   // 1 if Quotient should be negative
     pub r_sign: T,   // 1 if Remainder should be negative
 
-    // --- Absolute Values (The Working Variables) ---
-    // All arithmetic is performed on these magnitudes.
+    // --- Absolute Values ---
     pub b_abs: Word<T>,
     pub c_abs: Word<T>,
     pub q_abs: Word<T>,
     pub r_abs: Word<T>,
 
     // --- Intermediate Calculation Columns ---
-    /// Carry values for the byte-sliced polynomial addition: `|Q|*|C| + |R|`.
-    /// `carry[i]` represents the overflow from byte `i` to byte `i+1`.
     pub carry: [T; WORD_SIZE],
 }
 
@@ -100,7 +93,6 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
         input: &ExecutionRecord,
         _: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
-        // Parallel trace generation for performance.
         let mut rows = input
             .divrem_events
             .par_iter()
@@ -108,13 +100,12 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 let mut row = [F::zero(); NUM_DIV_REM_COLS];
                 let cols: &mut DivRemCols<F> = row.as_mut_slice().borrow_mut();
                 let mut blu = EmptyByteRecord;
-                let mut lt = vec![]; // Local buffer for Lt events
+                let mut lt = vec![];
                 self.event_to_row(event, cols, &mut blu, &mut lt);
                 row
             })
             .collect::<Vec<_>>();
 
-        // Pad the trace to a power of 2 for the FFT.
         pad_rows_fixed(
             &mut rows,
             || [F::zero(); NUM_DIV_REM_COLS],
@@ -125,7 +116,6 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
-        // Calculates interactions with the ByteLookup and Lt chips.
         let chunk_size = std::cmp::max(input.divrem_events.len() / num_cpus::get(), 1);
 
         let (blu_batches, lt_batches): (Vec<_>, Vec<_>) = input
@@ -174,13 +164,33 @@ impl DivRemChip {
         let b_val = event.b;
         let c_val = event.c;
 
-        cols.is_b_int_min = F::from_bool((b_val as i32) == i32::MIN);
-        cols.is_c_neg_one = F::from_bool((c_val as i32) == -1);
-
         cols.b = event.b.into();
         cols.c = event.c.into();
         cols.c_is_zero = F::from_bool(event.c == 0);
 
+        // --- Overflow Helpers Generation ---
+        let int_min = 0x8000_0000u32;
+        let neg_one = 0xFFFF_FFFFu32;
+
+        cols.is_b_int_min = F::from_bool(b_val == int_min);
+        // If b != INT_MIN, b_diff_inv = (b - INT_MIN)^-1. Else 0.
+        cols.b_diff_inv = if b_val == int_min {
+            F::zero()
+        } else {
+            (F::from_canonical_u32(b_val) - F::from_canonical_u32(int_min)).inverse()
+        };
+
+        cols.is_c_neg_one = F::from_bool(c_val == neg_one);
+        // If c != -1, c_diff_inv = (c - -1)^-1. Else 0.
+        cols.c_diff_inv = if c_val == neg_one {
+            F::zero()
+        } else {
+            (F::from_canonical_u32(c_val) - F::from_canonical_u32(neg_one)).inverse()
+        };
+
+        if cols.is_div_s == F::one() {
+            cols.is_overflow = F::from_bool(event.b == int_min && event.c == neg_one);
+        }
         // 1. Decode Opcode
         let mut is_signed = false;
         match event.opcode {
@@ -202,7 +212,6 @@ impl DivRemChip {
         }
 
         // 2. Handle Signed Inputs (Two's Complement)
-        // If input is negative, we store its magnitude (wrapping_neg) and set the sign bit.
         let (b_abs_val, b_sign) = if is_signed && (b_val as i32) < 0 {
             (b_val.wrapping_neg(), true)
         } else {
@@ -258,10 +267,6 @@ impl DivRemChip {
 
         cols.a = event.a.into();
 
-        if cols.is_div_s == F::one() {
-            cols.is_overflow = F::from_bool(event.b as i32 == i32::MIN && event.c as i32 == -1);
-        }
-
         if !blu.as_any().is::<EmptyByteRecord>() {
             blu.add_u8_range_checks(&cols.b_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u8_range_checks(&cols.c_abs.0.map(|x| x.as_canonical_u32() as u8));
@@ -296,7 +301,6 @@ impl<AB> Air<AB> for DivRemChip
 where
     AB: SP1CoreAirBuilder,
 {
-    /// Mathematical Constraints
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let local = main.row_slice(0);
@@ -311,39 +315,33 @@ where
 
         // 1. Selector & Boolean Constraints
         let is_real = local.is_div_u + local.is_div_s + local.is_rem_u + local.is_rem_s;
+        builder.assert_bool(is_real.clone());
+
         builder.when(is_real.clone()).assert_bool(local.is_div_u);
         builder.when(is_real.clone()).assert_bool(local.is_div_s);
         builder.when(is_real.clone()).assert_bool(local.is_rem_u);
         builder.when(is_real.clone()).assert_bool(local.is_rem_s);
-        builder.when(is_real.clone()).assert_bool(local.sign_xor);
-        builder.when(is_real.clone()).assert_bool(local.b_sign);
-        builder.when(is_real.clone()).assert_bool(local.c_sign);
-        builder.assert_bool(is_real.clone());
-        // If active, Divisor (C) must not be zero (DivByZero traps before this chip).
-        let c_val = word_to_expr::<AB>(&local.c);
-        // 1. The flag must be a boolean (0 or 1).
+
+        // --- Divide by Zero Logic ---
+        // 1. Flag must be boolean
         builder.when(is_real.clone()).assert_bool(local.c_is_zero);
-        // 2. If C has a value (C != 0), the flag MUST be 0.
-        // This prevents the prover from "hiding" a valid division by pretending it's a div-by-zero.
+        // 2. If C != 0, Flag must be 0
+        let c_val = word_to_expr::<AB>(&local.c);
         builder.when(c_val.clone()).assert_zero(local.c_is_zero);
-        // 3. If the flag is 1, C MUST be 0.
-        // This ensures that if they claim it's a div-by-zero, the value is actually zero.
+        // 3. If Flag is 1, C must be 0
         builder.when(local.c_is_zero).assert_zero(c_val.clone());
 
         // 2. Sign Decomposition (Input Side)
         let is_signed = local.is_div_s + local.is_rem_s;
-        // If unsigned: all sign bits must be zero
-        builder.when_not(is_signed.clone()).assert_zero(local.b_sign);
-        builder.when_not(is_signed.clone()).assert_zero(local.c_sign);
-        builder.when_not(is_signed.clone()).assert_zero(local.sign_xor);
+        builder.when(is_real.clone()).assert_bool(local.b_sign);
+        builder.when(is_real.clone()).assert_bool(local.c_sign);
+        builder.when(is_real.clone()).assert_bool(local.sign_xor);
 
-        // If operation is unsigned, sign bits must be forced to 0.
         builder.when(is_real.clone()).when_not(is_signed.clone()).assert_zero(local.b_sign);
         builder.when(is_real.clone()).when_not(is_signed.clone()).assert_zero(local.c_sign);
+        builder.when(is_real.clone()).when_not(is_signed.clone()).assert_zero(local.sign_xor);
 
         // 3. Core Arithmetic: |B| = |Q| * |C| + |R|
-        // We use polynomial multiplication evaluated at x=256.
-        //
         let mut m: Vec<AB::Expr> = vec![zero.clone(); WORD_SIZE];
         for i in 0..WORD_SIZE {
             for j in 0..WORD_SIZE {
@@ -353,7 +351,6 @@ where
             }
         }
 
-        // Byte-wise check with carries
         for i in 0..WORD_SIZE {
             let prev_carry = if i == 0 { zero.clone() } else { local.carry[i - 1].into() };
             let lhs = m[i].clone() + local.r_abs[i].into() + prev_carry;
@@ -378,37 +375,42 @@ where
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
-            is_real.clone(),
+            is_real.clone() - local.c_is_zero,
         );
 
         // 5. Security Constraint: Overflow Lock
-        // We allow the prover to use the `is_overflow` flag to handle INT_MIN / -1.
-        // However, we MUST ensure this flag cannot be used on other inputs.
-        // If an Overflow flag is ON, inputs MUST be INT_MIN and -1.
+        // 5. Security Constraint: Overflow Lock
         let int_min_val = AB::Expr::from_canonical_u32(0x8000_0000u32);
         let neg_one_val = p32.clone() - one.clone();
         let b_val = word_to_expr::<AB>(&local.b);
-        let c_val = word_to_expr::<AB>(&local.c);
+        let c_val = word_to_expr::<AB>(&local.c); // Needed for diff_c
 
-        builder.when(is_real.clone()).assert_bool(local.is_c_neg_one);
-        builder.when(is_real.clone()).assert_bool(local.is_overflow);
-        builder.when(is_real.clone()).assert_bool(local.is_b_int_min);
+        // --- Optimized IsZero Gadgets (Degree 3) ---
+
+        // 1. Constraint for B == INT_MIN
+        let diff_b = b_val.clone() - int_min_val;
+        // If flag is 1, diff MUST be 0
+        builder.when(local.is_b_int_min).assert_zero(diff_b.clone());
+        // Constraint: diff * inv = 1 - flag
+        // If flag is 0, diff * inv = 1 (forcing diff != 0)
+        // If flag is 1, diff * inv = 0 (consistent with diff=0)
         builder
-          .when(local.is_div_u + local.is_rem_u + local.is_rem_s)
-        .assert_zero(local.is_overflow);
+            .when(is_real.clone())
+            .assert_eq(diff_b * local.b_diff_inv, one.clone() - local.is_b_int_min);
 
-        builder.when(local.is_b_int_min).assert_eq(b_val.clone(), int_min_val.clone());
-        builder.when(local.is_c_neg_one).assert_eq(c_val.clone(), neg_one_val.clone());
+        // 2. Constraint for C == -1
+        let diff_c = c_val.clone() - neg_one_val;
+        builder.when(local.is_c_neg_one).assert_zero(diff_c.clone());
+        // Same optimization here
+        builder
+            .when(is_real.clone())
+            .assert_eq(diff_c * local.c_diff_inv, one.clone() - local.is_c_neg_one);
 
-        //  builder.when(b_val , int_min_val).when((c_val -
-        // neg_one_val)).assert_zero(local.is_overflow);
-        builder.when(local.is_overflow).assert_eq(b_val.clone(), int_min_val.clone());
-        builder.when(local.is_overflow).assert_eq(c_val.clone(), neg_one_val.clone());
-
-        // For real signed-div rows, the overflow must be exactly:
-        // (b == INT_MIN) && (c == -1)
+        // 3. Overflow Definition
+        // This remains Degree 3: (is_b_min * is_c_neg_1) * is_div_s
         let expected_overflow = local.is_b_int_min * local.is_c_neg_one;
         builder.when(local.is_div_s).assert_eq(local.is_overflow, expected_overflow);
+        builder.when(is_real.clone() - local.is_div_s).assert_zero(local.is_overflow);
 
         // 6. Sign Logic (Output Side)
         let computed_xor =
@@ -417,12 +419,10 @@ where
 
         let q_abs_expr = word_to_expr::<AB>(&local.q_abs);
         let expected_q_sign = is_signed.clone() * local.sign_xor;
-        // Verify Q_Sign logic.
         builder.assert_eq(local.q_sign * q_abs_expr.clone(), expected_q_sign * q_abs_expr.clone());
 
         let r_abs_expr = word_to_expr::<AB>(&local.r_abs);
         let expected_r_sign = is_signed.clone() * local.b_sign;
-        // Verify R_Sign logic.
         builder.assert_eq(local.r_sign * r_abs_expr.clone(), expected_r_sign * r_abs_expr.clone());
 
         // 7. Range Checks & Binding
@@ -437,9 +437,7 @@ where
         builder.when(is_real.clone()).assert_zero(local.carry[WORD_SIZE - 1]);
 
         // Reconstruct Signed Inputs
-        let b_expr = word_to_expr::<AB>(&local.b);
         let b_abs_expr = word_to_expr::<AB>(&local.b_abs);
-        let c_expr = word_to_expr::<AB>(&local.c);
         let c_abs_expr = word_to_expr::<AB>(&local.c_abs);
 
         let term_b =
@@ -447,8 +445,8 @@ where
         let term_c =
             c_abs_expr.clone() + local.c_sign * (p32.clone() - AB::Expr::from(two) * c_abs_expr);
 
-        builder.when(is_real.clone()).assert_eq(b_expr, term_b);
-        builder.when(is_real.clone()).assert_eq(c_expr, term_c);
+        builder.when(is_real.clone()).assert_eq(b_val, term_b);
+        builder.when(is_real.clone()).assert_eq(c_val, term_c);
 
         // Reconstruct Output 'a'
         let a_expr = word_to_expr::<AB>(&local.a);
