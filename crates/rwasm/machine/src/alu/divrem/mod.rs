@@ -188,15 +188,13 @@ impl DivRemChip {
             (F::from_canonical_u32(c_val) - F::from_canonical_u32(neg_one)).inverse()
         };
 
-        if cols.is_div_s == F::one() {
-            cols.is_overflow = F::from_bool(event.b == int_min && event.c == neg_one);
-        }
         // 1. Decode Opcode
         let mut is_signed = false;
         match event.opcode {
             Opcode::I32DivS => {
                 cols.is_div_s = F::one();
                 is_signed = true;
+                cols.is_overflow = F::from_bool(event.b == int_min && event.c == neg_one);
             }
             Opcode::I32DivU => {
                 cols.is_div_u = F::one();
@@ -375,7 +373,7 @@ where
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
-            is_real.clone() - local.c_is_zero,
+            is_real.clone(),
         );
 
         // 5. Security Constraint: Overflow Lock
