@@ -119,9 +119,9 @@ impl MulChip {
         let b_word = event.b.to_le_bytes();
         let c_word = event.c.to_le_bytes();
 
-        cols.a = Word(a_word.map(F::from_canonical_u8));
-        cols.b = Word(b_word.map(F::from_canonical_u8));
-        cols.c = Word(c_word.map(F::from_canonical_u8));
+        cols.a = event.a.into();
+        cols.b = event.b.into();
+        cols.c = event.c.into();
         cols.is_real = F::one();
 
         // Calculate partial products and carries for the lower 32 bits only
