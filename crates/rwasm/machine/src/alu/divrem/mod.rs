@@ -258,7 +258,7 @@ impl DivRemChip {
 
         cols.a = event.a.into();
 
-        if is_signed {
+        if cols.is_div_s == F::one() {
             cols.is_overflow = F::from_bool(event.b as i32 == i32::MIN && event.c as i32 == -1);
         }
 
@@ -311,23 +311,31 @@ where
 
         // 1. Selector & Boolean Constraints
         let is_real = local.is_div_u + local.is_div_s + local.is_rem_u + local.is_rem_s;
-        builder.assert_bool(is_real.clone());
-        // If active, Divisor (C) must not be zero (DivByZero traps before this chip).
-        let c_val = word_to_expr::<AB>(&local.c);
-        builder.when(c_val.clone()).assert_zero(local.c_is_zero);
-
         builder.when(is_real.clone()).assert_bool(local.is_div_u);
         builder.when(is_real.clone()).assert_bool(local.is_div_s);
         builder.when(is_real.clone()).assert_bool(local.is_rem_u);
         builder.when(is_real.clone()).assert_bool(local.is_rem_s);
+        builder.when(is_real.clone()).assert_bool(local.sign_xor);
+        builder.when(is_real.clone()).assert_bool(local.b_sign);
+        builder.when(is_real.clone()).assert_bool(local.c_sign);
+        builder.assert_bool(is_real.clone());
+        // If active, Divisor (C) must not be zero (DivByZero traps before this chip).
+        let c_val = word_to_expr::<AB>(&local.c);
+        // 1. The flag must be a boolean (0 or 1).
+        builder.when(is_real.clone()).assert_bool(local.c_is_zero);
+        // 2. If C has a value (C != 0), the flag MUST be 0.
+        // This prevents the prover from "hiding" a valid division by pretending it's a div-by-zero.
+        builder.when(c_val.clone()).assert_zero(local.c_is_zero);
+        // 3. If the flag is 1, C MUST be 0.
+        // This ensures that if they claim it's a div-by-zero, the value is actually zero.
+        builder.when(local.c_is_zero).assert_zero(c_val.clone());
 
         // 2. Sign Decomposition (Input Side)
         let is_signed = local.is_div_s + local.is_rem_s;
-        builder.when(is_real.clone()).assert_bool(local.b_sign);
-        builder.when(is_real.clone()).assert_bool(local.c_sign);
-
-        // [Audit] Added missing boolean check for sign_xor
-        builder.when(is_real.clone()).assert_bool(local.sign_xor);
+        // If unsigned: all sign bits must be zero
+        builder.when_not(is_signed.clone()).assert_zero(local.b_sign);
+        builder.when_not(is_signed.clone()).assert_zero(local.c_sign);
+        builder.when_not(is_signed.clone()).assert_zero(local.sign_xor);
 
         // If operation is unsigned, sign bits must be forced to 0.
         builder.when(is_real.clone()).when_not(is_signed.clone()).assert_zero(local.b_sign);
@@ -336,7 +344,6 @@ where
         // 3. Core Arithmetic: |B| = |Q| * |C| + |R|
         // We use polynomial multiplication evaluated at x=256.
         //
-
         let mut m: Vec<AB::Expr> = vec![zero.clone(); WORD_SIZE];
         for i in 0..WORD_SIZE {
             for j in 0..WORD_SIZE {
@@ -356,6 +363,7 @@ where
 
         // 4. Inequality Check: |R| < |C| (Bus)
         // Offloaded to LtChip to save columns.
+        // When local.c_abs=0, divide by zero trap!.
         let lt_opcode = AB::Expr::from_canonical_u32(Opcode::I32LtU.code());
         builder.send_instruction(
             AB::Expr::zero(),
@@ -376,8 +384,8 @@ where
         // 5. Security Constraint: Overflow Lock
         // We allow the prover to use the `is_overflow` flag to handle INT_MIN / -1.
         // However, we MUST ensure this flag cannot be used on other inputs.
-        // If Overflow flag is ON, inputs MUST be INT_MIN and -1.
-        let int_min_val = AB::Expr::from_canonical_u32(1u32 << 31);
+        // If an Overflow flag is ON, inputs MUST be INT_MIN and -1.
+        let int_min_val = AB::Expr::from_canonical_u32(0x8000_0000u32);
         let neg_one_val = p32.clone() - one.clone();
         let b_val = word_to_expr::<AB>(&local.b);
         let c_val = word_to_expr::<AB>(&local.c);
@@ -385,6 +393,9 @@ where
         builder.when(is_real.clone()).assert_bool(local.is_c_neg_one);
         builder.when(is_real.clone()).assert_bool(local.is_overflow);
         builder.when(is_real.clone()).assert_bool(local.is_b_int_min);
+        builder
+          .when(local.is_div_u + local.is_rem_u + local.is_rem_s)
+        .assert_zero(local.is_overflow);
 
         builder.when(local.is_b_int_min).assert_eq(b_val.clone(), int_min_val.clone());
         builder.when(local.is_c_neg_one).assert_eq(c_val.clone(), neg_one_val.clone());
@@ -394,9 +405,7 @@ where
         builder.when(local.is_overflow).assert_eq(b_val.clone(), int_min_val.clone());
         builder.when(local.is_overflow).assert_eq(c_val.clone(), neg_one_val.clone());
 
-        builder.when_not(local.is_div_s).assert_zero(local.is_overflow);
-
-        // For real signed-div rows, overflow must be exactly:
+        // For real signed-div rows, the overflow must be exactly:
         // (b == INT_MIN) && (c == -1)
         let expected_overflow = local.is_b_int_min * local.is_c_neg_one;
         builder.when(local.is_div_s).assert_eq(local.is_overflow, expected_overflow);
@@ -404,7 +413,7 @@ where
         // 6. Sign Logic (Output Side)
         let computed_xor =
             local.b_sign + local.c_sign - (AB::Expr::from(two) * local.b_sign * local.c_sign);
-        builder.when(is_real.clone()).assert_eq(local.sign_xor, computed_xor);
+        builder.when(is_signed.clone()).assert_eq(local.sign_xor, computed_xor);
 
         let q_abs_expr = word_to_expr::<AB>(&local.q_abs);
         let expected_q_sign = is_signed.clone() * local.sign_xor;

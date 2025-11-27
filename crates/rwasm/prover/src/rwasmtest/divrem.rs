@@ -98,6 +98,13 @@ pub fn test_base_case_for_divide_by_zero() {
 }
 #[test]
 #[should_panic]
+pub fn test_base_case_for_rems_divide_by_zero() {
+    let ops = vec![Opcode::I32Const(0x8000u32.into()), Opcode::I32Const(0.into()), Opcode::I32RemS];
+    let program = Program::from_instrs(ops);
+    run_rwasm_prover(program);
+}
+#[test]
+#[should_panic]
 pub fn test_base_case_for_divs_mintrap() {
     let ops = vec![
         Opcode::I32Const(0x80000000u32.into()),
