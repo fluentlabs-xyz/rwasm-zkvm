@@ -155,10 +155,10 @@ impl<F: PrimeField> InstructionCols<F> {
             Opcode::Call(_) => self.is_call = F::one(),
             Opcode::Return => self.is_return = F::one(),
             Opcode::ConsumeFuel(_) => self.is_skipped = F::one(),
-            Opcode::SignatureCheck(_) => self.is_skipped = F::one(),
+            Opcode::SignatureCheck(_) => self.is_sig_check = F::one(),
             Opcode::Drop => self.is_skipped = F::one(),
             Opcode::TableGrow(_) => self.is_table_grow = F::one(),
-            Opcode::SignatureCheck(_) => self.is_sig_check = F::one(),
+
             _ => {}
         }
     }

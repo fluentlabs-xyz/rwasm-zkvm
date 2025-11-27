@@ -132,9 +132,6 @@ impl CpuChip {
         cols.next_sp = F::from_canonical_u32(event.next_sp);
         cols.call_data.call_sp = F::from_canonical_u32(event.call_sp);
         cols.call_data.next_call_sp = F::from_canonical_u32(event.next_call_sp);
-        cols.last_signagure_id = F::from_canonical_u32(event.last_sig_id);
-        cols.next_last_signature_id = F::from_canonical_u32(event.next_last_sig_id);
-
         cols.instruction.populate(instruction);
 
         cols.is_memory = F::from_bool(
@@ -173,10 +170,16 @@ impl CpuChip {
             } else {
                 // Lo write
                 cols.op_res_access.populate(record_lo, blu_events);
+                let do_check = {
+                    match instruction {
+                        Opcode::CallIndirect(_) => false,
+                        _ => true,
+                    }
+                };
                 cols.op_res_addr.populate(
                     event.res_addr.unwrap().to_virtual_addr(),
                     blu_events,
-                    true,
+                    do_check,
                 );
             }
         }
@@ -196,10 +199,15 @@ impl CpuChip {
         // Populate arg1/arg2 memory reads.
         if let Some(MemoryRecordEnum::Read(record)) = event.arg1_record {
             cols.op_arg1_access.populate(record, blu_events);
+            ///Do not check for LAST_SIG_ADDR because there is only one address.
+            let do_check = match instruction {
+                Opcode::SignatureCheck(_) => false,
+                _ => true,
+            };
             cols.op_arg1_addr.populate(
                 event.arg1_addr.unwrap().to_virtual_addr(),
                 blu_events,
-                true,
+                do_check,
             );
         }
         if let Some(MemoryRecordEnum::Read(record)) = event.arg2_record {
