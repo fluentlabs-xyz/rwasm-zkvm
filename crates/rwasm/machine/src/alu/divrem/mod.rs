@@ -14,7 +14,7 @@ use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, Paralle
 use rwasm::Opcode;
 use rwasm_executor::{
     events::{AluEvent, ByteRecord, EmptyByteRecord},
-    ExecutionRecord, Program, DEFAULT_PC_INC, UNUSED_PC,
+    ExecutionRecord, Program, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_primitives::consts::WORD_SIZE;
@@ -75,6 +75,11 @@ pub struct DivRemCols<T> {
 
     // --- Intermediate Calculation Columns ---
     pub carry: [T; WORD_SIZE],
+
+    // --- Inequality Helper Columns (R < C) ---
+    // We prove R < C by ensuring R + diff + 1 = C
+    pub diff: Word<T>,
+    pub diff_carry: [T; WORD_SIZE],
 }
 
 impl<F: PrimeField32> MachineAir<F> for DivRemChip {
@@ -97,8 +102,7 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
                 let mut row = [F::zero(); NUM_DIV_REM_COLS];
                 let cols: &mut DivRemCols<F> = row.as_mut_slice().borrow_mut();
                 let mut blu = EmptyByteRecord;
-                let mut lt = vec![];
-                self.event_to_row(event, cols, &mut blu, &mut lt);
+                self.event_to_row(event, cols, &mut blu);
                 row
             })
             .collect::<Vec<_>>();
@@ -115,25 +119,21 @@ impl<F: PrimeField32> MachineAir<F> for DivRemChip {
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
         let chunk_size = std::cmp::max(input.divrem_events.len() / num_cpus::get(), 1);
 
-        let (blu_batches, lt_batches): (Vec<_>, Vec<_>) = input
+        let blu_batches: Vec<_> = input
             .divrem_events
             .par_chunks(chunk_size)
             .map(|events| {
-                let mut lt = Vec::with_capacity(events.len());
                 let mut blu = HashMap::new();
                 let mut row = [F::zero(); NUM_DIV_REM_COLS];
 
                 events.iter().for_each(|event| {
                     let cols: &mut DivRemCols<F> = row.as_mut_slice().borrow_mut();
-                    self.event_to_row(event, cols, &mut blu, &mut lt);
+                    self.event_to_row(event, cols, &mut blu);
                 });
-                (blu, lt)
+                blu
             })
-            .unzip();
-
+            .collect();
         output.add_byte_lookup_events_from_maps(blu_batches.iter().collect::<Vec<_>>());
-        output.lt_events.reserve(input.divrem_events.len());
-        output.lt_events.extend(lt_batches.into_iter().flatten());
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -155,7 +155,6 @@ impl DivRemChip {
         event: &AluEvent,
         cols: &mut DivRemCols<F>,
         blu: &mut impl ByteRecord,
-        lt: &mut Vec<AluEvent>,
     ) {
         cols.pc = F::from_canonical_u32(event.pc);
         let b_val = event.b;
@@ -253,7 +252,30 @@ impl DivRemChip {
             carry = sum / 256;
         }
 
-        // 5. Determine Result Signs
+        // 5. Compute "Difference" for Inequality Check (R < C)
+        // We want: |R| + diff + 1 = |C|
+        // diff = |C| - |R| - 1
+        if c_abs_val != 0 {
+            // This calculation relies on r_abs < c_abs, which is true by definition of Rem.
+            let diff_val = c_abs_val.wrapping_sub(r_abs_val).wrapping_sub(1);
+            cols.diff = diff_val.into();
+
+            // Compute carries for: R + diff + 1 = C
+            let d_bytes = diff_val.to_le_bytes();
+
+            // First byte: R[0] + D[0] + 1
+            let sum_0 = (r_bytes[0] as u32) + (d_bytes[0] as u32) + 1;
+            cols.diff_carry[0] = F::from_canonical_u32(sum_0 / 256);
+            let mut d_carry = sum_0 / 256;
+
+            // Subsequent bytes
+            for k in 1..WORD_SIZE {
+                let sum = (r_bytes[k] as u32) + (d_bytes[k] as u32) + d_carry;
+                cols.diff_carry[k] = F::from_canonical_u32(sum / 256);
+                d_carry = sum / 256;
+            }
+        }
+        // 6. Determine Result Signs
         let q_sign_bool = if is_signed && q_abs_val != 0 { b_sign ^ c_sign } else { false };
         let r_sign_bool = if is_signed && r_abs_val != 0 { b_sign } else { false };
         cols.q_sign = F::from_bool(q_sign_bool);
@@ -268,18 +290,10 @@ impl DivRemChip {
             blu.add_u8_range_checks(&cols.r_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u16_range_checks(&cols.carry.map(|x| x.as_canonical_u32() as u16));
 
-            // Bus Interaction: Inequality Check
-            // This event is sent regardless of whether C is zero. If C is zero, the Lt chip will
-            // fail while trying to prove |R| < 0, which is the desired behavior.
+            // Add range checks for the new inequality helpers
             if c_abs_val != 0 {
-                lt.push(AluEvent {
-                    pc: UNUSED_PC,
-                    opcode: Opcode::I32LtU,
-                    a: 1, // Expect True: |R| < |C|
-                    b: r_abs_val,
-                    c: c_abs_val,
-                    code: Opcode::I32LtU.code(),
-                });
+                blu.add_u8_range_checks(&cols.diff.0.map(|x| x.as_canonical_u32() as u8));
+                blu.add_u8_range_checks(&cols.diff_carry.map(|x| x.as_canonical_u32() as u8));
             }
         }
     }
@@ -343,27 +357,42 @@ where
             builder.when(is_real.clone()).assert_eq(lhs, rhs);
         }
 
-        // 4. Inequality Check: |R| < |C| (Bus)
-        // Offloaded to LtChip to save columns.
-        // When local.c_abs=0, divide by zero trap!.
-        let lt_opcode = AB::Expr::from_canonical_u32(Opcode::I32LtU.code());
-        builder.send_instruction(
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::from_canonical_u32(UNUSED_PC),
-            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
-            AB::Expr::zero(),
-            lt_opcode.clone(),
-            Word::extend_expr::<AB>(one.clone()), // Assert True
-            local.r_abs,
-            local.c_abs,
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            AB::Expr::zero(),
-            is_real.clone(),
-        );
+        // 3. Inequality Check: |R| < |C| (Internalized)
+        // We enforce |R| + diff + 1 == |C|
+        // This logic replaces the Bus Interaction with LtChip.
 
-        // 5. Security Constraint: Overflow Lock
+        // Ensure inputs are bytes
+        builder.slice_range_check_u8(&local.diff.0, is_real.clone());
+        // Note: diff_carry is technically u1 (bit) most of the time, but we use u8 check.
+        builder.slice_range_check_u8(&local.diff_carry, is_real.clone());
+
+        // We only enforce this if |C| != 0.
+        // We can re-use `is_c_neg_one` logic helpers to check for C=0 if we wanted,
+        // but simpler here: if |C| is zero, standard division traps.
+        // If |C| > 0, then R < C must hold.
+        // We can effectively rely on the fact that if C=0, the VM shouldn't produce a valid
+        // execution row here. However, to be mathematically precise:
+        // If C=0, RHS=0, LHS = R + diff + 1 >= 1. The constraint fails.
+        // This is desirable: it prevents a prover from forging a division by zero trace.
+
+        // Byte 0: R[0] + D[0] + 1 = C[0] + 256 * K[0]
+        let sum_0 = local.r_abs[0].into() + local.diff[0].into() + one.clone();
+        let res_0 = local.c_abs[0].into() + local.diff_carry[0].into() * base;
+        builder.when(is_real.clone()).assert_eq(sum_0, res_0);
+
+        // Byte 1..3
+        for i in 1..WORD_SIZE {
+            let sum_i =
+                local.r_abs[i].into() + local.diff[i].into() + local.diff_carry[i - 1].into();
+            let res_i = local.c_abs[i].into() + local.diff_carry[i].into() * base;
+            builder.when(is_real.clone()).assert_eq(sum_i, res_i);
+        }
+
+        // Final Carry Check
+        // Since we are adding 32-bit numbers and asserting result is 32-bit C,
+        // the final carry MUST be zero.
+        builder.when(is_real.clone()).assert_zero(local.diff_carry[WORD_SIZE - 1]);
+
         // 5. Security Constraint: Overflow Lock
         let int_min_val = AB::Expr::from_canonical_u32(0x8000_0000u32);
         let neg_one_val = p32.clone() - one.clone();
