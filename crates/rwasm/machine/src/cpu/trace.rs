@@ -170,12 +170,7 @@ impl CpuChip {
             } else {
                 // Lo write
                 cols.op_res_access.populate(record_lo, blu_events);
-                let do_check = {
-                    match instruction {
-                        Opcode::CallIndirect(_) => false,
-                        _ => true,
-                    }
-                };
+                let do_check = !matches!(instruction, Opcode::CallIndirect(_));
                 cols.op_res_addr.populate(
                     event.res_addr.unwrap().to_virtual_addr(),
                     blu_events,
@@ -199,11 +194,8 @@ impl CpuChip {
         // Populate arg1/arg2 memory reads.
         if let Some(MemoryRecordEnum::Read(record)) = event.arg1_record {
             cols.op_arg1_access.populate(record, blu_events);
-            ///Do not check for LAST_SIG_ADDR because there is only one address.
-            let do_check = match instruction {
-                Opcode::SignatureCheck(_) => false,
-                _ => true,
-            };
+            //Do not check for LAST_SIG_ADDR because there is only one address.
+            let do_check = !matches!(instruction, Opcode::SignatureCheck(_));
             cols.op_arg1_addr.populate(
                 event.arg1_addr.unwrap().to_virtual_addr(),
                 blu_events,
