@@ -48,9 +48,6 @@ pub struct DivRemCols<T> {
     pub is_rem_u: T, // Unsigned Rem
     pub is_rem_s: T, // Signed Rem
 
-    /// Flag: 1 if Divisor is 0.
-    pub c_is_zero: T,
-
     /// Flag: 1 if operation is `INT_MIN / -1` (Signed Overflow).
     pub is_overflow: T,
 
@@ -166,7 +163,6 @@ impl DivRemChip {
 
         cols.b = event.b.into();
         cols.c = event.c.into();
-        cols.c_is_zero = F::from_bool(event.c == 0);
 
         // --- Overflow Helpers Generation ---
         let int_min = 0x8000_0000u32;
@@ -319,15 +315,6 @@ where
         builder.when(is_real.clone()).assert_bool(local.is_div_s);
         builder.when(is_real.clone()).assert_bool(local.is_rem_u);
         builder.when(is_real.clone()).assert_bool(local.is_rem_s);
-
-        // --- Divide by Zero Logic ---
-        // 1. Flag must be boolean
-        builder.when(is_real.clone()).assert_bool(local.c_is_zero);
-        // 2. If C != 0, Flag must be 0
-        let c_val = word_to_expr::<AB>(&local.c);
-        builder.when(c_val.clone()).assert_zero(local.c_is_zero);
-        // 3. If Flag is 1, C must be 0
-        builder.when(local.c_is_zero).assert_zero(c_val.clone());
 
         // 2. Sign Decomposition (Input Side)
         let is_signed = local.is_div_s + local.is_rem_s;
