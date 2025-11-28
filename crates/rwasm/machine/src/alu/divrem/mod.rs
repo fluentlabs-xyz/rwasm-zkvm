@@ -55,10 +55,19 @@ pub struct DivRemCols<T> {
     pub is_b_int_min: T, // 1 if b == INT_MIN
     pub is_c_neg_one: T, // 1 if c == -1
 
+    //1 if c == INT_MIN (Needed for magnitude check soundness)
+    pub is_c_int_min: T,
+    // --- Soundness Helpers for Signed Magnitude ---
+    // These columns store 2 * (abs[3] - 128 * is_int_min).
+    // Range checking these to u8 ensures abs[3] < 128 when not INT_MIN.
+    pub b_check_msb: T,
+    pub c_check_msb: T,
+
     // Inverse helpers to force the flags above:
     // if is_b_int_min is 0, b_diff_inv must be (b - INT_MIN)^-1
-    pub b_diff_inv: T,
-    pub c_diff_inv: T,
+    pub b_diff_inv: T,         // (b - INT_MIN)^-1
+    pub c_diff_inv: T,         // (c - -1)^-1
+    pub c_int_min_diff_inv: T, // (c - INT_MIN)^-1
 
     // --- Sign Handling ---
     pub sign_xor: T, // Stores `b_sign ^ c_sign`
@@ -156,34 +165,49 @@ impl DivRemChip {
         cols: &mut DivRemCols<F>,
         blu: &mut impl ByteRecord,
     ) {
-        cols.pc = F::from_canonical_u32(event.pc);
+        // [FIX] Use wrapped conversion for PC and all large u32s
+        cols.pc = F::from_wrapped_u32(event.pc);
         let b_val = event.b;
         let c_val = event.c;
 
         cols.b = event.b.into();
         cols.c = event.c.into();
 
-        // --- Overflow Helpers Generation ---
+        // --- Overflow & Magnitude Helpers Generation ---
         let int_min = 0x8000_0000u32;
         let neg_one = 0xFFFF_FFFFu32;
 
+        // [FIX] Helper to safely map large u32s to Field
+        let to_field = |x: u32| F::from_wrapped_u32(x);
+
+        // 1. Handle B == INT_MIN
         cols.is_b_int_min = F::from_bool(b_val == int_min);
-        // If b != INT_MIN, b_diff_inv = (b - INT_MIN)^-1. Else 0.
         cols.b_diff_inv = if b_val == int_min {
             F::zero()
         } else {
-            (F::from_canonical_u32(b_val) - F::from_canonical_u32(int_min)).inverse()
+            // [FIX] Use to_field here
+            (to_field(b_val) - to_field(int_min)).inverse()
         };
 
+        // 2. Handle C == -1
         cols.is_c_neg_one = F::from_bool(c_val == neg_one);
-        // If c != -1, c_diff_inv = (c - -1)^-1. Else 0.
         cols.c_diff_inv = if c_val == neg_one {
             F::zero()
         } else {
-            (F::from_canonical_u32(c_val) - F::from_canonical_u32(neg_one)).inverse()
+            // [FIX] Use to_field here
+            (to_field(c_val) - to_field(neg_one)).inverse()
         };
 
-        // 1. Decode Opcode
+        // 3. Handle C == INT_MIN
+        cols.is_c_int_min = F::from_bool(c_val == int_min);
+        cols.c_int_min_diff_inv = if c_val == int_min {
+            F::zero()
+        } else {
+            // [FIX] Use to_field here
+            (to_field(c_val) - to_field(int_min)).inverse()
+        };
+
+        // --- Opcode Decoding ---
         let mut is_signed = false;
         match event.opcode {
             Opcode::I32DivS => {
@@ -204,7 +228,7 @@ impl DivRemChip {
             _ => panic!("Invalid opcode for DivRemChip"),
         }
 
-        // 2. Handle Signed Inputs (Two's Complement)
+        // --- Handle Signed Inputs (Two's Complement) ---
         let (b_abs_val, b_sign) = if is_signed && (b_val as i32) < 0 {
             (b_val.wrapping_neg(), true)
         } else {
@@ -219,9 +243,9 @@ impl DivRemChip {
 
         cols.sign_xor = F::from_bool(b_sign ^ c_sign);
 
-        // 3. Perform Arithmetic on Magnitudes
+        // --- Perform Arithmetic ---
         let (q_abs_val, r_abs_val) = if c_abs_val == 0 {
-            (0, b_abs_val) // Trap behavior: Result is 0 (or undefined), R preserves B.
+            (0, b_abs_val) // Trap behavior
         } else {
             (b_abs_val / c_abs_val, b_abs_val % c_abs_val)
         };
@@ -233,8 +257,23 @@ impl DivRemChip {
         cols.q_abs = q_abs_val.into();
         cols.r_abs = r_abs_val.into();
 
-        // 4. Compute Carries for the constraints
-        // We simulate the polynomial multiplication Q(x) * C(x) + R(x) base 256.
+        // Unsigned numbers are allowed to have MSB set (e.g. 0xFFFFFFFF).
+        if is_signed {
+            let b_msb_byte = (b_abs_val >> 24) as u32;
+            let c_msb_byte = (c_abs_val >> 24) as u32;
+
+            let b_min_offset = if b_val == int_min { 128 } else { 0 };
+            let c_min_offset = if c_val == int_min { 128 } else { 0 };
+
+            cols.b_check_msb = F::from_wrapped_u32(2 * (b_msb_byte.wrapping_sub(b_min_offset)));
+            cols.c_check_msb = F::from_wrapped_u32(2 * (c_msb_byte.wrapping_sub(c_min_offset)));
+        } else {
+            // For unsigned ops, we don't check MSB limits. Set to 0 to pass range check.
+            cols.b_check_msb = F::zero();
+            cols.c_check_msb = F::zero();
+        }
+
+        // --- Compute Carries ---
         let q_bytes = q_abs_val.to_le_bytes();
         let c_bytes = c_abs_val.to_le_bytes();
         let r_bytes = r_abs_val.to_le_bytes();
@@ -252,30 +291,24 @@ impl DivRemChip {
             carry = sum / 256;
         }
 
-        // 5. Compute "Difference" for Inequality Check (R < C)
-        // We want: |R| + diff + 1 = |C|
-        // diff = |C| - |R| - 1
+        // --- Compute Inequality Helper (R < C) ---
         if c_abs_val != 0 {
-            // This calculation relies on r_abs < c_abs, which is true by definition of Rem.
             let diff_val = c_abs_val.wrapping_sub(r_abs_val).wrapping_sub(1);
             cols.diff = diff_val.into();
 
-            // Compute carries for: R + diff + 1 = C
             let d_bytes = diff_val.to_le_bytes();
-
-            // First byte: R[0] + D[0] + 1
             let sum_0 = (r_bytes[0] as u32) + (d_bytes[0] as u32) + 1;
             cols.diff_carry[0] = F::from_canonical_u32(sum_0 / 256);
             let mut d_carry = sum_0 / 256;
 
-            // Subsequent bytes
             for k in 1..WORD_SIZE {
                 let sum = (r_bytes[k] as u32) + (d_bytes[k] as u32) + d_carry;
                 cols.diff_carry[k] = F::from_canonical_u32(sum / 256);
                 d_carry = sum / 256;
             }
         }
-        // 6. Determine Result Signs
+
+        // --- Result Signs & Output ---
         let q_sign_bool = if is_signed && q_abs_val != 0 { b_sign ^ c_sign } else { false };
         let r_sign_bool = if is_signed && r_abs_val != 0 { b_sign } else { false };
         cols.q_sign = F::from_bool(q_sign_bool);
@@ -290,11 +323,11 @@ impl DivRemChip {
             blu.add_u8_range_checks(&cols.r_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u16_range_checks(&cols.carry.map(|x| x.as_canonical_u32() as u16));
 
-            // Add range checks for the new inequality helpers
-            if c_abs_val != 0 {
-                blu.add_u8_range_checks(&cols.diff.0.map(|x| x.as_canonical_u32() as u8));
-                blu.add_u8_range_checks(&cols.diff_carry.map(|x| x.as_canonical_u32() as u8));
-            }
+            blu.add_u8_range_checks(&cols.diff.0.map(|x| x.as_canonical_u32() as u8));
+            blu.add_u8_range_checks(&cols.diff_carry.map(|x| x.as_canonical_u32() as u8));
+
+            blu.add_u8_range_checks(&[cols.b_check_msb.as_canonical_u32() as u8]);
+            blu.add_u8_range_checks(&[cols.c_check_msb.as_canonical_u32() as u8]);
         }
     }
 }
@@ -318,19 +351,17 @@ where
         let one = AB::Expr::one();
         let base = AB::F::from_canonical_u32(256);
         let two = AB::F::from_canonical_u32(2);
-        // p32 = 2^32. Used for Two's Complement reconstruction.
-        let p32 = AB::Expr::from(AB::F::from_canonical_u32(268435454));
+        let p32 = AB::Expr::from(AB::F::from_canonical_u32(268435454)); // 2^32 approx
 
-        // 1. Selector & Boolean Constraints
+        // 1. Selector Constraints
         let is_real = local.is_div_u + local.is_div_s + local.is_rem_u + local.is_rem_s;
         builder.assert_bool(is_real.clone());
-
         builder.when(is_real.clone()).assert_bool(local.is_div_u);
         builder.when(is_real.clone()).assert_bool(local.is_div_s);
         builder.when(is_real.clone()).assert_bool(local.is_rem_u);
         builder.when(is_real.clone()).assert_bool(local.is_rem_s);
 
-        // 2. Sign Decomposition (Input Side)
+        // 2. Sign Decomposition
         let is_signed = local.is_div_s + local.is_rem_s;
         builder.when(is_real.clone()).assert_bool(local.b_sign);
         builder.when(is_real.clone()).assert_bool(local.c_sign);
@@ -340,7 +371,7 @@ where
         builder.when(is_real.clone()).when_not(is_signed.clone()).assert_zero(local.c_sign);
         builder.when(is_real.clone()).when_not(is_signed.clone()).assert_zero(local.sign_xor);
 
-        // 3. Core Arithmetic: |B| = |Q| * |C| + |R|
+        // 3. Core Arithmetic
         let mut m: Vec<AB::Expr> = vec![zero.clone(); WORD_SIZE];
         for i in 0..WORD_SIZE {
             for j in 0..WORD_SIZE {
@@ -349,7 +380,6 @@ where
                 }
             }
         }
-
         for i in 0..WORD_SIZE {
             let prev_carry = if i == 0 { zero.clone() } else { local.carry[i - 1].into() };
             let lhs = m[i].clone() + local.r_abs[i].into() + prev_carry;
@@ -357,79 +387,71 @@ where
             builder.when(is_real.clone()).assert_eq(lhs, rhs);
         }
 
-        // 3. Inequality Check: |R| < |C| (Internalized)
-        // We enforce |R| + diff + 1 == |C|
-        // This logic replaces the Bus Interaction with LtChip.
-
-        // Ensure inputs are bytes
+        // 4. Internal Inequality (R < C)
         builder.slice_range_check_u8(&local.diff.0, is_real.clone());
-        // Note: diff_carry is technically u1 (bit) most of the time, but we use u8 check.
         builder.slice_range_check_u8(&local.diff_carry, is_real.clone());
 
-        // We only enforce this if |C| != 0.
-        // We can re-use `is_c_neg_one` logic helpers to check for C=0 if we wanted,
-        // but simpler here: if |C| is zero, standard division traps.
-        // If |C| > 0, then R < C must hold.
-        // We can effectively rely on the fact that if C=0, the VM shouldn't produce a valid
-        // execution row here. However, to be mathematically precise:
-        // If C=0, RHS=0, LHS = R + diff + 1 >= 1. The constraint fails.
-        // This is desirable: it prevents a prover from forging a division by zero trace.
-
-        // Byte 0: R[0] + D[0] + 1 = C[0] + 256 * K[0]
         let sum_0 = local.r_abs[0].into() + local.diff[0].into() + one.clone();
         let res_0 = local.c_abs[0].into() + local.diff_carry[0].into() * base;
         builder.when(is_real.clone()).assert_eq(sum_0, res_0);
 
-        // Byte 1..3
         for i in 1..WORD_SIZE {
             let sum_i =
                 local.r_abs[i].into() + local.diff[i].into() + local.diff_carry[i - 1].into();
             let res_i = local.c_abs[i].into() + local.diff_carry[i].into() * base;
             builder.when(is_real.clone()).assert_eq(sum_i, res_i);
         }
-
-        // Final Carry Check
-        // Since we are adding 32-bit numbers and asserting result is 32-bit C,
-        // the final carry MUST be zero.
         builder.when(is_real.clone()).assert_zero(local.diff_carry[WORD_SIZE - 1]);
 
-        // 5. Security Constraint: Overflow Lock
-        let int_min_val = AB::Expr::from_canonical_u32(0x8000_0000u32);
+        // 5. Overflow & Helper Gadgets
+        let int_min_val = AB::Expr::from(AB::F::from_wrapped_u32(0x8000_0000u32));
         let neg_one_val = p32.clone() - one.clone();
         let b_val = word_to_expr::<AB>(&local.b);
-        let c_val = word_to_expr::<AB>(&local.c); // Needed for diff_c
+        let c_val = word_to_expr::<AB>(&local.c);
 
-        // --- Optimized IsZero Gadgets (Degree 3) ---
-
-        // 1. Constraint for B == INT_MIN
-        let diff_b = b_val.clone() - int_min_val;
-        // If flag is 1, diff MUST be 0
+        // Gadget: is_b_int_min
+        let diff_b = b_val.clone() - int_min_val.clone();
         builder.when(local.is_b_int_min).assert_zero(diff_b.clone());
-        // Constraint: diff * inv = 1 - flag
-        // If flag is 0, diff * inv = 1 (forcing diff != 0)
-        // If flag is 1, diff * inv = 0 (consistent with diff=0)
         builder
             .when(is_real.clone())
             .assert_eq(diff_b * local.b_diff_inv, one.clone() - local.is_b_int_min);
 
-        // 2. Constraint for C == -1
+        // Gadget: is_c_neg_one
         let diff_c = c_val.clone() - neg_one_val;
         builder.when(local.is_c_neg_one).assert_zero(diff_c.clone());
-        // Same optimization here
         builder
             .when(is_real.clone())
             .assert_eq(diff_c * local.c_diff_inv, one.clone() - local.is_c_neg_one);
 
-        // 3. Overflow Definition
-        // This remains Degree 3: (is_b_min * is_c_neg_1) * is_div_s
+        // [NEW] Gadget: is_c_int_min
+        let diff_c_min = c_val.clone() - int_min_val.clone();
+        builder.when(local.is_c_int_min).assert_zero(diff_c_min.clone());
+        builder
+            .when(is_real.clone())
+            .assert_eq(diff_c_min * local.c_int_min_diff_inv, one.clone() - local.is_c_int_min);
+
+        // Overflow Flag
         let expected_overflow = local.is_b_int_min * local.is_c_neg_one;
         builder.when(local.is_div_s).assert_eq(local.is_overflow, expected_overflow);
         builder.when(is_real.clone() - local.is_div_s).assert_zero(local.is_overflow);
 
-        // 6. Sign Logic (Output Side)
+        // 6. Sign Logic
         let computed_xor =
             local.b_sign + local.c_sign - (AB::Expr::from(two) * local.b_sign * local.c_sign);
         builder.when(is_signed.clone()).assert_eq(local.sign_xor, computed_xor);
+
+        // Force Sign=1 if Magnitude is INT_MIN in Signed Mode
+        // If we are in signed mode, and the magnitude is 2^31, the number MUST be negative.
+        // (Positive 2^31 is not representable in 32-bit Two's Complement).
+        builder
+            .when(is_signed.clone())
+            .when(local.is_b_int_min)
+            .assert_one(local.b_sign);
+
+        builder
+            .when(is_signed.clone())
+            .when(local.is_c_int_min)
+            .assert_one(local.c_sign);
 
         let q_abs_expr = word_to_expr::<AB>(&local.q_abs);
         let expected_q_sign = is_signed.clone() * local.sign_xor;
@@ -439,21 +461,37 @@ where
         let expected_r_sign = is_signed.clone() * local.b_sign;
         builder.assert_eq(local.r_sign * r_abs_expr.clone(), expected_r_sign * r_abs_expr.clone());
 
-        // 7. Range Checks & Binding
+        // 7. Range Checks
         builder.slice_range_check_u8(&local.b_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.c_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.q_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.r_abs.0, is_real.clone());
         builder.slice_range_check_u16(&local.carry, is_real.clone());
 
-        builder.when(is_real.clone()).assert_bool(local.q_sign);
-        builder.when(is_real.clone()).assert_bool(local.r_sign);
-        builder.when(is_real.clone()).assert_zero(local.carry[WORD_SIZE - 1]);
+        // [NEW] Magnitude Soundness Constraints
+        // Enforce: check_msb = 2 * (abs[3] - 128 * is_int_min)
+        let msb_128 = AB::Expr::from_canonical_u8(128);
 
-        // Reconstruct Signed Inputs
+        let b_rhs =
+            AB::Expr::from(two) * (local.b_abs[3].into() - msb_128.clone() * local.is_b_int_min);
+        // Only enforce formula if Signed. If Unsigned, enforce Zero.
+        builder.when(is_signed.clone()).assert_eq(local.b_check_msb, b_rhs);
+        builder.when(is_real.clone() - is_signed.clone()).assert_zero(local.b_check_msb);
+
+        let c_rhs =
+            AB::Expr::from(two) * (local.c_abs[3].into() - msb_128.clone() * local.is_c_int_min);
+        builder.when(is_signed.clone()).assert_eq(local.c_check_msb, c_rhs);
+        builder.when(is_real.clone() - is_signed.clone()).assert_zero(local.c_check_msb);
+
+        // Verify the check values are u8.
+        // If they are u8 (0..255), then the term inside must be < 128.
+        // This effectively proves abs[3] < 128 (when not int_min).
+        builder.slice_range_check_u8(&[local.b_check_msb], is_real.clone());
+        builder.slice_range_check_u8(&[local.c_check_msb], is_real.clone());
+
+        // 8. Reconstruction
         let b_abs_expr = word_to_expr::<AB>(&local.b_abs);
         let c_abs_expr = word_to_expr::<AB>(&local.c_abs);
-
         let term_b =
             b_abs_expr.clone() + local.b_sign * (p32.clone() - AB::Expr::from(two) * b_abs_expr);
         let term_c =
@@ -462,20 +500,18 @@ where
         builder.when(is_real.clone()).assert_eq(b_val, term_b);
         builder.when(is_real.clone()).assert_eq(c_val, term_c);
 
-        // Reconstruct Output 'a'
+        // 9. Output Mux & Instruction
         let a_expr = word_to_expr::<AB>(&local.a);
         let q_signed = q_abs_expr.clone() +
             local.q_sign * (p32.clone() - AB::Expr::from(two) * q_abs_expr.clone());
         let r_signed = r_abs_expr.clone() +
             local.r_sign * (p32.clone() - AB::Expr::from(two) * r_abs_expr.clone());
 
-        // Mux Result based on Opcode
         let is_div = local.is_div_u + local.is_div_s;
         let is_rem = local.is_rem_u + local.is_rem_s;
         builder.when(is_div).assert_eq(a_expr.clone(), q_signed);
         builder.when(is_rem).assert_eq(a_expr.clone(), r_signed);
 
-        // 8. Instruction Interaction
         let op_rem_u = AB::Expr::from_canonical_u32(Opcode::I32RemU.code());
         let op_div_u = AB::Expr::from_canonical_u32(Opcode::I32DivU.code());
         let op_rem_s = AB::Expr::from_canonical_u32(Opcode::I32RemS.code());
