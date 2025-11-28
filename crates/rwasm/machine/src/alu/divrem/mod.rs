@@ -305,9 +305,12 @@ impl DivRemChip {
         cols: &mut DivRemCols<F>,
         blu: &mut impl ByteRecord,
     ) {
+        // Helper to map u32 -> field using wrapped representation.
+        let to_field = |x: u32| F::from_wrapped_u32(x);
+
         // Use wrapped conversion for PC and all 32-bit values to be robust
         // against BabyBear's modulus and keep semantics consistent.
-        cols.pc = F::from_wrapped_u32(event.pc);
+        cols.pc = to_field(event.pc);
         let b_val = event.b;
         let c_val = event.c;
 
@@ -319,9 +322,6 @@ impl DivRemChip {
         // ---------------------------
         let int_min = 0x8000_0000u32; // INT_MIN as u32
         let neg_one = 0xFFFF_FFFFu32; // -1 as u32
-
-        // Helper to map u32 -> field using wrapped representation.
-        let to_field = |x: u32| F::from_wrapped_u32(x);
 
         // 1) is_b_int_min & b_diff_inv encode (b == INT_MIN).
         cols.is_b_int_min = F::from_bool(b_val == int_min);
@@ -417,12 +417,10 @@ impl DivRemChip {
         // These are the classic "is-zero" gadgets for the magnitudes q_abs/r_abs.
         // ---------------------------
         cols.is_q_zero = F::from_bool(q_abs_val == 0);
-        cols.q_inv =
-            if q_abs_val == 0 { F::zero() } else { F::from_wrapped_u32(q_abs_val).inverse() };
+        cols.q_inv = if q_abs_val == 0 { F::zero() } else { to_field(q_abs_val).inverse() };
 
         cols.is_r_zero = F::from_bool(r_abs_val == 0);
-        cols.r_inv =
-            if r_abs_val == 0 { F::zero() } else { F::from_wrapped_u32(r_abs_val).inverse() };
+        cols.r_inv = if r_abs_val == 0 { F::zero() } else { to_field(r_abs_val).inverse() };
 
         // Store signs and magnitudes as words.
         cols.b_sign = F::from_bool(b_sign);
