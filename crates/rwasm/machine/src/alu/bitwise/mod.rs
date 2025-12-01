@@ -144,24 +144,23 @@ impl BitwiseChip {
         let b = event.b.to_le_bytes();
         let c = event.c.to_le_bytes();
 
-        cols.a = Word::from(event.a);
-        cols.b = Word::from(event.b);
-        cols.c = Word::from(event.c);
+        cols.a = event.a.into();
+        cols.b = event.b.into();
+        cols.c = event.c.into();
 
         cols.is_xor = F::from_bool(event.opcode == Opcode::I32Xor);
         cols.is_or = F::from_bool(event.opcode == Opcode::I32Or);
         cols.is_and = F::from_bool(event.opcode == Opcode::I32And);
 
-        if !blu.as_any().is::<EmptyByteRecord>() {
+        if !blu.is_dummy() {
             for ((b_a, b_b), b_c) in a.into_iter().zip(b).zip(c) {
-                let byte_event = ByteLookupEvent {
+                blu.add_byte_lookup_event(ByteLookupEvent {
                     opcode: ByteOpcode::from(event.opcode),
                     a1: b_a as u16,
                     a2: 0,
                     b: b_b,
                     c: b_c,
-                };
-                blu.add_byte_lookup_event(byte_event);
+                });
             }
         }
     }

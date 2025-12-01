@@ -9,6 +9,7 @@ pub fn test_base_case_for_xor() {
         Opcode::I32Const(0x137_137u32.into()),
         Opcode::I32Const(0x42u32.into()),
         Opcode::I32Xor,
+        Opcode::Drop,
     ];
     let program = Program::from_instrs(ops);
     run_rwasm_prover(program);
@@ -22,6 +23,7 @@ pub fn test_base_case_and() {
         Opcode::I32Const(0x137_137u32.into()),
         Opcode::I32Const(0xFFFFFu32.into()),
         Opcode::I32And,
+        Opcode::Drop,
     ];
     let program = Program::from_instrs(ops);
     run_rwasm_prover(program);
@@ -35,6 +37,7 @@ pub fn test_base_case_or() {
         Opcode::I32Const(0x137_137u32.into()),
         Opcode::I32Const(0xDEAD_BEEFu32.into()),
         Opcode::I32Or,
+        Opcode::Drop,
     ];
     let program = Program::from_instrs(ops);
     run_rwasm_prover(program);
@@ -57,6 +60,7 @@ pub fn test_complex_case() {
         // Step 3: AND
         Opcode::I32Const(0xF0F0u32.into()),
         Opcode::I32And, // Stack: [0x00F0]
+        Opcode::Drop,
     ];
     let program = Program::from_instrs(ops);
     run_rwasm_prover(program);

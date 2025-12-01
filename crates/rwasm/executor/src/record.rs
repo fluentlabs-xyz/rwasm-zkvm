@@ -9,7 +9,7 @@ use sp1_stark::{
     shape::Shape,
     MachineRecord, SP1CoreOpts, SplitOpts,
 };
-use std::{any::Any, mem::take, str::FromStr, sync::Arc};
+use std::{mem::take, str::FromStr, sync::Arc};
 
 use crate::{
     events::{
@@ -354,8 +354,8 @@ impl MachineRecord for ExecutionRecord {
 }
 
 impl ByteRecord for ExecutionRecord {
-    fn as_any(&self) -> &dyn Any {
-        self
+    fn is_dummy(&self) -> bool {
+        false
     }
     fn add_byte_lookup_event(&mut self, blu_event: ByteLookupEvent) {
         *self.byte_lookups.entry(blu_event).or_insert(0) += 1;
