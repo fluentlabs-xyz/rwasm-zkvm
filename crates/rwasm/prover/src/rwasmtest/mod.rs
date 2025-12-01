@@ -1,6 +1,6 @@
 mod addmul64;
-mod bitwise;
 mod addsub;
+mod bitwise;
 mod call;
 mod comp;
 mod extend;

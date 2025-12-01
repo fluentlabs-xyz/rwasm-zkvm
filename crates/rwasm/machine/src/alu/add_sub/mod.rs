@@ -174,8 +174,8 @@ impl AddSubChip {
         let operand_2 = event.c;
 
         cols.add_operation.populate(blu, operand_1, operand_2);
-        cols.operand_1 = Word::from(operand_1);
-        cols.operand_2 = Word::from(operand_2);
+        cols.operand_1 = operand_1.into();
+        cols.operand_2 = operand_2.into();
     }
 }
 
