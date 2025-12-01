@@ -3,14 +3,13 @@ use hashbrown::HashMap;
 use itertools::{EitherOrBoth, Itertools};
 use p3_field::{AbstractField, PrimeField};
 use rwasm::DataOpEvent;
+use serde::{Deserialize, Serialize};
 use sp1_stark::{
     air::{MachineAir, PublicValues},
     shape::Shape,
     MachineRecord, SP1CoreOpts, SplitOpts,
 };
 use std::{mem::take, str::FromStr, sync::Arc};
-
-use serde::{Deserialize, Serialize};
 
 use crate::{
     events::{
@@ -355,6 +354,9 @@ impl MachineRecord for ExecutionRecord {
 }
 
 impl ByteRecord for ExecutionRecord {
+    fn is_dummy(&self) -> bool {
+        false
+    }
     fn add_byte_lookup_event(&mut self, blu_event: ByteLookupEvent) {
         *self.byte_lookups.entry(blu_event).or_insert(0) += 1;
     }
