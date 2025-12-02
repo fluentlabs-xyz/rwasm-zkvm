@@ -1,4 +1,4 @@
-use rwasm_executor::events::{ByteRecord, EmptyByteRecord};
+use rwasm_executor::events::ByteRecord;
 use sp1_stark::{air::SP1AirBuilder, Word};
 
 use p3_air::AirBuilder;
@@ -37,7 +37,7 @@ impl<F: Field> AddOperation<F> {
         let overflow = a[0].wrapping_add(b[0]).wrapping_sub(expected.to_le_bytes()[0]) as u32;
         debug_assert_eq!(overflow.wrapping_mul(overflow.wrapping_sub(base)), 0);
 
-        if !record.as_any().is::<EmptyByteRecord>() {
+        if !record.is_dummy() {
             record.add_u8_range_checks(&a);
             record.add_u8_range_checks(&b);
             record.add_u8_range_checks(&expected.to_le_bytes());

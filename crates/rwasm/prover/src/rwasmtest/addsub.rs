@@ -8,6 +8,7 @@ pub fn test_base_case_for_add() {
         Opcode::I32Const(0x137_137u32.into()),
         Opcode::I32Const(0x137_137u32.into()),
         Opcode::I32Add,
+        Opcode::Drop,
     ];
     let program = Program::from_instrs(ops);
     run_rwasm_prover(program);

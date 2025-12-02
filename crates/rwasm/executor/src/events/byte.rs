@@ -27,11 +27,12 @@ pub struct ByteLookupEvent {
     /// The fourth operand.
     pub c: u8,
 }
-use core::any::Any;
 
 /// A type that can record byte lookup events.
-pub trait ByteRecord: Any {
-    fn as_any(&self) -> &dyn Any;
+pub trait ByteRecord {
+    fn is_dummy(&self) -> bool {
+        false
+    } // Default true
     /// Adds a new [`ByteLookupEvent`] to the record.
     fn add_byte_lookup_event(&mut self, blu_event: ByteLookupEvent);
 
@@ -118,9 +119,6 @@ impl ByteLookupEvent {
 }
 
 impl ByteRecord for Vec<ByteLookupEvent> {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
     fn add_byte_lookup_event(&mut self, blu_event: ByteLookupEvent) {
         self.push(blu_event);
     }
@@ -131,9 +129,6 @@ impl ByteRecord for Vec<ByteLookupEvent> {
 }
 
 impl ByteRecord for HashMap<ByteLookupEvent, usize> {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
     #[inline]
     fn add_byte_lookup_event(&mut self, blu_event: ByteLookupEvent) {
         self.entry(blu_event).and_modify(|e| *e += 1).or_insert(1);
@@ -196,9 +191,10 @@ impl ByteOpcode {
 pub struct EmptyByteRecord;
 
 impl ByteRecord for EmptyByteRecord {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+    #[inline(always)]
+    fn is_dummy(&self) -> bool {
+        true
+    } // Default true
     #[inline(always)]
     fn add_byte_lookup_event(&mut self, _event: ByteLookupEvent) {
         // do nothing
