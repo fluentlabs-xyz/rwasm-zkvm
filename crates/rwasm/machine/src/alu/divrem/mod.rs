@@ -539,7 +539,7 @@ impl DivRemChip {
         //   - diff and diff_carry are proper 8-bit values
         //   - check_msb values are also in u8 range
         // ---------------------------
-        if !blu.as_any().is::<EmptyByteRecord>() {
+        if !blu.is_dummy() {
             blu.add_u8_range_checks(&cols.b_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u8_range_checks(&cols.c_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u8_range_checks(&cols.q_abs.0.map(|x| x.as_canonical_u32() as u8));
