@@ -539,7 +539,7 @@ impl DivRemChip {
         //   - diff and diff_carry are proper 8-bit values
         //   - check_msb values are also in u8 range
         // ---------------------------
-        if !blu.is_dummy() {
+        if !blu.as_any().is::<EmptyByteRecord>() {
             blu.add_u8_range_checks(&cols.b_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u8_range_checks(&cols.c_abs.0.map(|x| x.as_canonical_u32() as u8));
             blu.add_u8_range_checks(&cols.q_abs.0.map(|x| x.as_canonical_u32() as u8));
@@ -574,9 +574,9 @@ where
         let one = AB::Expr::one();
         let base = AB::F::from_canonical_u32(256);
         let two = AB::F::from_canonical_u32(2);
-        // Approximation of 2^32 in the field (used for two's complement).
-        let p32 = AB::Expr::from(AB::F::from_canonical_u32(268435454));
-
+        // 2^32 reduced modulo BabyBear p:
+        // 2^32 ≡ 268_435_454 ≡ 2^28 - 2 (mod p)
+        let two32_mod_p = AB::Expr::from(AB::F::from_canonical_u32(268_435_454));
         // ---------------------------------------------------------------------
         // 1. Selector Constraints
         //
@@ -682,7 +682,7 @@ where
         // using standard "is-equal" gadgets with inverses.
         // ---------------------------------------------------------------------
         let int_min_val = AB::Expr::from(AB::F::from_wrapped_u32(0x8000_0000u32));
-        let neg_one_val = p32.clone() - one.clone();
+        let neg_one_val = two32_mod_p.clone() - one.clone();
         let b_val = word_to_expr::<AB>(&local.b);
         let c_val = word_to_expr::<AB>(&local.c);
 
@@ -797,6 +797,7 @@ where
         builder.slice_range_check_u8(&local.q_abs.0, is_real.clone());
         builder.slice_range_check_u8(&local.r_abs.0, is_real.clone());
         builder.slice_range_check_u16(&local.carry, is_real.clone());
+        builder.when(is_real.clone()).assert_zero(local.carry[WORD_SIZE - 1]);
 
         let msb_128 = AB::Expr::from_canonical_u8(128);
 
@@ -829,10 +830,10 @@ where
         // ---------------------------------------------------------------------
         let b_abs_expr = word_to_expr::<AB>(&local.b_abs);
         let c_abs_expr = word_to_expr::<AB>(&local.c_abs);
-        let term_b =
-            b_abs_expr.clone() + local.b_sign * (p32.clone() - AB::Expr::from(two) * b_abs_expr);
-        let term_c =
-            c_abs_expr.clone() + local.c_sign * (p32.clone() - AB::Expr::from(two) * c_abs_expr);
+        let term_b = b_abs_expr.clone() +
+            local.b_sign * (two32_mod_p.clone() - AB::Expr::from(two) * b_abs_expr);
+        let term_c = c_abs_expr.clone() +
+            local.c_sign * (two32_mod_p.clone() - AB::Expr::from(two) * c_abs_expr);
 
         builder.when(is_real.clone()).assert_eq(b_val, term_b);
         builder.when(is_real.clone()).assert_eq(c_val, term_c);
@@ -850,9 +851,9 @@ where
         // ---------------------------------------------------------------------
         let a_expr = word_to_expr::<AB>(&local.a);
         let q_signed = q_abs_expr.clone() +
-            local.q_sign * (p32.clone() - AB::Expr::from(two) * q_abs_expr.clone());
+            local.q_sign * (two32_mod_p.clone() - AB::Expr::from(two) * q_abs_expr.clone());
         let r_signed = r_abs_expr.clone() +
-            local.r_sign * (p32.clone() - AB::Expr::from(two) * r_abs_expr.clone());
+            local.r_sign * (two32_mod_p.clone() - AB::Expr::from(two) * r_abs_expr.clone());
 
         let is_div = local.is_div_u + local.is_div_s;
         let is_rem = local.is_rem_u + local.is_rem_s;
