@@ -1,6 +1,6 @@
 use std::{
     borrow::Borrow,
-    fs::{self, File},
+    fs::File,
     io::Read,
     iter::{Skip, Take},
 };
@@ -19,7 +19,7 @@ use sp1_recursion_core::{
 };
 use sp1_stark::{baby_bear_poseidon2::MyHash as InnerHash, SP1CoreOpts, Word};
 
-use crate::{InnerSC, SP1CoreProofData};
+use crate::InnerSC;
 
 /// Get the SP1 vkey BabyBear Poseidon2 digest this reduce proof is representing.
 pub fn sp1_vkey_digest_babybear(proof: &SP1ReduceProof<BabyBearPoseidon2Outer>) -> [BabyBear; 8] {
@@ -59,25 +59,31 @@ pub fn root_public_values_digest(
     hash.hash_slice(&input)
 }
 
-pub fn assert_root_public_values_valid(
+pub fn is_root_public_values_valid(
     config: &InnerSC,
     public_values: &RootPublicValues<BabyBear>,
-) {
+) -> bool {
     let expected_digest = root_public_values_digest(config, public_values);
     for (value, expected) in public_values.digest().iter().copied().zip_eq(expected_digest) {
-        assert_eq!(value, expected);
+        if value != expected {
+            return false;
+        }
     }
+    true
 }
 
-/// Assert that the digest of the public values is correct.
-pub fn assert_recursion_public_values_valid(
+/// Check if the digest of the public values is correct.
+pub fn is_recursion_public_values_valid(
     config: &InnerSC,
     public_values: &RecursionPublicValues<BabyBear>,
-) {
+) -> bool {
     let expected_digest = recursion_public_values_digest(config, public_values);
     for (value, expected) in public_values.digest.iter().copied().zip_eq(expected_digest) {
-        assert_eq!(value, expected);
+        if value != expected {
+            return false;
+        }
     }
+    true
 }
 
 /// Get the committed values Bn Poseidon2 digest this reduce proof is representing.
@@ -89,14 +95,6 @@ pub fn sp1_committed_values_digest_bn254(
     let committed_values_digest_bytes: [BabyBear; 32] =
         words_to_bytes(&pv.committed_value_digest).try_into().unwrap();
     babybear_bytes_to_bn254(&committed_values_digest_bytes)
-}
-
-impl SP1CoreProofData {
-    pub fn save(&self, path: &str) -> Result<(), std::io::Error> {
-        let data = serde_json::to_string(self).unwrap();
-        fs::write(path, data).unwrap();
-        Ok(())
-    }
 }
 
 /// Get the number of cycles for a given program.
@@ -157,6 +155,16 @@ pub fn words_to_bytes_be(words: &[u32; 8]) -> [u8; 32] {
         bytes[i * 4..(i + 1) * 4].copy_from_slice(&word_bytes);
     }
     bytes
+}
+
+/// Utility method for converting 32 big-endian bytes back into eight u32 words.
+pub fn bytes_to_words_be(bytes: &[u8; 32]) -> [u32; 8] {
+    let mut words = [0u32; 8];
+    for i in 0..8 {
+        let chunk: [u8; 4] = bytes[i * 4..(i + 1) * 4].try_into().unwrap();
+        words[i] = u32::from_be_bytes(chunk);
+    }
+    words
 }
 
 pub trait MaybeTakeIterator<I: Iterator>: Iterator<Item = I::Item> {

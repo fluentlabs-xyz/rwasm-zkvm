@@ -10,7 +10,7 @@ use num::Integer;
 use p3_baby_bear::BabyBear;
 use p3_field::PrimeField32;
 use p3_util::log2_ceil_usize;
-use sp1_core_executor::{ExecutionRecord, Program, RiscvAirId};
+use sp1_core_executor::{ExecutionRecord, Instruction, Opcode, Program, RiscvAirId};
 use sp1_stark::{
     air::MachineAir,
     shape::{OrderedShape, Shape, ShapeCluster},
@@ -525,7 +525,8 @@ impl<F: PrimeField32> Default for CoreShapeConfig<F> {
                     ShapeCluster::new(x.into_iter().map(|(k, v)| (k, vec![Some(v)])).collect())
                 })
                 .collect(),
-            costs: serde_json::from_str(include_str!("rv32im_costs.json")).unwrap(),
+            costs: serde_json::from_str(include_str!("rv32im_costs.json"))
+                .expect("Failed to load rv32im_costs.json file. Verify that `git config core.symlinks` is not set to false."),
             _data: PhantomData,
         }
     }
@@ -626,7 +627,8 @@ pub enum CoreShapeError {
 }
 
 pub fn create_dummy_program(shape: &Shape<RiscvAirId>) -> Program {
-    let mut program = Program::new(vec![], 1 << 5, 1 << 5);
+    let mut program =
+        Program::new(vec![Instruction::new(Opcode::ADD, 30, 0, 0, false, false)], 1 << 5, 1 << 5);
     program.preprocessed_shape = Some(shape.clone());
     program
 }
@@ -678,7 +680,7 @@ pub mod tests {
         use p3_baby_bear::BabyBear;
         let shape_config = CoreShapeConfig::<BabyBear>::default();
         let num_shapes = shape_config.all_shapes().collect::<HashSet<_>>().len();
-        println!("There are {} core shapes", num_shapes);
+        println!("There are {num_shapes} core shapes");
         assert!(num_shapes < 1 << 24);
     }
 

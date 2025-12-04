@@ -50,7 +50,7 @@ fn collect_maximal_shapes(
                 let _ = record.defer();
                 let core_shape: Shape<RiscvAirId> = RiscvAir::<BabyBear>::core_heights(&record)
                     .into_iter()
-                    .filter(|&(_, height)| (height != 0))
+                    .filter(|&(_, height)| height != 0)
                     .map(|(air, height)| (air, height.next_power_of_two().ilog2() as usize))
                     .collect();
 
@@ -129,7 +129,7 @@ fn main() {
             .args([
                 "s3",
                 "cp",
-                &format!("s3://sp1-testing-suite/{}/program.bin", s3_path),
+                &format!("s3://sp1-testing-suite/{s3_path}/program.bin"),
                 "program.bin",
             ])
             .status()
@@ -140,12 +140,7 @@ fn main() {
 
         // Download stdin.bin.
         let status = std::process::Command::new("aws")
-            .args([
-                "s3",
-                "cp",
-                &format!("s3://sp1-testing-suite/{}/stdin.bin", s3_path),
-                "stdin.bin",
-            ])
+            .args(["s3", "cp", &format!("s3://sp1-testing-suite/{s3_path}/stdin.bin"), "stdin.bin"])
             .status()
             .expect("Failed to execute aws s3 cp command for stdin.bin");
         if !status.success() {

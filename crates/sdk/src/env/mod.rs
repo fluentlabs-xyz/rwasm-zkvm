@@ -3,7 +3,7 @@
 //! A prover that can execute programs and generate proofs with a different implementation based on
 //! the value of certain environment variables.
 
-mod prove;
+pub mod prove;
 
 use std::env;
 
@@ -11,6 +11,7 @@ use anyhow::Result;
 use prove::EnvProveBuilder;
 use sp1_core_executor::SP1ContextBuilder;
 use sp1_core_machine::io::SP1Stdin;
+use sp1_cuda::MoongateServer;
 use sp1_prover::{components::CpuProverComponents, SP1Prover, SP1ProvingKey, SP1VerifyingKey};
 
 use super::{Prover, SP1VerificationError};
@@ -19,6 +20,7 @@ use crate::network::builder::NetworkProverBuilder;
 use crate::{
     cpu::{execute::CpuExecuteBuilder, CpuProver},
     cuda::CudaProver,
+    utils::{check_release_build, setup_memory_usage_monitoring},
     SP1ProofMode, SP1ProofWithPublicValues,
 };
 
@@ -49,9 +51,15 @@ impl EnvProver {
 
         let prover: Box<dyn Prover<CpuProverComponents>> = match mode.as_str() {
             "mock" => Box::new(CpuProver::mock()),
-            "cpu" => Box::new(CpuProver::new()),
+            "cpu" => {
+                check_release_build();
+                setup_memory_usage_monitoring();
+                Box::new(CpuProver::new())
+            },
             "cuda" => {
-                Box::new(CudaProver::new(SP1Prover::new(), None))
+                check_release_build();
+                setup_memory_usage_monitoring();
+                Box::new(CudaProver::new(SP1Prover::new(), MoongateServer::default()))
             }
             "network" => {
                 #[cfg(not(feature = "network"))]
@@ -100,7 +108,7 @@ impl EnvProver {
         }
     }
 
-    /// Creates a new [`EnvProve`] for proving a program on the CPU.
+    /// Creates a new [`EnvProveBuilder`] for proving a program on the CPU.
     ///
     /// # Details
     /// The builder is used for only the [`crate::cpu::CpuProver`] client type.
