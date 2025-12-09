@@ -55,7 +55,6 @@ pub struct BytePreprocessedCols<T> {
     pub shift_meta: T,
 
     pub carry_mul: T,
-
 }
 
 /// For each byte operation in the preprocessed table, a corresponding ByteMultCols row tracks the

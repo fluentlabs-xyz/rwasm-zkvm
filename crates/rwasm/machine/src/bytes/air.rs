@@ -83,7 +83,6 @@ impl<AB: SP1AirBuilder + PairBuilder> Air<AB> for ByteChip<AB::F> {
                     local.c,
                     mult,
                 ),
-
             }
         }
     }

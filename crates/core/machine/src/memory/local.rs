@@ -298,7 +298,7 @@ mod tests {
         println!("{:?}", trace.values);
 
         for mem_event in shard.global_memory_finalize_events {
-            println!("{:?}", mem_event);
+            println!("{mem_event:?}");
         }
     }
 
@@ -438,7 +438,7 @@ mod tests {
         type F = BabyBear;
         // Generate the trace rows for each event.
         let events = input.get_local_mem_events().collect::<Vec<_>>();
-        let nb_rows = (events.len() + 3) / 4;
+        let nb_rows = events.len().div_ceil(4);
         let padded_nb_rows = height;
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_MEMORY_LOCAL_INIT_COLS);
         let chunk_size = std::cmp::max(nb_rows / num_cpus::get(), 0) + 1;

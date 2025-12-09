@@ -4,6 +4,7 @@
 
 use cfg_if::cfg_if;
 use std::path::PathBuf;
+use tracing::info;
 
 #[cfg(any(feature = "network", feature = "network"))]
 use {
@@ -22,13 +23,23 @@ pub const CIRCUIT_ARTIFACTS_URL_BASE: &str = "https://sp1-circuits.s3-us-east-2.
 /// The directory where the groth16 circuit artifacts will be stored.
 #[must_use]
 pub fn groth16_circuit_artifacts_dir() -> PathBuf {
-    dirs::home_dir().unwrap().join(".sp1").join("circuits/groth16").join(SP1_CIRCUIT_VERSION)
+    std::env::var("SP1_GROTH16_CIRCUIT_PATH")
+        .map_or_else(
+            |_| dirs::home_dir().unwrap().join(".sp1").join("circuits/groth16"),
+            |path| path.parse().unwrap(),
+        )
+        .join(SP1_CIRCUIT_VERSION)
 }
 
 /// The directory where the plonk circuit artifacts will be stored.
 #[must_use]
 pub fn plonk_circuit_artifacts_dir() -> PathBuf {
-    dirs::home_dir().unwrap().join(".sp1").join("circuits/plonk").join(SP1_CIRCUIT_VERSION)
+    std::env::var("SP1_PLONK_CIRCUIT_PATH")
+        .map_or_else(
+            |_| dirs::home_dir().unwrap().join(".sp1").join("circuits/plonk"),
+            |path| path.parse().unwrap(),
+        )
+        .join(SP1_CIRCUIT_VERSION)
 }
 
 /// Tries to install the groth16 circuit artifacts if they are not already installed.
@@ -43,7 +54,7 @@ pub fn try_install_circuit_artifacts(artifacts_type: &str) -> PathBuf {
     };
 
     if build_dir.exists() {
-        eprintln!(
+        info!(
             "[sp1] {} circuit artifacts already seem to exist at {}. if you want to re-download them, delete the directory",
             artifacts_type,
             build_dir.display()
@@ -51,7 +62,7 @@ pub fn try_install_circuit_artifacts(artifacts_type: &str) -> PathBuf {
     } else {
         cfg_if! {
             if #[cfg(any(feature = "network", feature = "network"))] {
-                eprintln!(
+                info!(
                     "[sp1] {} circuit artifacts for version {} do not exist at {}. downloading...",
                     artifacts_type,
                     SP1_CIRCUIT_VERSION,
@@ -95,7 +106,7 @@ pub fn install_circuit_artifacts(build_dir: PathBuf, artifacts_type: &str) {
         .expect("failed to extract tarball");
     res.wait().unwrap();
 
-    eprintln!("[sp1] downloaded {} to {:?}", download_url, build_dir.to_str().unwrap(),);
+    info!("[sp1] downloaded {} to {:?}", download_url, build_dir.to_str().unwrap(),);
 }
 
 /// Download the file with a progress bar that indicates the progress.

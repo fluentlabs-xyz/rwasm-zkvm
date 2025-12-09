@@ -67,7 +67,7 @@ impl Syscall for WriteSyscall {
                                 });
                             }
                             None => {
-                                flush_s.into_iter().for_each(|line| eprintln!("stdout: {}", line));
+                                flush_s.into_iter().for_each(|line| eprintln!("stdout: {line}"));
                             }
                         }
                     }
@@ -88,7 +88,7 @@ impl Syscall for WriteSyscall {
                         });
                     }
                     None => {
-                        flush_s.into_iter().for_each(|line| eprintln!("stderr: {}", line));
+                        flush_s.into_iter().for_each(|line| eprintln!("stderr: {line}"));
                     }
                 }
             }
@@ -133,7 +133,7 @@ impl Syscall for WriteSyscall {
                 panic!(
                     "You are using reserved file descriptor {fd} that is not supported on SP1 versions >= v4.0.0. \
                     Update your patches to the latest versions that are compatible with versions >= v4.0.0. \
-                    See `https://docs.succinct.xyz/docs/sp1/writing-programs/patched-crates` for more information"
+                    See `https://docs.succinct.xyz/docs/sp1/optimizing-programs/precompiles` for more information"
                 );
             }
         } else if fd == FD_PUBLIC_VALUES {
@@ -196,12 +196,12 @@ fn handle_cycle_tracker_command(rt: &mut Executor, command: CycleTrackerCommand)
             if let Some(total_cycles) = end_cycle_tracker(rt, &name) {
                 rt.report
                     .cycle_tracker
-                    .entry(name.to_string())
+                    .entry(name.clone())
                     .and_modify(|cycles| *cycles += total_cycles)
                     .or_insert(total_cycles);
                 rt.report
                     .invocation_tracker
-                    .entry(name.to_string())
+                    .entry(name.clone())
                     .and_modify(|invocations| *invocations += 1)
                     .or_insert(1);
             }

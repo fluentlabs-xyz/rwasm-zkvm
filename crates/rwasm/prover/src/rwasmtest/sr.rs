@@ -40,7 +40,6 @@ pub fn test_shift_by_zero() {
         Opcode::I32Const(0u32.into()),
         Opcode::I32ShrU,
         Opcode::Drop,
-
         // SRS: 0x81818181 >> 0 = 0x81818181 (no change, but arithmetic path)
         Opcode::I32Const(0x8181_8181u32.into()),
         Opcode::I32Const(0u32.into()),
@@ -63,20 +62,17 @@ pub fn test_shift_amount_masking_and_max_shift() {
         Opcode::I32Const(31u32.into()),
         Opcode::I32ShrU,
         Opcode::Drop,
-
         // SRU: check masking (0xFFFF_FFE0 & 31 = 0)
         // 0x21212121 >> 0xFFFF_FFE0  == 0x21212121 >> 0
         Opcode::I32Const(0x2121_2121u32.into()),
         Opcode::I32Const(0xFFFF_FFE0u32.into()),
         Opcode::I32ShrU,
         Opcode::Drop,
-
         // SRU: (0xFFFF_FFE1 & 31 = 1)
         Opcode::I32Const(0x2121_2121u32.into()),
         Opcode::I32Const(0xFFFF_FFE1u32.into()),
         Opcode::I32ShrU,
         Opcode::Drop,
-
         // SRS: masking for negative number
         // 0x80000001 >> 0xFFFF_FFFF  == 0x80000001 >> 31 (arithmetic)
         Opcode::I32Const(0x8000_0001u32.into()),
@@ -100,21 +96,18 @@ pub fn test_shru_edge_cases() {
         (0xFFFF_8000, 7),
         (0xFFFF_8000, 14),
         (0xFFFF_8001, 15),
-
         // All ones
         (0xFFFF_FFFF, 0),
         (0xFFFF_FFFF, 1),
         (0xFFFF_FFFF, 7),
         (0xFFFF_FFFF, 14),
         (0xFFFF_FFFF, 31),
-
         // Mixed pattern
         (0x2121_2121, 0),
         (0x2121_2121, 1),
         (0x2121_2121, 7),
         (0x2121_2121, 14),
         (0x2121_2121, 31),
-
         // Masking behavior with large shift operands
         (0x2121_2121, 0xFFFF_FFE0), // &31 = 0
         (0x2121_2121, 0xFFFF_FFE1), // &31 = 1
@@ -147,20 +140,17 @@ pub fn test_shrs_edge_cases() {
         (0x7FFF_FFFF, 7),
         (0x7FFF_FFFF, 14),
         (0x7FFF_FFFF, 31),
-
         // Negative values (MSB = 1) to test sign extension
         (0x8000_0000, 1),
         (0x8000_0000, 7),
         (0x8000_0000, 14),
         (0x8000_0001, 31),
-
         // Mixed negative pattern
         (0x8181_8181, 0),
         (0x8181_8181, 1),
         (0x8181_8181, 7),
         (0x8181_8181, 14),
         (0x8181_8181, 31),
-
         // Masking behavior on SRS with large shift operands
         (0x8000_0001, 0xFFFF_FFE0), // &31 = 0
         (0x8000_0001, 0xFFFF_FFE1), // &31 = 1
@@ -195,19 +185,16 @@ pub fn test_sr_mixed_sequence() {
         Opcode::I32Const(7u32.into()),
         Opcode::I32ShrU,
         Opcode::Drop,
-
         // 2) SRU: 0x21212121 >> 0xFFFF_FFE7 (same as >> 7)
         Opcode::I32Const(0x2121_2121u32.into()),
         Opcode::I32Const(0xFFFF_FFE7u32.into()),
         Opcode::I32ShrU,
         Opcode::Drop,
-
         // 3) SRS: 0x80000000 >> 1 (sign extension)
         Opcode::I32Const(0x8000_0000u32.into()),
         Opcode::I32Const(1u32.into()),
         Opcode::I32ShrS,
         Opcode::Drop,
-
         // 4) SRS: 0x81818181 >> 0xFFFF_FFFF (same as >> 31, still negative)
         Opcode::I32Const(0x8181_8181u32.into()),
         Opcode::I32Const(0xFFFF_FFFFu32.into()),

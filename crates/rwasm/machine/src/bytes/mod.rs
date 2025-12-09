@@ -119,13 +119,13 @@ impl<F: Field> ByteChip<F> {
                     }
                     ByteOpcode::ShiftMeta => {
                         let shift_lo = c;
-                        let masked = shift_lo & 31;          // 0..31
-                        let k      = masked & 7;             // low 3 bits
+                        let masked = shift_lo & 31; // 0..31
+                        let k = masked & 7; // low 3 bits
                         let raw_cm: u16 = 1u16 << (8 - k as u16);
 
                         // You can store them in separate columns if you want:
                         col.shift_meta = F::from_canonical_u8(masked);
-                        col.carry_mul  = F::from_canonical_u32(raw_cm as u32);
+                        col.carry_mul = F::from_canonical_u32(raw_cm as u32);
 
                         // Key:
                         //   a1 = carry_multiplier (u16)

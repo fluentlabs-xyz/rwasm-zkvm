@@ -1,6 +1,6 @@
 use std::{env, path::PathBuf, process::Command};
 
-use crate::{BuildArgs, HELPER_TARGET_SUBDIR};
+use crate::{BuildArgs, WarningLevel, HELPER_TARGET_SUBDIR};
 use cargo_metadata::camino::Utf8PathBuf;
 use dirs::home_dir;
 
@@ -27,6 +27,10 @@ pub(crate) fn create_local_command(
         }
     }
 
+    // the following flag is added to avoid build failure on ring:
+    // https://github.com/briansmith/ring/blob/bcf68dd27a071ff1947b6327d4c6bde526e24b60/include/ring-core/target.h#L47
+    command.env("CFLAGS_riscv32im_succinct_zkvm_elf", "-D__ILP32__");
+
     let parsed_version = {
         let output = Command::new("rustc")
             .arg("--version")
@@ -45,7 +49,9 @@ pub(crate) fn create_local_command(
         let stdout_string =
             String::from_utf8(output.stdout).expect("Can't parse rustc --version stdout");
 
-        println!("cargo:warning=rustc +succinct --version: {:?}", stdout_string);
+        if matches!(args.warning_level, WarningLevel::All) {
+            println!("cargo:warning=rustc +succinct --version: {stdout_string:?}");
+        }
 
         super::utils::parse_rustc_version(&stdout_string)
     };

@@ -1,6 +1,8 @@
-use crate::SP1Stdin;
-use alloy_primitives::{Address, PrimitiveSignature};
-use alloy_signer::SignerSync;
+use crate::{
+    network::{signer::NetworkSigner, utils::sign_raw},
+    SP1Stdin,
+};
+use alloy_primitives::{Address, Signature as AlloySignature};
 use serde::{Deserialize, Serialize};
 
 use k256::ecdsa::Signature;
@@ -17,21 +19,21 @@ pub struct TEERequest {
     /// The stdin for the program.
     pub stdin: SP1Stdin,
     /// The signature of the request id.
-    pub signature: PrimitiveSignature,
+    pub signature: AlloySignature,
 }
 
 impl TEERequest {
     /// The selector for the TEE verifier.
-    pub(crate) fn new<S: SignerSync>(
-        signer: &S,
+    pub(crate) async fn new(
+        signer: &NetworkSigner,
         id: [u8; 32],
         program: Vec<u8>,
         stdin: SP1Stdin,
         cycle_limit: u64,
-    ) -> Self {
-        let signature = signer.sign_message_sync(&id).expect("Failed to sign request id");
+    ) -> Result<Self, anyhow::Error> {
+        let signature = sign_raw(&id, signer).await?;
 
-        Self { id, program, cycle_limit, stdin, signature }
+        Ok(Self { id, program, cycle_limit, stdin, signature })
     }
 }
 
@@ -61,7 +63,7 @@ impl TEEResponse {
         // The length of the version bytes, panics if the length is greater than 255.
         let version_bytes_len: u8 = version_bytes.len().try_into().unwrap();
 
-        // Push the selector
+        // Push the selector.
         bytes.extend_from_slice(&Self::selector());
         // Push v.
         bytes.extend_from_slice(&self.recovery_id.to_be_bytes());

@@ -6,7 +6,7 @@ use std::{
 use anyhow::{Context, Result};
 use cargo_metadata::camino::Utf8PathBuf;
 
-use crate::BuildArgs;
+use crate::{BuildArgs, WarningLevel};
 
 use super::utils::{get_program_build_args, get_rust_compiler_flags};
 
@@ -15,7 +15,7 @@ use super::utils::{get_program_build_args, get_rust_compiler_flags};
 fn get_docker_image(tag: &str) -> String {
     std::env::var("SP1_DOCKER_IMAGE").unwrap_or_else(|_| {
         let image_base = "ghcr.io/succinctlabs/sp1";
-        format!("{}:{}", image_base, tag)
+        format!("{image_base}:{tag}")
     })
 }
 
@@ -68,7 +68,7 @@ pub(crate) fn create_docker_command(
 
     // Mount the entire workspace, and set the working directory to the program dir. Note: If the
     // program dir has local dependencies outside of the workspace, building with Docker will fail.
-    let workspace_root_path = format!("{}:/root/program", workspace_root);
+    let workspace_root_path = format!("{workspace_root}:/root/program");
     let program_dir_path = format!(
         "/root/program/{}",
         canonicalized_program_dir.strip_prefix(workspace_root).unwrap()
@@ -76,7 +76,13 @@ pub(crate) fn create_docker_command(
 
     // Get the target directory for the ELF in the context of the Docker container.
     let relative_target_dir =
-        (program_metadata.target_directory).strip_prefix(workspace_root).unwrap();
+        program_metadata.target_directory.strip_prefix(workspace_root).with_context(|| {
+            format!(
+                "Cargo target directory ({}) must be a child of the workspace directory ({}).\n\
+                 This can happen if CARGO_TARGET_DIR is set to a location outside the workspace.",
+                program_metadata.target_directory, workspace_root
+            )
+        })?;
     let target_dir = format!(
         "/root/program/{}/{}/{}",
         relative_target_dir,
@@ -92,15 +98,18 @@ pub(crate) fn create_docker_command(
 
         if !output.status.success() {
             return Err(anyhow::anyhow!(
-                "Failed to run rustc --version in docker image {}",
-                String::from_utf8_lossy(&output.stdout)
+                "Failed to run rustc --version in docker image stdout: {} \n stderr: {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
             ));
         }
 
         let stdout_string =
             String::from_utf8(output.stdout).expect("Can't parse rustc --version stdout");
 
-        println!("cargo:warning=docker: rustc +succinct --version: {:?}", stdout_string);
+        if matches!(args.warning_level, WarningLevel::All) {
+            println!("cargo:warning=docker: rustc +succinct --version: {stdout_string:?}");
+        }
 
         super::utils::parse_rustc_version(&stdout_string)
     };
@@ -119,7 +128,7 @@ pub(crate) fn create_docker_command(
         PathBuf::from(stdout_string.trim()).join("bin/rustc")
     };
 
-    println!("cargo:warning=docker: rustc_bin: {:?}", rustc_bin);
+    println!("cargo:warning=docker: rustc_bin: {rustc_bin:?}");
 
     // When executing the Docker command:
     // 1. Set the target directory to a subdirectory of the program's target directory to avoid
@@ -146,6 +155,8 @@ pub(crate) fn create_docker_command(
         format!("CARGO_ENCODED_RUSTFLAGS={}", get_rust_compiler_flags(args, &parsed_version)),
         "-e".to_string(),
         format!("RUSTC={}", rustc_bin.display()),
+        "-e".to_string(),
+        "CFLAGS_riscv32im_succinct_zkvm_elf=-D__ILP32__".to_string(),
         "--entrypoint".to_string(),
         "".to_string(),
         image,

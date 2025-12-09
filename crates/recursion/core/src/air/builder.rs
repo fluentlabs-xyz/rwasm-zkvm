@@ -1,4 +1,4 @@
-use core::iter::{once, repeat};
+use core::iter::{once, repeat_n};
 use p3_air::{AirBuilder, AirBuilderWithPublicValues};
 use p3_field::AbstractField;
 use sp1_stark::{
@@ -78,12 +78,12 @@ pub trait RecursionMemoryAirBuilder: RecursionInteractionAirBuilder {
         let prev_values = once(prev_timestamp)
             .chain(once(addr.clone()))
             .chain(once(memory_access.prev_value().clone().into()))
-            .chain(repeat(Self::Expr::zero()).take(3))
+            .chain(repeat_n(Self::Expr::zero(), 3))
             .collect();
         let current_values = once(timestamp)
             .chain(once(addr.clone()))
             .chain(once(memory_access.value().clone().into()))
-            .chain(repeat(Self::Expr::zero()).take(3))
+            .chain(repeat_n(Self::Expr::zero(), 3))
             .collect();
 
         self.receive(

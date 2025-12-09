@@ -486,7 +486,7 @@ impl<'a> Executor<'a> {
     ) -> MemoryReadRecord {
         // Check that the memory address is within the babybear field and not within the registers'
         // address space.  Also check that the address is aligned.
-        if addr % 4 != 0 || addr >= BABYBEAR_PRIME {
+        if !addr.is_multiple_of(4) || addr >= BABYBEAR_PRIME {
             panic!("Invalid memory access: addr={addr}");
         }
 
@@ -596,7 +596,7 @@ impl<'a> Executor<'a> {
     ) -> MemoryWriteRecord {
         // Check that the memory address is within the babybear field and not within the registers'
         // address space.  Also check that the address is aligned.
-        if addr % 4 != 0 || addr >= BABYBEAR_PRIME {
+        if !addr.is_multiple_of(4) || addr >= BABYBEAR_PRIME {
             panic!("Invalid memory access: addr={addr}");
         }
 
@@ -1377,7 +1377,7 @@ impl<'a> Executor<'a> {
             //
             // If we're close to not fitting, early stop the shard to ensure we don't OOM.
             let mut shape_match_found = true;
-            if self.state.global_clk % self.shape_check_frequency == 0 {
+            if self.state.global_clk.is_multiple_of(self.shape_check_frequency) {
                 // Estimate the number of events in the trace.
 
                 // Check if the LDE size is too large.
@@ -2018,7 +2018,7 @@ impl<'a> Executor<'a> {
             }
         }
 
-        if !self.unconstrained && self.state.global_clk % 10_000_000 == 0 {
+        if !self.unconstrained && self.state.global_clk.is_multiple_of(10_000_000) {
             tracing::info!("clk = {} pc = 0x{:x?}", self.state.global_clk, self.state.pc);
         }
     }

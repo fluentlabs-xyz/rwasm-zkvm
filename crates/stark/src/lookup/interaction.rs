@@ -65,7 +65,7 @@ impl InteractionKind {
             InteractionKind::Range,
             InteractionKind::Field,
             InteractionKind::Syscall,
-            InteractionKind::Call,
+            InteractionKind::Global,
         ]
     }
 }

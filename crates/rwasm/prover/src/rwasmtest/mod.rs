@@ -7,10 +7,10 @@ mod divrem;
 mod extend;
 mod mul;
 mod rotate;
+mod sr;
 mod table_grow;
 mod table_init;
 mod trailing;
-mod sr;
 
 use rwasm_executor::Program;
 use rwasm_machine::utils::setup_logger;
