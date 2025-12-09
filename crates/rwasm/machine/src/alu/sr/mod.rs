@@ -1,33 +1,123 @@
-//! Logical And Arithmetic Right Shift Verification.
+//! Logical and Arithmetic Right Shift (SRL / SRA) Verification.
 //!
-//! Implements verification for a = b >> c, decomposing the shift into bit and byte components:
+//! This chip verifies 32-bit WebAssembly right shifts:
 //!
-//! 1. num_bits_to_shift  = (c & 31) % 8  (bit-level shift, via ShrCarry).
-//! 2. num_bytes_to_shift = (c & 31) / 8  (byte-level shift).
+//! - `I32ShrU` (logical right shift, SRL)
+//! - `I32ShrS` (arithmetic right shift, SRA)
 //!
-//! The right shift is verified by reformulating it as:
-//!     (b >> c) = (b >> (num_bytes_to_shift * 8)) >> num_bits_to_shift.
+//! For an event `(opcode, a, b, c)` we want to enforce:
 //!
-//! The correct leading bits of logical and arithmetic right shifts are verified by sign extending b
-//! to 64 bits before shifting.
+//!   a = b >> c    (interpreted as 32-bit Wasm semantics)
 //!
-//! # Semantics used via byte tables
+//! with:
+//!   - logical shift for `I32ShrU`,
+//!   - arithmetic shift for `I32ShrS` (sign bit is propagated).
 //!
-//! Let `shift_lo` be the low byte of the Wasm shift operand `c` (i.e., c & 0xff).
+//! ## Decomposition of the shift
 //!
-//! - ByteOpcode::ShiftMeta table (in `bytes::trace`):
-//!       masked    = shift_lo & 31
-//!       num_bits  = masked & 7
-//!       num_bytes = masked >> 3
-//!       ByteLookupEvent { opcode=ShiftMeta, a1=num_bits, a2=num_bytes, b=*, c=shift_lo }
+//! Let `c_eff = c & 31` be the effective shift amount in Wasm (since shifts are mod 32).
+//! We split `c_eff` into:
 //!
-//! - ByteOpcode::CarryMul table (in `bytes::trace`):
-//!       k      = shift_lo & 7       // num_bits
-//!       raw_cm = 1u16 << (8 - k)
-//!       ByteLookupEvent { opcode=CarryMul, a1=raw_cm, a2=k, b=*, c=shift_lo }
+//!   num_bits_to_shift  = c_eff % 8 ∈ {0, ..., 7}
+//!   num_bytes_to_shift = c_eff / 8 ∈ {0, ..., 3}
 //!
-//! This chip enforces consistency of its local `num_bits_to_shift`, `num_bytes_to_shift`,
-//! and `carry_multiplier` columns with those tables via lookups.
+//! Then we can write:
+//!
+//!   b >> c_eff
+//!   = (b >> (8 * num_bytes_to_shift)) >> num_bits_to_shift
+//!
+//! We:
+//! 1. Perform a **byte-level shift** by `num_bytes_to_shift` on a 64-bit sign-extended version
+//!    of `b` (for SRA) or zero-extended version (for SRL).
+//! 2. Perform a **bit-level shift** by `num_bits_to_shift` using the `ShrCarry` byte table,
+//!    which captures how bits flow between neighboring bytes when shifting right.
+//!
+//! The 32-bit result `a` is then recovered from the least significant 4 bytes of the
+//! 64-bit shifted value.
+//!
+//! ## Sign extension model
+//!
+//! To handle SRA, we conceptually embed the 32-bit `b` into a 64-bit word:
+//!
+//! - For SRL (`I32ShrU`): zero-extend
+//!       B64 = (b as u64)            // high 32 bits = 0
+//!
+//! - For SRA (`I32ShrS`): sign-extend
+//!       B64 = (b as i32 as i64)     // high 32 bits all 0xff if sign bit = 1
+//!
+//! After sign-extension, we perform byte-level shifting on the 8 bytes of `B64`.
+//!
+//! ## Byte tables used
+//!
+//! We rely on a global ByteChip table that provides the following opcodes:
+//!
+//! - `MSB`:
+//!     Given a byte `x`, returns `msb = (x >> 7) & 1`.
+//!     Used here to tie `b_msb` to the most significant byte of `b`.
+//!
+//! - `ShrCarry`:
+//!     Given a byte `x` and a bit shift `k ∈ {0..7}`, returns:
+//!         (shifted, carry) = shr_carry(x, k)
+//!     so that multi-byte right shifts can be reconstructed using:
+//!         new_byte_i = shifted_i + carry_{i+1} * carry_multiplier
+//!
+//! - `ShiftMeta` (merged metadata table):
+//!     For each low 8-bit shift operand `shift_lo = c & 0xff`:
+//!
+//!       masked   = shift_lo & 31         ∈ {0..31}  (effective shift)
+//!       k        = masked & 7            ∈ {0..7}   (num_bits_to_shift)
+//!       raw_cm   = 1u16 << (8 - k)       (carry_multiplier)
+//!
+//!     The table stores rows of the form:
+//!
+//!       ByteLookupEvent {
+//!           opcode = ShiftMeta,
+//!           a1     = raw_cm,             // carry_multiplier (u16)
+//!           a2     = masked,             // masked shift ∈ {0..31}
+//!           b      = arbitrary (unused here),
+//!           c      = shift_lo
+//!       }
+//!
+//! This chip enforces that its internal columns
+//!   - `num_bits_to_shift`
+//!   - `num_bytes_to_shift`
+//!   - `carry_multiplier`
+//! are consistent with the `ShiftMeta` table via a single lookup:
+//!
+//!     masked = num_bits_to_shift + 8 * num_bytes_to_shift
+//!
+//! and then:
+//!
+//!     send_byte_pair(
+//!         ShiftMeta,
+//!         carry_multiplier,                  // a1
+//!         masked,                            // a2
+//!         b = 0,
+//!         c = shift_lo                       // low byte of c
+//!     )
+//!
+//! ## Bit-level combination via ShrCarry
+//!
+//! Consider the 8 bytes after the byte-level shift, `byte_shift_result[i]` for i=0..7
+//! (little-endian, i = 0 is LSB).
+//!
+//! For each byte index `i` (processed from MSB to LSB), `ShrCarry` gives:
+//!
+//!     (shifted_i, carry_i) = shr_carry(byte_shift_result[i], num_bits_to_shift)
+//!
+//! Intuitively, `carry_{i+1}` encodes the low `num_bits_to_shift` bits that are shifted out
+//! of the next more significant byte and should enter byte `i`.
+//!
+//! We then reconstruct the final shifted 64-bit value one byte at a time using:
+//!
+//!     combined_i = (shifted_i + carry_{i+1} * carry_multiplier) mod 256
+//!
+//! where:
+//!
+//!     carry_multiplier = 1 << (8 - num_bits_to_shift)
+//!
+//! The chip enforces that the least significant 4 bytes of this combined value match `a`,
+//! the CPU's result, via AIR constraints.
 
 mod utils;
 
@@ -60,18 +150,18 @@ use sp1_stark::{air::MachineAir, Word};
 pub const NUM_SHIFT_RIGHT_COLS: usize = size_of::<ShiftRightCols<u8>>();
 
 /// The number of bytes necessary to represent a 64-bit integer.
-const LONG_WORD_SIZE: usize = 2 * WORD_SIZE;
+const LONG_WORD_SIZE: usize = 2 * WORD_SIZE; // 8
 
-/// The number of bits in a byte.
+/// Number of bits in a byte.
 const BYTE_SIZE: usize = 8;
 
-/// A chip that implements bitwise operations for the opcodes SRL and SRA (I32ShrU / I32ShrS).
+/// A chip that implements bitwise right shifts for `I32ShrU` and `I32ShrS`.
 #[derive(Default)]
 pub struct ShiftRightChip;
 
-/// The column layout for the chip.
+/// Column layout for the chip.
 ///
-/// Width breakdown (for T = u8):
+/// For `T = u8`, the width breakdown is:
 /// - pc: 1
 /// - a, b, c: 3 * 4 = 12
 /// - shift_by_n_bytes: 4
@@ -85,46 +175,46 @@ pub struct ShiftRightChip;
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct ShiftRightCols<T> {
-    /// The program counter.
+    /// Program counter.
     pub pc: T,
 
-    /// The output operand (a = b >> c).
+    /// Output operand: `a = b >> c` (32-bit).
     pub a: Word<T>,
 
-    /// The first input operand.
+    /// First input operand (shifted value).
     pub b: Word<T>,
 
-    /// The second input operand.
+    /// Second input operand (shift amount).
     pub c: Word<T>,
 
-    /// A boolean array whose `i`th element indicates whether `num_bytes_to_shift = i`.
+    /// Boolean selector array: `shift_by_n_bytes[i] = 1` iff `num_bytes_to_shift = i`.
     pub shift_by_n_bytes: [T; WORD_SIZE],
 
-    /// The result of "byte-shifting" the (sign-extended) input operand `b` by `num_bytes_to_shift`.
+    /// Result of the **byte-level shift** on the 64-bit sign/zero-extended `b`.
     pub byte_shift_result: [T; LONG_WORD_SIZE],
 
-    /// The carry output of `shr_carry` on each byte of `byte_shift_result`.
+    /// `shr_carry` carry output for each byte of `byte_shift_result`.
     pub shr_carry_output_carry: [T; LONG_WORD_SIZE],
 
-    /// The shift byte output of `shr_carry` on each byte of `byte_shift_result`.
+    /// `shr_carry` shifted-byte output for each byte of `byte_shift_result`.
     pub shr_carry_output_shifted_byte: [T; LONG_WORD_SIZE],
 
-    /// The most significant bit of `b` (sign bit).
+    /// Most significant bit of the 32-bit `b` (sign bit).
     pub b_msb: T,
 
-    /// num_bits_to_shift = (c & 31) % 8  (0..7).
+    /// `num_bits_to_shift = (c & 31) % 8  ∈ {0..7}`.
     pub num_bits_to_shift: T,
 
-    /// num_bytes_to_shift = (c & 31) / 8 (0..3).
+    /// `num_bytes_to_shift = (c & 31) / 8 ∈ {0..3}`.
     pub num_bytes_to_shift: T,
 
-    /// carry_multiplier = 1 << (8 - num_bits_to_shift) (2..256).
+    /// `carry_multiplier = 1 << (8 - num_bits_to_shift) ∈ {2,4,...,256}`.
     pub carry_multiplier: T,
 
-    /// If the opcode is I32ShrU.
+    /// Flag: opcode is `I32ShrU`.
     pub is_srl: T,
 
-    /// If the opcode is I32ShrS.
+    /// Flag: opcode is `I32ShrS`.
     pub is_sra: T,
 }
 
@@ -163,8 +253,8 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
                             let event = &input.shift_right_events[idx];
                             self.event_to_row(event, cols, &mut byte_lookup_events);
                         } else {
-                            // Padding row:
-                            // shift_by_n_bytes[0] = 1, everything else zero.
+                            // Padding row: make it a valid "no-op" row.
+                            // Enforce a valid selector: shift_by_n_bytes[0] = 1, others 0.
                             cols.shift_by_n_bytes[0] = F::one();
                         }
                     });
@@ -207,26 +297,29 @@ impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
 }
 
 impl ShiftRightChip {
-    /// Create a row from an event.
+    /// Populate a single trace row from an `AluEvent` and record associated byte lookups.
     fn event_to_row<F: PrimeField>(
         &self,
         event: &AluEvent,
         cols: &mut ShiftRightCols<F>,
         blu: &mut impl ByteRecord,
     ) {
-        // Basic fields and flags.
+        //
+        // 1. Basic wiring and opcode flags.
+        //
         {
             cols.pc = F::from_canonical_u32(event.pc);
             cols.a = Word::from(event.a);
             cols.b = Word::from(event.b);
             cols.c = Word::from(event.c);
 
+            // Sign bit of 32-bit b: (b >> 31) & 1.
             cols.b_msb = F::from_canonical_u32((event.b >> 31) & 1);
 
             cols.is_srl = F::from_bool(event.code == Opcode::I32ShrU.code());
             cols.is_sra = F::from_bool(event.code == Opcode::I32ShrS.code());
 
-            // MSB lookup of most significant byte of b.
+            // MSB lookup tying `b_msb` to the most significant byte of b.
             let most_significant_byte = event.b.to_le_bytes()[WORD_SIZE - 1];
             blu.add_byte_lookup_events(vec![ByteLookupEvent {
                 opcode: ByteOpcode::MSB,
@@ -237,43 +330,57 @@ impl ShiftRightChip {
             }]);
         }
 
-        // Host-side computation of shift parameters (for the trace).
-        let num_bytes_to_shift = nb_bytes_to_shift(event.c); // 0..3
-        let num_bits_to_shift  = nb_bits_to_shift(event.c);  // 0..7
+        //
+        // 2. Compute shift decomposition and link it to ShiftMeta table.
+        //
+        let num_bytes_to_shift = nb_bytes_to_shift(event.c); // ∈ {0..3}
+        let num_bits_to_shift  = nb_bits_to_shift(event.c);  // ∈ {0..7}
 
         cols.num_bytes_to_shift = F::from_canonical_u32(num_bytes_to_shift as u32);
         cols.num_bits_to_shift  = F::from_canonical_u32(num_bits_to_shift as u32);
 
-        let raw_cm: u16 = 1u16 << (8 - num_bits_to_shift as u16);
+        // carry_multiplier = 1 << (8 - num_bits_to_shift).
+        let raw_cm: u16 = 1u16 << (BYTE_SIZE as u16 - num_bits_to_shift as u16);
         cols.carry_multiplier = F::from_canonical_u32(raw_cm as u32);
 
-        // k = num_bits + 8 * num_bytes (0..31)
-        let k = (num_bits_to_shift as u8) + 8 * (num_bytes_to_shift as u8);
+        // masked shift: k = num_bits + 8 * num_bytes = (c & 31).
+        let k = (num_bits_to_shift as u8) + BYTE_SIZE as u8 * (num_bytes_to_shift as u8);
+
+        // Low byte of c, used as key in the ShiftMeta table.
         let shift_lo = (event.c & 0xff) as u8;
 
-        // Single merged lookup:
+        // Single merged lookup into ShiftMeta:
+        //  a1 = carry_multiplier, a2 = masked shift amount.
         blu.add_byte_lookup_event(ByteLookupEvent {
             opcode: ByteOpcode::ShiftMeta,
-            a1: raw_cm,   // carry_multiplier
-            a2: k,        // masked = k
+            a1: raw_cm,
+            a2: k,
             b: 0,
             c: shift_lo,
         });
 
-        // Byte shifting (on sign-extended b for SRA).
+        //
+        // 3. Byte-level shift on sign/zero-extended 64-bit b.
+        //
         let mut byte_shift_result = [0u8; LONG_WORD_SIZE];
         {
+            // Mark the selector for num_bytes_to_shift.
             for i in 0..WORD_SIZE {
                 cols.shift_by_n_bytes[i] = F::from_bool(num_bytes_to_shift == i);
             }
 
+            // Sign- or zero-extend b to 64 bits.
             let sign_extended_b = if event.code == Opcode::I32ShrS.code() {
-                // Sign extension for arithmetic right shift.
+                // Arithmetic right shift: replicate sign bit in high 32 bits.
                 ((event.b as i32) as i64).to_le_bytes()
             } else {
+                // Logical right shift: high 32 bits are zero.
                 (event.b as u64).to_le_bytes()
             };
 
+            // Byte-level shift: move bytes down by num_bytes_to_shift positions.
+            // byte_shift_result[i] = sign_extended_b[i + num_bytes_to_shift]
+            // for valid indices; other bytes remain 0.
             for i in 0..LONG_WORD_SIZE {
                 if i + num_bytes_to_shift < LONG_WORD_SIZE {
                     byte_shift_result[i] = sign_extended_b[i + num_bytes_to_shift];
@@ -282,15 +389,19 @@ impl ShiftRightChip {
             cols.byte_shift_result = byte_shift_result.map(F::from_canonical_u8);
         }
 
-        // Bit shifting and ShrCarry outputs.
+        //
+        // 4. Bit-level shift via ShrCarry and reconstruction of final bytes.
+        //
         {
             let mut last_carry = 0u32;
             let mut shr_carry_output_carry = [0u8; LONG_WORD_SIZE];
             let mut shr_carry_output_shifted_byte = [0u8; LONG_WORD_SIZE];
 
+            // Process bytes from most significant (index 7) down to least (index 0).
             for i in (0..LONG_WORD_SIZE).rev() {
                 let (shift, carry) = shr_carry(byte_shift_result[i], num_bits_to_shift as u8);
 
+                // Record ShrCarry lookup for this byte.
                 let byte_event = ByteLookupEvent {
                     opcode: ByteOpcode::ShrCarry,
                     a1: shift as u16,
@@ -303,10 +414,16 @@ impl ShiftRightChip {
                 shr_carry_output_carry[i] = carry;
                 shr_carry_output_shifted_byte[i] = shift;
 
+                // Reconstruct the combined byte (mod 256):
+                //
+                //   combined_i = shifted_i + last_carry * carry_multiplier (mod 256).
+                //
+                // This matches the flow of bits across byte boundaries for a right shift.
                 let combined =
                     ((shift as u32 + last_carry * raw_cm as u32) & 0xff) as u8;
 
-                // Debug only: low 4 bytes should match a.
+                // Debug sanity check: the low 4 bytes of the combined result
+                // should match the CPU's 32-bit output `a`.
                 if i < WORD_SIZE {
                     debug_assert_eq!(combined, (event.a >> (8 * i)) as u8);
                 }
@@ -319,7 +436,7 @@ impl ShiftRightChip {
             cols.shr_carry_output_shifted_byte =
                 shr_carry_output_shifted_byte.map(F::from_canonical_u8);
 
-            // Range checks.
+            // Range checks: all of these arrays must contain bytes.
             blu.add_u8_range_checks(&byte_shift_result);
             blu.add_u8_range_checks(&shr_carry_output_carry);
             blu.add_u8_range_checks(&shr_carry_output_shifted_byte);
@@ -344,15 +461,20 @@ where
         let zero: AB::Expr = AB::F::zero().into();
         let one: AB::Expr = AB::F::one().into();
 
+        // Real row indicator: we are either SRL or SRA.
         let is_real = local.is_sra + local.is_srl;
 
-        // Boolean flags.
+        //
+        // 1. Basic boolean checks for flags.
+        //
         builder.assert_bool(local.is_srl);
         builder.assert_bool(local.is_sra);
         builder.assert_bool(local.b_msb);
         builder.assert_bool(is_real.clone());
 
-        // Check that the MSB of the most significant byte of b matches local.b_msb via lookup.
+        //
+        // 2. MSB consistency: tie b_msb to most-significant byte via MSB table.
+        //
         {
             let byte = local.b[WORD_SIZE - 1];
             let opcode = AB::F::from_canonical_u32(ByteOpcode::MSB as u32);
@@ -360,33 +482,42 @@ where
             builder.send_byte(opcode, msb, byte, zero.clone(), is_real.clone());
         }
 
-        // Byte lookups for ShiftMeta and CarryMul (unary ops).
+        //
+        // 3. ShiftMeta lookup: enforce consistency with (num_bits, num_bytes, carry_multiplier).
+        //
         {
-            let opcode_shift_meta = AB::F::from_canonical_u32(ByteOpcode::ShiftMeta as u32);
-            let shift_lo          = local.c[0];
+            let opcode_shift_meta =
+                AB::F::from_canonical_u32(ByteOpcode::ShiftMeta as u32);
+            let shift_lo = local.c[0]; // low byte of c
 
-            // k_expr = num_bits + 8 * num_bytes
+            // masked = num_bits + 8 * num_bytes.
             let eight = AB::F::from_canonical_u32(8);
             let k_expr = local.num_bits_to_shift + local.num_bytes_to_shift * eight;
 
-            // Both equalities enforced by ONE lookup:
-            //   a1 = carry_multiplier
-            //   a2 = masked = k_expr
+            // Enforce:
+            //   a1 = carry_multiplier,
+            //   a2 = masked = num_bits + 8 * num_bytes,
+            //   c  = shift_lo.
             builder.send_byte_pair(
                 opcode_shift_meta,
                 local.carry_multiplier, // a1
                 k_expr,                 // a2
-                zero.clone(),           // b = 0
+                zero.clone(),           // b = 0 (unused dimension)
                 shift_lo,               // c = low byte of c
                 is_real.clone(),
             );
         }
 
-        // Byte shift the sign-extended b.
+        //
+        // 4. Byte-level shift constraints for sign-extended b.
+        //
         {
-            // Leading bytes are 0xff if SRA and b_msb == 1, else 0.
+            // Leading bytes for SRA (sign extension): if SRA and sign bit = 1, we expect 0xff,
+            // otherwise 0x00.
             let leading_byte =
                 local.is_sra * local.b_msb * AB::Expr::from_canonical_u8(0xff);
+
+            // Construct the conceptual 64-bit sign-/zero-extended b (8 bytes).
             let mut sign_extended_b: Vec<AB::Expr> = vec![];
             for i in 0..WORD_SIZE {
                 sign_extended_b.push(local.b[i].into());
@@ -395,7 +526,9 @@ where
                 sign_extended_b.push(leading_byte.clone());
             }
 
-            // Shift sign_extended_b by num_bytes_to_shift according to selectors.
+            // Enforce: if shift_by_n_bytes[j] = 1, then
+            //   byte_shift_result[i] = sign_extended_b[i + j]
+            // for all valid i.
             for num_bytes_to_shift in 0..WORD_SIZE {
                 for i in 0..(LONG_WORD_SIZE - num_bytes_to_shift) {
                     builder
@@ -408,16 +541,18 @@ where
             }
         }
 
-        // Sanity checks on shift_by_n_bytes.
+        //
+        // 5. Sanity checks on shift_by_n_bytes selectors.
+        //
         {
-            // Exactly one of shift_by_n_bytes must be 1.
+            // Exactly one `shift_by_n_bytes[i]` must be 1.
             let sum_shift_by_n_bytes = local
                 .shift_by_n_bytes
                 .iter()
                 .fold(zero.clone(), |acc, &x| acc + x);
             builder.assert_eq(sum_shift_by_n_bytes, one.clone());
 
-            // If shift_by_n_bytes[i] = 1 then num_bytes_to_shift == i.
+            // If `shift_by_n_bytes[i] = 1` then `num_bytes_to_shift = i`.
             for i in 0..WORD_SIZE {
                 builder
                     .when(local.shift_by_n_bytes[i])
@@ -427,17 +562,20 @@ where
                     );
             }
 
+            // Each selector is boolean.
             for shift_by_n_byte in local.shift_by_n_bytes.iter() {
                 builder.assert_bool(*shift_by_n_byte);
             }
         }
 
-        // Bit shift via ShrCarry and carry_multiplier; constrain result to a.
+        //
+        // 6. Bit-level shift via ShrCarry and reconstruction of final 32-bit result.
+        //
         {
             let opcode_shrcarry =
                 AB::F::from_canonical_u32(ByteOpcode::ShrCarry as u32);
 
-            // ShrCarry lookups.
+            // ShrCarry lookups for each byte of byte_shift_result.
             for i in (0..LONG_WORD_SIZE).rev() {
                 builder.send_byte_pair(
                     opcode_shrcarry,
@@ -449,8 +587,14 @@ where
                 );
             }
 
-            // Combine ShrCarry outputs to get final least significant 4 bytes
-            // and assert equality with a.
+            // Combine ShrCarry outputs to get the least significant 4 bytes of the
+            // fully shifted 64-bit value, and enforce equality with `a`.
+            //
+            // Algebraically for i in 0..3:
+            //
+            //   v_i = shifted_i + carry_{i+1} * carry_multiplier
+            //
+            // (carry_multiplier comes from ShiftMeta and is validated by lookup.)
             for i in 0..WORD_SIZE {
                 let mut v: AB::Expr = local.shr_carry_output_shifted_byte[i].into();
                 if i + 1 < LONG_WORD_SIZE {
@@ -460,7 +604,9 @@ where
             }
         }
 
-        // Range check byte arrays.
+        //
+        // 7. Range checks for all byte arrays.
+        //
         {
             let long_words = [
                 local.byte_shift_result,
@@ -473,7 +619,9 @@ where
             }
         }
 
-        // CPU receive_instruction wiring.
+        //
+        // 8. CPU wiring (receive_instruction).
+        //
         builder.receive_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -492,7 +640,6 @@ where
         );
     }
 }
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::print_stdout)]
