@@ -125,3 +125,4 @@ default.extend-ignore-words-re = ["(?i)groth", "TRE"]
 
 [patch.crates-io]
 sp1-lib = { path = "crates/zkvm/lib" }
+[workspace.lints]
