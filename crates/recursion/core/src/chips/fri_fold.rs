@@ -12,7 +12,7 @@ use p3_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use p3_field::PrimeField32;
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_derive::AlignedBorrow;
-use sp1_stark::air::{BaseAirBuilder,  ExtensionAirBuilder};
+use sp1_stark::air::{BaseAirBuilder, ExtensionAirBuilder};
 
 use crate::{air::Block, builder::SP1RecursionAirBuilder, ExecutionRecord};
 
@@ -443,10 +443,10 @@ mod tests {
                 let ro_output = (0..i)
                     .map(|i| {
                         let i = i as usize;
-                        ro_input[i].ext::<EF>()
-                            + alpha_pow_input[i].ext::<EF>()
-                                * (-ps_at_z[i].ext::<EF>() + mat_opening[i].ext::<EF>())
-                                / (-z.ext::<EF>() + x)
+                        ro_input[i].ext::<EF>() +
+                            alpha_pow_input[i].ext::<EF>() *
+                                (-ps_at_z[i].ext::<EF>() + mat_opening[i].ext::<EF>()) /
+                                (-z.ext::<EF>() + x)
                     })
                     .collect::<Vec<EF>>();
 

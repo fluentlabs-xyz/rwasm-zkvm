@@ -128,9 +128,9 @@ impl MemoryInstructionsChip {
         cols.addr_aligned = F::from_canonical_u32(aligned_addr);
         cols.addr_aligned_hi = F::from_canonical_u32(aligned_addr_hi);
         // Populate the aa_least_sig_byte_decomp columns.
-        assert!(aligned_addr % 4 == 0);
+        assert!(aligned_addr.is_multiple_of(4));
         // Populate the aa_least_sig_byte_decomp columns.
-        assert!(aligned_addr_hi % 4 == 0);
+        assert!(aligned_addr_hi.is_multiple_of(4));
         // Populate memory offsets.
         let addr_ls_two_bits = (memory_addr % WORD_SIZE as u32) as u8;
         cols.addr_ls_two_bits = F::from_canonical_u8(addr_ls_two_bits);
