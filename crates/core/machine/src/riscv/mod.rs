@@ -14,7 +14,7 @@ use strum_macros::{EnumDiscriminants, EnumIter};
 
 use crate::{
     bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
-    control_flow::BranchChip,
+    control_flow::{AuipcChip, BranchChip, JumpChip},
     global::GlobalChip,
     memory::{MemoryChipType, MemoryInstructionsChip, MemoryLocalChip},
     shape::Shapeable,
@@ -598,7 +598,7 @@ pub mod tests {
     #[ignore]
     fn write_core_air_costs() {
         let costs = RiscvAir::<BabyBear>::costs();
-        println!("{:?}", costs);
+        println!("{costs:?}");
         // write to file
         // Create directory if it doesn't exist
         let dir = std::path::Path::new("../executor/src/artifacts");

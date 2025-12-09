@@ -273,6 +273,12 @@ impl<F: AbstractField> Sub for SepticExtension<F> {
 impl<F: AbstractField> SubAssign for SepticExtension<F> {
     fn sub_assign(&mut self, rhs: Self) {
         self.0[0] -= rhs.0[0].clone();
+        self.0[1] -= rhs.0[1].clone();
+        self.0[2] -= rhs.0[2].clone();
+        self.0[3] -= rhs.0[3].clone();
+        self.0[4] -= rhs.0[4].clone();
+        self.0[5] -= rhs.0[5].clone();
+        self.0[6] -= rhs.0[6].clone();
     }
 }
 
@@ -669,14 +675,14 @@ impl<F: PrimeField32> SepticExtension<F> {
     /// Returns whether the extension field element viewed as an y-coordinate of a digest represents
     /// a receive interaction.
     pub fn is_receive(&self) -> bool {
-        1 <= self.0[6].as_canonical_u32() && self.0[6].as_canonical_u32() <= (F::ORDER_U32 - 1) / 2
+        1 <= self.0[6].as_canonical_u32() &&
+            self.0[6].as_canonical_u32() <= F::ORDER_U32.div_ceil(2)
     }
 
     /// Returns whether the extension field element viewed as an y-coordinate of a digest represents
     /// a send interaction.
-    #[allow(clippy::manual_div_ceil)]
     pub fn is_send(&self) -> bool {
-        (F::ORDER_U32 + 1) / 2 <= self.0[6].as_canonical_u32() &&
+        F::ORDER_U32.div_ceil(2) <= self.0[6].as_canonical_u32() &&
             self.0[6].as_canonical_u32() <= (F::ORDER_U32 - 1)
     }
 

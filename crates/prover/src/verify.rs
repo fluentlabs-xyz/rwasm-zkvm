@@ -4,9 +4,12 @@ use anyhow::Result;
 use num_bigint::BigUint;
 use p3_baby_bear::BabyBear;
 use p3_field::{AbstractField, PrimeField};
-use sp1_core_executor::{subproof::SubproofVerifier, SP1ReduceProof};
+use sp1_core_executor::subproof::SubproofVerifier;
 use sp1_core_machine::cpu::MAX_CPU_LOG_DEGREE;
-use sp1_primitives::{consts::WORD_SIZE, io::SP1PublicValues};
+use sp1_primitives::{
+    consts::WORD_SIZE,
+    io::{blake3_hash, SP1PublicValues},
+};
 
 use sp1_recursion_circuit::machine::RootPublicValues;
 use sp1_recursion_core::{air::RecursionPublicValues, stark::BabyBearPoseidon2Outer};
@@ -16,13 +19,14 @@ use sp1_recursion_gnark_ffi::{
 use sp1_stark::{
     air::{PublicValues, POSEIDON_NUM_WORDS, PV_DIGEST_NUM_WORDS},
     baby_bear_poseidon2::BabyBearPoseidon2,
-    MachineProof, MachineProver, MachineVerificationError, StarkGenericConfig, Word,
+    MachineProof, MachineProver, MachineVerificationError, SP1ReduceProof, StarkGenericConfig,
+    Word,
 };
 use thiserror::Error;
 
 use crate::{
     components::SP1ProverComponents,
-    utils::{assert_recursion_public_values_valid, assert_root_public_values_valid},
+    utils::{is_recursion_public_values_valid, is_root_public_values_valid},
     CoreSC, HashableKey, OuterSC, SP1CoreProofData, SP1Prover, SP1VerifyingKey,
 };
 
@@ -58,9 +62,15 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         proof: &SP1CoreProofData,
         vk: &SP1VerifyingKey,
     ) -> Result<(), MachineVerificationError<CoreSC>> {
+        // The proof should not be empty.
+        if proof.0.is_empty() {
+            return Err(MachineVerificationError::EmptyProof);
+        }
+
         // First shard has a "CPU" constraint.
         //
-        // Assert that the first shard has a "CPU".
+        // Check that the first shard has a "CPU".
+        // SAFETY: The proof is already checked to not be empty.
         let first_shard = proof.0.first().unwrap();
         if !first_shard.contains_cpu() {
             return Err(MachineVerificationError::MissingCpuInFirstShard);
@@ -68,7 +78,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 
         // CPU log degree bound constraints.
         //
-        // Assert that the CPU log degree does not exceed `MAX_CPU_LOG_DEGREE`. This is to ensure
+        // Check that the CPU log degree does not exceed `MAX_CPU_LOG_DEGREE`. This is to ensure
         // that the lookup argument's multiplicities do not overflow.
         for shard_proof in proof.0.iter() {
             if shard_proof.contains_cpu() {
@@ -278,7 +288,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         }
 
         // Verify that the number of shards is not too large.
-        if proof.0.len() > 1 << 16 {
+        if proof.0.len() >= 1 << 16 {
             return Err(MachineVerificationError::TooManyShards);
         }
 
@@ -303,10 +313,17 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 
         // Validate public values
         let public_values: &RecursionPublicValues<_> = proof.public_values.as_slice().borrow();
-        assert_recursion_public_values_valid(
-            self.compress_prover.machine().config(),
-            public_values,
-        );
+
+        if !is_recursion_public_values_valid(self.compress_prover.machine().config(), public_values)
+        {
+            return Err(MachineVerificationError::InvalidPublicValues(
+                "recursion public values are invalid",
+            ));
+        }
+
+        if public_values.vk_root != self.recursion_vk_root {
+            return Err(MachineVerificationError::InvalidPublicValues("vk_root mismatch"));
+        }
 
         if self.vk_verification && !self.recursion_vk_map.contains_key(&compress_vk.hash_babybear())
         {
@@ -341,10 +358,15 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         // Validate public values
         let public_values: &RecursionPublicValues<_> =
             proof.proof.public_values.as_slice().borrow();
-        assert_recursion_public_values_valid(
-            self.compress_prover.machine().config(),
-            public_values,
-        );
+        if !is_recursion_public_values_valid(self.compress_prover.machine().config(), public_values)
+        {
+            return Err(MachineVerificationError::InvalidPublicValues(
+                "recursion public values are invalid",
+            ));
+        }
+        if public_values.vk_root != self.recursion_vk_root {
+            return Err(MachineVerificationError::InvalidPublicValues("vk_root mismatch"));
+        }
 
         if self.vk_verification && !self.recursion_vk_map.contains_key(&proof.vk.hash_babybear()) {
             return Err(MachineVerificationError::InvalidVerificationKey);
@@ -379,7 +401,11 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 
         // Validate public values
         let public_values: &RootPublicValues<_> = proof.proof.public_values.as_slice().borrow();
-        assert_root_public_values_valid(self.shrink_prover.machine().config(), public_values);
+        if !is_root_public_values_valid(self.shrink_prover.machine().config(), public_values) {
+            return Err(MachineVerificationError::InvalidPublicValues(
+                "root public values are invalid",
+            ));
+        }
 
         // Verify that the proof is for the sp1 vkey we are expecting.
         let vkey_hash = vk.hash_babybear();
@@ -404,7 +430,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let committed_values_digest = BigUint::from_str(&proof.public_inputs[1])?;
 
         // Verify the proof with the corresponding public inputs.
-        prover.verify(proof, &vkey_hash, &committed_values_digest, build_dir);
+        prover.verify(proof, &vkey_hash, &committed_values_digest, build_dir)?;
 
         verify_plonk_bn254_public_inputs(vk, public_values, &proof.public_inputs)?;
 
@@ -425,7 +451,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let committed_values_digest = BigUint::from_str(&proof.public_inputs[1])?;
 
         // Verify the proof with the corresponding public inputs.
-        prover.verify(proof, &vkey_hash, &committed_values_digest, build_dir);
+        prover.verify(proof, &vkey_hash, &committed_values_digest, build_dir)?;
 
         verify_groth16_bn254_public_inputs(vk, public_values, &proof.public_inputs)?;
 
@@ -448,10 +474,7 @@ pub fn verify_plonk_bn254_public_inputs(
         return Err(PlonkVerificationError::InvalidVerificationKey.into());
     }
 
-    let public_values_hash = public_values.hash_bn254();
-    if public_values_hash != expected_public_values_hash {
-        return Err(PlonkVerificationError::InvalidPublicValues.into());
-    }
+    verify_public_values(public_values, expected_public_values_hash)?;
 
     Ok(())
 }
@@ -471,9 +494,32 @@ pub fn verify_groth16_bn254_public_inputs(
         return Err(Groth16VerificationError::InvalidVerificationKey.into());
     }
 
-    let public_values_hash = public_values.hash_bn254();
-    if public_values_hash != expected_public_values_hash {
-        return Err(Groth16VerificationError::InvalidPublicValues.into());
+    verify_public_values(public_values, expected_public_values_hash)?;
+
+    Ok(())
+}
+
+/// In SP1, a proof's public values can either be hashed with SHA2 or Blake3. In SP1 V4, there is no
+/// metadata attached to the proof about which hasher function was used for public values hashing.
+/// Instead, when verifying the proof, the public values are hashed with SHA2 and Blake3, and
+/// if either matches the `expected_public_values_hash`, the verification is successful.
+///
+/// The security for this verification in SP1 V4 derives from the fact that both SHA2 and Blake3 are
+/// designed to be collision resistant. It is computationally infeasible to find an input i1 for
+/// SHA256 and an input i2 for Blake3 that the same hash value. Doing so would require breaking both
+/// algorithms simultaneously.
+fn verify_public_values(
+    public_values: &SP1PublicValues,
+    expected_public_values_hash: BigUint,
+) -> Result<()> {
+    // First, check if the public values are hashed with SHA256. If that fails, attempt hashing with
+    // Blake3. If neither match, return an error.
+    let sha256_public_values_hash = public_values.hash_bn254();
+    if sha256_public_values_hash != expected_public_values_hash {
+        let blake3_public_values_hash = public_values.hash_bn254_with_fn(blake3_hash);
+        if blake3_public_values_hash != expected_public_values_hash {
+            return Err(Groth16VerificationError::InvalidPublicValues.into());
+        }
     }
 
     Ok(())
@@ -501,6 +547,10 @@ impl<C: SP1ProverComponents> SubproofVerifier for SP1Prover<C> {
         // Check that the committed value digest matches the one from syscall
         let public_values: &RecursionPublicValues<_> =
             proof.proof.public_values.as_slice().borrow();
+        if public_values.vk_root != self.recursion_vk_root {
+            return Err(MachineVerificationError::InvalidPublicValues("vk_root mismatch"));
+        }
+
         for (i, word) in public_values.committed_value_digest.iter().enumerate() {
             if *word != committed_value_digest[i].into() {
                 return Err(MachineVerificationError::InvalidPublicValues(

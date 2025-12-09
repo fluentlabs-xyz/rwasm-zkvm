@@ -35,7 +35,6 @@ mod opcode;
 mod profiler;
 mod program;
 mod record;
-mod reduce;
 mod register;
 mod report;
 mod state;
@@ -52,11 +51,12 @@ pub use instruction::*;
 pub use opcode::*;
 pub use program::*;
 pub use record::*;
-pub use reduce::*;
 pub use register::*;
 pub use report::*;
 pub use state::*;
 pub use utils::*;
+
+pub use sp1_stark::SP1ReduceProof;
 
 /// Used for testing.
 #[cfg(test)]

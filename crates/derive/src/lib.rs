@@ -281,8 +281,8 @@ pub fn machine_air_derive(input: TokenStream) -> TokenStream {
 
             let mut new_generics = generics.clone();
             let where_clause = new_generics.make_where_clause();
-            if let Some(eval_trait_bound) = eval_trait_bound {
-                let predicate: WherePredicate = syn::parse_str(&eval_trait_bound).unwrap();
+            if let Some(eval_trait_bound) = &eval_trait_bound {
+                let predicate: WherePredicate = syn::parse_str(eval_trait_bound).unwrap();
                 where_clause.predicates.push(predicate);
             }
 
