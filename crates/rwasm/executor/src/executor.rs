@@ -3,7 +3,7 @@ use crate::profiler::Profiler;
 use crate::{
     dependencies::{emit_branch_dependencies, emit_memory_dependencies}, //emit_divrem_dependencies
     estimator::RecordEstimator,
-    events::{CallEvent, ConstEvent, I64AluEvent, PrecompileEvent, SyscallEvent},
+    events::{CallEvent, ConstEvent, I64AluEvent, PrecompileEvent, SyscallEvent}, syscalls::func_id_to_syscall_code,
 };
 #[cfg(feature = "profiling")]
 use std::{fs::File, io::BufWriter};
@@ -11,14 +11,15 @@ use std::{str::FromStr, sync::Arc};
 
 use clap::ValueEnum;
 use enum_map::EnumMap;
+use fluentbase_runtime::RuntimeContext;
+use fluentbase_types::import_linker_v1_preview;
 use hashbrown::HashMap;
 
 use rwasm::{
-    event::FatOpEvent,
-    mem::{MemoryLocalEvent, MemoryRecordEnum},
-    CallStack, DataOpEvent, InstructionPtr, Opcode, RwasmExecutor, RwasmStore, TraceCallData,
-    TrapCode, ValueStack, ValueStackPtr,
+    CallStack, DataOpEvent, FuelConfig, InstructionPtr, Opcode, RwasmExecutor, RwasmStore, TraceCallData, TrapCode, ValueStack, ValueStackPtr, event::FatOpEvent, mem::{MemoryLocalEvent, MemoryRecordEnum}
 };
+
+use fluentbase_runtime::syscall_handler::runtime_syscall_handler;
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
 use sp1_stark::{air::PublicValues, SP1CoreOpts};
@@ -98,7 +99,7 @@ pub struct Executor<'a> {
     pub value_stack: ValueStack,
     pub call_stack: CallStack,
     pub register_state: Option<RwasmExecutorState>,
-    pub store: RwasmStore<()>,
+    pub store: RwasmStore<RuntimeContext>,
 
     /// The state of the execution.
     pub state: ExecutionState,
@@ -351,8 +352,14 @@ impl<'a> Executor<'a> {
             serde_json::from_str(include_str!("./artifacts/rv32im_costs.json")).unwrap();
         let costs: HashMap<RwasmAirId, usize> =
             costs.into_iter().map(|(k, v)| (RwasmAirId::from_str(&k).unwrap(), v)).collect();
-
-        let store = RwasmStore::default();
+        let ctx = RuntimeContext::default();
+        let limit = ctx.fuel_limit;
+        let store = RwasmStore::new(
+            import_linker_v1_preview(),
+            ctx,
+            runtime_syscall_handler,
+            FuelConfig::default().with_fuel_limit(limit),
+        );
 
         Self {
             record: Box::new(record),
@@ -763,6 +770,7 @@ impl<'a> Executor<'a> {
             let syscall_code = match opcode {
                 Opcode::TableInit(_) => SyscallCode::TABLE_INIT,
                 Opcode::TableGrow(_) => SyscallCode::TABLE_GROW,
+                Opcode::Call(sys_funcid)=>func_id_to_syscall_code(sys_funcid),
                 _ => syscall_code,
             };
             self.emit_syscall_event(
@@ -887,17 +895,17 @@ impl<'a> Executor<'a> {
             Opcode::I32ShrS | Opcode::I32ShrU => {
                 self.record.shift_right_events.push(event);
             }
-            Opcode::I32GeS |
-            Opcode::I32GtS |
-            Opcode::I32GeU |
-            Opcode::I32GtU |
-            Opcode::I32LeS |
-            Opcode::I32LeU |
-            Opcode::I32LtS |
-            Opcode::I32LtU |
-            Opcode::I32Eq |
-            Opcode::I32Eqz |
-            Opcode::I32Ne => {
+            Opcode::I32GeS
+            | Opcode::I32GtS
+            | Opcode::I32GeU
+            | Opcode::I32GtU
+            | Opcode::I32LeS
+            | Opcode::I32LeU
+            | Opcode::I32LtS
+            | Opcode::I32LtU
+            | Opcode::I32Eq
+            | Opcode::I32Eqz
+            | Opcode::I32Ne => {
                 let use_signed_comparison = matches!(
                     opcode,
                     Opcode::I32GeS | Opcode::I32GtS | Opcode::I32LeS | Opcode::I32LtS
@@ -1167,6 +1175,7 @@ impl<'a> Executor<'a> {
                     unreachable!();
                 }
             },
+            SyscallCode::FUEL => (),
         }
     }
 
@@ -1276,8 +1285,8 @@ impl<'a> Executor<'a> {
         // which is not permitted in unconstrained mode. This will result in
         // non-zero memory interactions when generating a proof.
 
-        if self.unconstrained &&
-            (syscall != SyscallCode::EXIT_UNCONSTRAINED && syscall != SyscallCode::WRITE)
+        if self.unconstrained
+            && (syscall != SyscallCode::EXIT_UNCONSTRAINED && syscall != SyscallCode::WRITE)
         {
             return Err(ExecutionError::InvalidSyscallUsage(syscall_id as u64));
         }
@@ -1855,9 +1864,9 @@ impl<'a> Executor<'a> {
             estimator.memory_global_finalize_events = total_mem as u64;
         }
 
-        if self.emit_global_memory_events &&
-            (self.executor_mode == ExecutorMode::Trace ||
-                self.executor_mode == ExecutorMode::Checkpoint)
+        if self.emit_global_memory_events
+            && (self.executor_mode == ExecutorMode::Trace
+                || self.executor_mode == ExecutorMode::Checkpoint)
         {
             // SECTION: Set up all MemoryInitializeFinalizeEvents needed for memory argument.
             let memory_finalize_events = &mut self.record.global_memory_finalize_events;
@@ -3267,10 +3276,10 @@ mod tests {
         let v_addr = TypedAddress::GlobalMemory(addr).to_virtual_addr();
         assert_eq!(
             runtime.state.memory.get(v_addr).unwrap().value,
-            ((x_value & 0x0000_00FF) +
-                ((y_value & 0x0000_00FF) << 8) +
-                ((z_value & 0x0000_00FF) << 16) +
-                ((t_value & 0x0000_00FF) << 24))
+            ((x_value & 0x0000_00FF)
+                + ((y_value & 0x0000_00FF) << 8)
+                + ((z_value & 0x0000_00FF) << 16)
+                + ((t_value & 0x0000_00FF) << 24))
         );
         assert_eq!(sp_value, runtime.state.sp + UNIT);
     }
@@ -4352,11 +4361,11 @@ mod tests {
             .records
             .iter()
             .map(|r| {
-                r.add_events.len() +
-                    r.mul_events.len() +
-                    r.bitwise_events.len() +
-                    r.shift_left_events.len() +
-                    r.shift_right_events.len()
+                r.add_events.len()
+                    + r.mul_events.len()
+                    + r.bitwise_events.len()
+                    + r.shift_left_events.len()
+                    + r.shift_right_events.len()
             })
             .sum();
         let mems: usize = rt.records.iter().map(|r| r.memory_instr_events.len()).sum();

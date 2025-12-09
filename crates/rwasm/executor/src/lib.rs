@@ -41,6 +41,8 @@ pub mod subproof;
 pub mod syscalls;
 mod utils;
 
+mod test;
+
 pub use air::*;
 pub use context::*;
 pub use cost::*;

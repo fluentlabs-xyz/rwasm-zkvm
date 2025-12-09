@@ -4,6 +4,7 @@ use std::{
     io::{Seek, Write},
 };
 
+use fluentbase_runtime::RuntimeContext;
 use hashbrown::HashMap;
 use rwasm::RwasmStore;
 use serde::{Deserialize, Serialize};
@@ -96,7 +97,7 @@ impl ExecutionState {
     }
 
     ///update memory state from rwasm Tracer
-    pub fn update_state(&mut self, store: &RwasmStore<()>) {
+    pub fn update_state(&mut self, store: &RwasmStore<RuntimeContext>) {
         let tracer = &store.tracer;
         self.clk = tracer.state.clk;
         self.current_shard = tracer.state.shard;
