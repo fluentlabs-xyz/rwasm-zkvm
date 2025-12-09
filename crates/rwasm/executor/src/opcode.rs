@@ -36,8 +36,6 @@ pub enum ByteOpcode {
     U16CLZ = 11,
 
     ShiftMeta = 12,
-
-    CarryMul = 13,
 }
 
 pub type Opcode = rwasm::Opcode;

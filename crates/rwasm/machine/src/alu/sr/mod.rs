@@ -239,33 +239,24 @@ impl ShiftRightChip {
 
         // Host-side computation of shift parameters (for the trace).
         let num_bytes_to_shift = nb_bytes_to_shift(event.c); // 0..3
-        let num_bits_to_shift = nb_bits_to_shift(event.c);   // 0..7
+        let num_bits_to_shift  = nb_bits_to_shift(event.c);  // 0..7
 
         cols.num_bytes_to_shift = F::from_canonical_u32(num_bytes_to_shift as u32);
-        cols.num_bits_to_shift = F::from_canonical_u32(num_bits_to_shift as u32);
+        cols.num_bits_to_shift  = F::from_canonical_u32(num_bits_to_shift as u32);
 
-        // carry_multiplier = 1 << (8 - num_bits_to_shift)
         let raw_cm: u16 = 1u16 << (8 - num_bits_to_shift as u16);
         cols.carry_multiplier = F::from_canonical_u32(raw_cm as u32);
 
-        let shift_lo = (event.c & 0xff) as u8;
-        // k = num_bits + 8 * num_bytes, which equals (shift_lo & 31) by construction
+        // k = num_bits + 8 * num_bytes (0..31)
         let k = (num_bits_to_shift as u8) + 8 * (num_bytes_to_shift as u8);
+        let shift_lo = (event.c & 0xff) as u8;
 
-        // Emit lookups that match ByteChip's unary ShiftMeta / CarryMul.
+        // Single merged lookup:
         blu.add_byte_lookup_event(ByteLookupEvent {
             opcode: ByteOpcode::ShiftMeta,
-            a1: k as u16,  // masked = k = c & 31
-            a2: 0,
-            b: 0,          // we choose the row with b = 0
-            c: shift_lo,
-        });
-
-        blu.add_byte_lookup_event(ByteLookupEvent {
-            opcode: ByteOpcode::CarryMul,
-            a1: raw_cm,    // carry_multiplier
-            a2: 0,
-            b: 0,          // row with b = 0
+            a1: raw_cm,   // carry_multiplier
+            a2: k,        // masked = k
+            b: 0,
             c: shift_lo,
         });
 
@@ -372,26 +363,19 @@ where
         // Byte lookups for ShiftMeta and CarryMul (unary ops).
         {
             let opcode_shift_meta = AB::F::from_canonical_u32(ByteOpcode::ShiftMeta as u32);
-            let opcode_carry_mul  = AB::F::from_canonical_u32(ByteOpcode::CarryMul as u32);
-            let shift_lo          = local.c[0]; // low byte of c
+            let shift_lo          = local.c[0];
 
-            // k = num_bits + 8 * num_bytes
+            // k_expr = num_bits + 8 * num_bytes
             let eight = AB::F::from_canonical_u32(8);
             let k_expr = local.num_bits_to_shift + local.num_bytes_to_shift * eight;
 
-            // ShiftMeta: value = k = (c & 31)
-            builder.send_byte(
+            // Both equalities enforced by ONE lookup:
+            //   a1 = carry_multiplier
+            //   a2 = masked = k_expr
+            builder.send_byte_pair(
                 opcode_shift_meta,
-                k_expr,            // a1
-                zero.clone(),      // b = 0
-                shift_lo,          // c = low byte of c
-                is_real.clone(),
-            );
-
-            // CarryMul: value = carry_multiplier = 1 << (8 - num_bits)
-            builder.send_byte(
-                opcode_carry_mul,
                 local.carry_multiplier, // a1
+                k_expr,                 // a2
                 zero.clone(),           // b = 0
                 shift_lo,               // c = low byte of c
                 is_real.clone(),

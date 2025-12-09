@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::ByteOpcode;
 
 /// The number of different byte operations.
-pub const NUM_BYTE_OPS: usize = 14;
+pub const NUM_BYTE_OPS: usize = 13;
 
 /// Byte Lookup Event.
 ///
@@ -177,7 +177,6 @@ impl ByteOpcode {
             ByteOpcode::U16CTZ,
             ByteOpcode::U16CLZ,
             ByteOpcode::ShiftMeta,
-            ByteOpcode::CarryMul,
         ];
         debug_assert_eq!(opcodes.len(), NUM_BYTE_OPS);
         opcodes
