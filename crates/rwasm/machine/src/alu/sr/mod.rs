@@ -97,9 +97,6 @@ pub struct ShiftRightCols<T> {
     /// The second input operand.
     pub c: Word<T>,
 
-    /// Flag indicating whether `a` is not register 0.
-    pub op_a_not_0: T,
-
     /// A boolean array whose `i`th element indicates whether `num_bits_to_shift = i`.
     pub shift_by_n_bits: [T; BYTE_SIZE],
 
@@ -130,8 +127,6 @@ pub struct ShiftRightCols<T> {
     /// If the opcode is SRA.
     pub is_sra: T,
 
-    /// Selector to know whether this row is enabled.
-    pub is_real: T,
 }
 
 impl<F: PrimeField32> MachineAir<F> for ShiftRightChip {
@@ -224,14 +219,11 @@ impl ShiftRightChip {
             cols.a = Word::from(event.a);
             cols.b = Word::from(event.b);
             cols.c = Word::from(event.c);
-            cols.op_a_not_0 = F::from_bool(true);
 
             cols.b_msb = F::from_canonical_u32((event.b >> 31) & 1);
 
             cols.is_srl = F::from_bool(event.code == Opcode::I32ShrU.code());
             cols.is_sra = F::from_bool(event.code == Opcode::I32ShrS.code());
-
-            cols.is_real = F::one();
 
             for i in 0..BYTE_SIZE {
                 cols.c_least_sig_byte[i] = F::from_canonical_u32((event.c >> i) & 1);
@@ -334,12 +326,19 @@ where
         let zero: AB::Expr = AB::F::zero().into();
         let one: AB::Expr = AB::F::one().into();
 
+        let is_real = local.is_sra + local.is_srl;
+        // Check that the operation flags are boolean.
+        builder.assert_bool(local.is_srl);
+        builder.assert_bool(local.is_sra);
+        builder.assert_bool(local.b_msb);
+        builder.assert_bool(is_real.clone());
+
         // Check that the MSB of most_significant_byte matches local.b_msb using lookup.
         {
             let byte = local.b[WORD_SIZE - 1];
             let opcode = AB::F::from_canonical_u32(ByteOpcode::MSB as u32);
             let msb = local.b_msb;
-            builder.send_byte(opcode, msb, byte, zero.clone(), local.is_real);
+            builder.send_byte(opcode, msb, byte, zero.clone(), is_real.clone());
         }
 
         // Calculate the number of bits and bytes to shift by from c.
@@ -440,7 +439,7 @@ where
                     local.shr_carry_output_carry[i],
                     local.byte_shift_result[i],
                     num_bits_to_shift.clone(),
-                    local.is_real,
+                    is_real.clone(),
                 );
             }
 
@@ -459,16 +458,12 @@ where
         // This check is only done when `op_a_not_0 == 1`.
         {
             for i in 0..WORD_SIZE {
-                builder.when(local.op_a_not_0).assert_eq(local.a[i], local.bit_shift_result[i]);
+                builder.when(is_real.clone()).assert_eq(local.a[i], local.bit_shift_result[i]);
             }
         }
 
         // Check that the flags are indeed boolean.
         {
-            let flags = [local.is_srl, local.is_sra, local.is_real, local.b_msb];
-            for flag in flags.iter() {
-                builder.assert_bool(*flag);
-            }
             for shift_by_n_byte in local.shift_by_n_bytes.iter() {
                 builder.assert_bool(*shift_by_n_byte);
             }
@@ -490,29 +485,17 @@ where
             ];
 
             for long_word in long_words.iter() {
-                builder.slice_range_check_u8(long_word, local.is_real);
+                builder.slice_range_check_u8(long_word, is_real.clone());
             }
         }
 
-        // SAFETY: All selectors `is_srl`, `is_sra` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real = is_srl + is_sra` is
-        // boolean. All interactions are done with multiplicity `is_real`.
-        // Therefore, the `opcode` matches the corresponding opcode.
 
-        // Check that the operation flags are boolean.
-        builder.assert_bool(local.is_srl);
-        builder.assert_bool(local.is_sra);
-        builder.assert_bool(local.is_real);
-
-        // Check that is_real is the sum of the two operation flags.
-        builder.assert_eq(local.is_srl + local.is_sra, local.is_real);
 
         // Receive the arguments.
         // SAFETY: This checks the following.
         // - `next_pc = pc + 4`
         // - `num_extra_cycles = 0`
         // - `op_a_val` is constrained by the chip when `op_a_not_0 == 1`
-        // - `op_a_not_0` is correct, due to the sent `op_a_0` being equal to `1 - op_a_not_0`
         // - `op_a_immutable = 0`
         // - `is_memory = 0`
         // - `is_syscall = 0`
@@ -531,10 +514,8 @@ where
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
-            local.is_real,
+            is_real,
         );
-
-        builder.when(local.op_a_not_0).assert_one(local.is_real);
     }
 }
 
@@ -568,11 +549,12 @@ mod tests {
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
         shard.shift_right_events =
-            vec![AluEvent::new(0, Opcode::I32ShrU, 6, 12, 1, Opcode::I32ShrU.code())];
+            vec![AluEvent::new(0, Opcode::I32ShrU, 6, 12, 1, Opcode::I32ShrU.code()),
+                 AluEvent::new(0, Opcode::I32ShrS, 6, 12, 1, Opcode::I32ShrS.code())];
         let chip = ShiftRightChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
-        println!("{:?}", trace.values)
+        println!("trace.width {:?}", trace.width)
     }
 
     #[test]
