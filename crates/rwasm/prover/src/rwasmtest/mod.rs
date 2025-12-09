@@ -10,6 +10,7 @@ mod rotate;
 mod table_grow;
 mod table_init;
 mod trailing;
+mod sr;
 
 use rwasm_executor::Program;
 use rwasm_machine::utils::setup_logger;

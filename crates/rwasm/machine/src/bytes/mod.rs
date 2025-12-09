@@ -21,7 +21,7 @@ use self::{
 use crate::{bytes::trace::NUM_ROWS, utils::zeroed_f_vec};
 
 /// The number of different byte operations.
-pub const NUM_BYTE_OPS: usize = 12;
+pub const NUM_BYTE_OPS: usize = 14;
 
 /// A chip for computing byte operations.
 ///
@@ -116,6 +116,39 @@ impl<F: Field> ByteChip<F> {
                         let clz = u16_val.leading_zeros() as u8;
                         col.u16_clz = F::from_canonical_u8(clz);
                         ByteLookupEvent::new(*opcode, clz as u16, 0, b, c)
+                    }
+                    ByteOpcode::ShiftMeta => {
+                        // We interpret `c` as the low byte of the shift operand.
+                        // Wasm semantics: effective_shift = shift & 31
+                        let shift_lo = c;
+                        let masked = shift_lo & 31; // 0..31
+
+                        // Store masked in the column (useful for debugging or other chips).
+                        col.shift_meta = F::from_canonical_u8(masked);
+
+                        // Unary op semantics:
+                        //   a1 = masked
+                        //   a2 = 0
+                        //   b  = local.b
+                        //   c  = shift_lo
+                        ByteLookupEvent::new(*opcode, masked as u16, 0, b, c)
+                    }
+
+                    ByteOpcode::CarryMul => {
+                        let shift_lo = c;
+                        let k = shift_lo & 7; // num_bits 0..7
+
+                        // carry_multiplier = 1 << (8 - k), fits into u16
+                        let raw_cm: u16 = 1u16 << (8 - k as u16);
+
+                        col.carry_mul = F::from_canonical_u32(raw_cm as u32);
+
+                        // Unary op semantics:
+                        //   a1 = carry_multiplier
+                        //   a2 = 0
+                        //   b  = local.b
+                        //   c  = shift_lo
+                        ByteLookupEvent::new(*opcode, raw_cm, 0, b, c)
                     }
                 };
             }

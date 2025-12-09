@@ -75,6 +75,12 @@ impl<AB: SP1AirBuilder + PairBuilder> Air<AB> for ByteChip<AB::F> {
                 ByteOpcode::U16CLZ => {
                     builder.receive_byte(field_op, local.u16_clz, local.b, local.c, mult)
                 }
+                ByteOpcode::ShiftMeta => {
+                    builder.receive_byte(field_op, local.shift_meta, local.b, local.c, mult)
+                }
+                ByteOpcode::CarryMul => {
+                    builder.receive_byte(field_op, local.carry_mul, local.b, local.c, mult)
+                }
             }
         }
     }
