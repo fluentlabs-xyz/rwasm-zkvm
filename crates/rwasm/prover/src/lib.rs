@@ -1431,7 +1431,6 @@ pub mod tests {
 
     use std::{
         collections::BTreeSet,
-        error::Error,
         fs::File,
         io::{Read, Write},
     };
@@ -1441,15 +1440,8 @@ pub mod tests {
     use crate::build::try_build_plonk_bn254_artifacts_dev;
     use anyhow::Result;
     use build::{build_constraints_and_witness, try_build_groth16_bn254_artifacts_dev};
-    use p3_field::PrimeField32;
 
     use shapes::SP1ProofShape;
-    use sp1_recursion_core::air::RecursionPublicValues;
-
-    #[cfg(test)]
-    use rwasm_machine::utils::setup_logger;
-    #[cfg(test)]
-    use serial_test::serial;
     use utils::sp1_vkey_digest_babybear;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -51,11 +51,9 @@ pub fn run_rwasm_prover(mut program: Program) {
 }
 #[cfg(test)]
 mod tests {
-    use super::super::*;
 
+    use super::*;
     use rwasm_executor::{Opcode, Program, SP_START};
-
-    use super::{super::*, *};
 
     fn build_elf() -> Program {
         let x_value: u32 = 0x11;
@@ -495,27 +493,6 @@ mod tests {
         ];
 
         let program = Program::from_instrs(opcodes);
-        program
-    }
-
-    #[warn(dead_code)]
-    fn build_elf_skipped_ins() -> Program {
-        let sp_value: u32 = SP_START;
-        let x_value: u32 = 0x1234;
-        let x_2_value: u32 = x_value + 5;
-        let depth = 5 * 4;
-        let under_depth = depth - 4;
-        let constant = x_value;
-        // let mut mem = HashMap::new();
-        // mem.insert(sp_value, x_value);
-        // mem.insert(sp_value - depth, x_2_value);
-
-        //  println!("{:?}", mem);
-        let instructions = vec![Opcode::ConsumeFuel(1), Opcode::SignatureCheck(1), Opcode::Drop];
-
-        let program = Program::from_instrs(instructions);
-        //  memory_image: BTreeMap::new() };
-
         program
     }
 

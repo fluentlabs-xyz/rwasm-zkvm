@@ -7,7 +7,6 @@ use rwasm_machine::{
     rwasm::RwasmAir,
     utils::{run_test, setup_logger},
 };
-use sp1_stark::CpuProver;
 
 #[test]
 fn test_i32_rotl() {
