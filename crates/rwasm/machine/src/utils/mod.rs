@@ -21,10 +21,27 @@ use crate::memory::MemoryCols;
 use generic_array::ArrayLength;
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
 
+use sp1_primitives::consts::BYTE_SIZE;
 pub use sp1_primitives::consts::{
     bytes_to_words_le, bytes_to_words_le_vec, num_to_comma_separated, words_to_bytes_le,
     words_to_bytes_le_vec,
 };
+
+/// Calculate the number of bytes to shift by.
+///
+/// Note that we take the least significant 5 bits per the RISC-V spec.
+pub const fn nb_bytes_to_shift(shift_amount: u32) -> usize {
+    let n = (shift_amount % 32) as usize;
+    n / BYTE_SIZE
+}
+
+/// Calculate the number of bits shift by.
+///
+/// Note that we take the least significant 5 bits per the RISC-V spec.
+pub const fn nb_bits_to_shift(shift_amount: u32) -> usize {
+    let n = (shift_amount % 32) as usize;
+    n % BYTE_SIZE
+}
 
 pub const fn indices_arr<const N: usize>() -> [usize; N] {
     let mut indices_arr = [0; N];

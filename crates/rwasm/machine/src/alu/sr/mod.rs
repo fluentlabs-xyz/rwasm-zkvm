@@ -76,8 +76,7 @@
 //! This chip enforces that its internal columns
 //!   - `num_bits_to_shift`
 //!   - `num_bytes_to_shift`
-//!   - `carry_multiplier`
-//!     are consistent with the `ShiftMeta` table via a single lookup:
+//!   - `carry_multiplier` are consistent with the `ShiftMeta` table via a single lookup:
 //!
 //!     masked = num_bits_to_shift + 8 * num_bytes_to_shift
 //!
@@ -114,13 +113,10 @@
 //! The chip enforces that the least significant 4 bytes of this combined value match `a`,
 //! the CPU's result, via AIR constraints.
 
-mod utils;
-
 use crate::{
     air::SP1CoreAirBuilder,
-    alu::sr::utils::{nb_bits_to_shift, nb_bytes_to_shift},
     bytes::utils::shr_carry,
-    utils::{next_power_of_two, zeroed_f_vec},
+    utils::{nb_bits_to_shift, nb_bytes_to_shift, next_power_of_two, zeroed_f_vec},
 };
 use core::{
     borrow::{Borrow, BorrowMut},
