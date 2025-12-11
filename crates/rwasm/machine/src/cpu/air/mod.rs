@@ -1,9 +1,9 @@
-use crate::air::WordAirBuilder;
+use crate::{air::WordAirBuilder, memory::MemoryCols};
 use core::borrow::Borrow;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use rwasm::mem_index::UNIT;
+use rwasm::mem_index::{LAST_SIG_ADDR, UNIT};
 use rwasm_executor::{ByteOpcode, Opcode, DEFAULT_CLK_INC, DEFAULT_PC_INC};
 use sp1_stark::{
     air::{BaseAirBuilder, PublicValues, SP1AirBuilder, SP1_PROOF_NUM_PV_ELTS},
@@ -73,7 +73,7 @@ where
         self.eval_alu(builder, local);
         self.eval_alu_i64(builder, local, clk.clone());
         self.eval_branching(builder, local);
-        self.eval_call(builder, local, next);
+        self.eval_call(builder, local, next, clk.clone());
         self.eval_memory(builder, local);
         self.eval_local(builder, local, clk.clone());
         self.eval_ecall(builder, local);
@@ -708,6 +708,7 @@ impl CpuChip {
         builder: &mut AB,
         local: &CpuCols<AB::Var>,
         next: &CpuCols<AB::Var>,
+        clk: AB::Expr,
     ) {
         builder.send_call(
             AB::Expr::zero(),
@@ -743,16 +744,28 @@ impl CpuChip {
                 local.instruction.is_return,
         );
 
+        builder.eval_memory_access(
+            local.shard,
+            clk.clone(),
+            AB::Expr::from_canonical_u32(LAST_SIG_ADDR),
+            &local.op_arg1_access,
+            local.instruction.is_sig_check,
+        );
+
+        builder.eval_memory_access(
+            local.shard,
+            clk + AB::Expr::one(),
+            AB::Expr::from_canonical_u32(LAST_SIG_ADDR),
+            &local.op_res_access,
+            local.instruction.is_callindirect,
+        );
+
         builder
             .when(local.instruction.is_callindirect)
-            .assert_eq(local.instruction.aux_val.reduce::<AB>(), local.next_last_signature_id);
+            .assert_word_eq(local.instruction.aux_val, *local.op_res_access.value());
         builder
-            .when_transition()
-            .when(next.is_real)
-            .assert_eq(local.next_last_signature_id, next.last_signagure_id);
-        builder
-            .when_not(local.instruction.is_callindirect)
-            .assert_eq(local.last_signagure_id, local.next_last_signature_id);
+            .when(local.instruction.is_sig_check)
+            .assert_word_eq(local.instruction.aux_val, *local.op_arg1_access.value());
         builder
             .when(
                 AB::Expr::one() -

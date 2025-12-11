@@ -48,7 +48,5 @@ pub struct CpuEvent {
     pub exit_code: u32,
     pub call_sp: u32,
     pub next_call_sp: u32,
-    pub last_sig_id: u32,
-    pub next_last_sig_id: u32,
     pub call_data: Option<TraceCallData>,
 }
