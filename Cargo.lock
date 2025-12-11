@@ -315,6 +315,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloy-primitives"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "355bf68a433e0fd7f7d33d5a9fc2583fde70bf5c530f63b80845f8da5505cf28"
+dependencies = [
+ "alloy-rlp",
+ "bytes 1.11.0",
+ "cfg-if",
+ "const-hex",
+ "derive_more 2.0.1",
+ "hashbrown 0.16.0",
+ "itoa",
+ "paste",
+ "ruint",
+ "sha3",
+ "tiny-keccak",
+]
+
+[[package]]
 name = "alloy-rlp"
 version = "0.3.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1599,8 +1618,8 @@ dependencies = [
  "axum-core",
  "bytes 1.11.0",
  "futures-util",
- "http 1.4.0",
- "http-body 1.0.1",
+ "http 1.3.1",
+ "http-body",
  "http-body-util",
  "hyper 1.8.1",
  "hyper-util",
@@ -1632,8 +1651,8 @@ dependencies = [
  "async-trait",
  "bytes 1.11.0",
  "futures-util",
- "http 1.4.0",
- "http-body 1.0.1",
+ "http 1.3.1",
+ "http-body",
  "http-body-util",
  "mime",
  "pin-project-lite",
@@ -2085,9 +2104,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.48"
+version = "1.2.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c481bdbf0ed3b892f6f806287d72acd515b352a4ec27a208489b8c1bc839633a"
+checksum = "b97463e1064cb1b1c1384ad0a0b9c8abd0988e2a91f52606c80ef14aadb63e36"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -3101,8 +3120,7 @@ dependencies = [
  "convert_case 0.10.0",
  "proc-macro2",
  "quote",
- "rustc_version 0.4.1",
- "syn 2.0.111",
+ "syn 2.0.110",
  "unicode-xid",
 ]
 
@@ -4263,8 +4281,8 @@ checksum = "b021d93e26becf5dc7e1b75b1bed1fd93124b374ceb73f43d4d4eafec896a64a"
 dependencies = [
  "bytes 1.11.0",
  "futures-core",
- "http 1.4.0",
- "http-body 1.0.1",
+ "http 1.3.1",
+ "http-body",
  "pin-project-lite",
 ]
 
@@ -4350,9 +4368,9 @@ dependencies = [
  "bytes 1.11.0",
  "futures-channel",
  "futures-core",
- "h2 0.4.12",
- "http 1.4.0",
- "http-body 1.0.1",
+ "h2",
+ "http 1.3.1",
+ "http-body",
  "httparse",
  "httpdate",
  "itoa",
@@ -4385,8 +4403,8 @@ version = "0.27.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3c93eb611681b207e1fe55d5a71ecf91572ec8a6705cdb6857f7d8d5242cf58"
 dependencies = [
- "http 1.4.0",
- "hyper 1.8.1",
+ "http 1.3.1",
+ "hyper",
  "hyper-util",
  "rustls 0.23.35",
  "rustls-native-certs 0.8.2",
@@ -4437,9 +4455,9 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-util",
- "http 1.4.0",
- "http-body 1.0.1",
- "hyper 1.8.1",
+ "http 1.3.1",
+ "http-body",
+ "hyper",
  "ipnet",
  "libc",
  "percent-encoding",
@@ -6690,9 +6708,9 @@ dependencies = [
  "encoding_rs",
  "futures-core",
  "futures-util",
- "h2 0.4.12",
- "http 1.4.0",
- "http-body 1.0.1",
+ "h2",
+ "http 1.3.1",
+ "http-body",
  "http-body-util",
  "hyper 1.8.1",
  "hyper-rustls 0.27.7",
@@ -7141,7 +7159,7 @@ dependencies = [
 [[package]]
 name = "rwasm"
 version = "0.0.0"
-source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing#f17213bd9ae4cbc47dcdb1e7a3ea8e26f9a200d4"
+source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=add-sig-check#675c5a5b14aa0d306ec83f0c9726f306040cea35"
 dependencies = [
  "anyhow",
  "bincode 2.0.1",
@@ -7821,18 +7839,7 @@ checksum = "5d69265a08751de7844521fd15003ae0a888e035773ba05695c5c759a6f89eef"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.111",
-]
-
-[[package]]
-name = "sha-1"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5058ada175748e33390e40e872bd0fe59a19f265d0158daa551c5a88a76009c"
-dependencies = [
- "cfg-if",
- "cpufeatures",
- "digest 0.10.7",
+ "syn 2.0.110",
 ]
 
 [[package]]
@@ -9382,9 +9389,9 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bytes 1.11.0",
- "h2 0.4.12",
- "http 1.4.0",
- "http-body 1.0.1",
+ "h2",
+ "http 1.3.1",
+ "http-body",
  "http-body-util",
  "hyper 1.8.1",
  "hyper-timeout",
@@ -9449,8 +9456,8 @@ dependencies = [
  "bitflags",
  "bytes 1.11.0",
  "futures-util",
- "http 1.4.0",
- "http-body 1.0.1",
+ "http 1.3.1",
+ "http-body",
  "iri-string",
  "pin-project-lite",
  "tower 0.5.2",
@@ -10201,9 +10208,9 @@ dependencies = [
  "anyhow",
  "proc-macro2",
  "quote",
- "syn 2.0.111",
- "wasmtime-component-util 34.0.1 (git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel)",
- "wasmtime-wit-bindgen 34.0.1 (git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel)",
+ "syn 2.0.110",
+ "wasmtime-component-util",
+ "wasmtime-wit-bindgen",
  "wit-parser",
 ]
 
@@ -10529,24 +10536,7 @@ source = "git+https://github.com/fluentlabs-xyz/wasmtime?branch=devel#e7833300b1
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.111",
-]
-
-[[package]]
-name = "wasmtime-winch"
-version = "34.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2d71e002033124221f6633a462c26067280519fdd7527ba2751f585db779cc6"
-dependencies = [
- "anyhow",
- "cranelift-codegen 0.121.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "gimli 0.31.1",
- "object 0.36.7",
- "target-lexicon",
- "wasmparser 0.233.0",
- "wasmtime-cranelift 34.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "wasmtime-environ 34.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "winch-codegen 34.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 2.0.110",
 ]
 
 [[package]]
@@ -11145,18 +11135,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.31"
+version = "0.8.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd74ec98b9250adb3ca554bdde269adf631549f51d8a8f8f0a10b50f1cb298c3"
+checksum = "0894878a5fa3edfd6da3f88c4805f4c8558e2b996227a3d864f47fe11e38282c"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.31"
+version = "0.8.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8a8d209fdf45cf5138cbb5a506f6b52522a25afccc534d1475dad8e31105c6a"
+checksum = "88d2b8d9c68ad2b9e4340d7832716a4d21a22a1154777ad56ea55c51a9cf3831"
 dependencies = [
  "proc-macro2",
  "quote",

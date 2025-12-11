@@ -64,7 +64,7 @@ p3-poseidon2 = { workspace = true }
 
 rwasm-machine = { workspace = true }
 #rwasm
-rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/tracing", features = [
+rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "add-sig-check", features = [
     "std",
     "tracing",
 ] }
