@@ -59,12 +59,15 @@
 //!
 //! - `ShiftMeta` (merged metadata table): For each low 8-bit shift operand `shift_lo = c & 0xff`:
 //!
+//! ```text
 //!       masked   = shift_lo & 31         ∈ {0..31}  (effective shift)
 //!       k        = masked & 7            ∈ {0..7}   (num_bits_to_shift)
 //!       raw_cm   = 1u16 << (8 - k)       (carry_multiplier)
+//! ```
 //!
-//!     The table stores rows of the form:
+//! The table stores rows of the form:
 //!
+//! ```text
 //!       ByteLookupEvent {
 //!           opcode = ShiftMeta,
 //!           a1     = raw_cm,             // carry_multiplier (u16)
@@ -72,16 +75,20 @@
 //!           b      = arbitrary (unused here),
 //!           c      = shift_lo
 //!       }
+//! ```
 //!
 //! This chip enforces that its internal columns
 //!   - `num_bits_to_shift`
 //!   - `num_bytes_to_shift`
 //!   - `carry_multiplier` are consistent with the `ShiftMeta` table via a single lookup:
 //!
+//! ```text
 //!     masked = num_bits_to_shift + 8 * num_bytes_to_shift
+//! ```
 //!
 //! and then:
 //!
+//! ```text
 //!     send_byte_pair(
 //!         ShiftMeta,
 //!         carry_multiplier,                  // a1
@@ -89,6 +96,7 @@
 //!         b = 0,
 //!         c = shift_lo                       // low byte of c
 //!     )
+//! ```
 //!
 //! ## Bit-level combination via ShrCarry
 //!
@@ -97,18 +105,24 @@
 //!
 //! For each byte index `i` (processed from MSB to LSB), `ShrCarry` gives:
 //!
+//! ```text
 //!     (shifted_i, carry_i) = shr_carry(byte_shift_result[i], num_bits_to_shift)
+//! ```
 //!
 //! Intuitively, `carry_{i+1}` encodes the low `num_bits_to_shift` bits that are shifted out
 //! of the next more significant byte and should enter byte `i`.
 //!
 //! We then reconstruct the final shifted 64-bit value one byte at a time using:
 //!
+//! ```text
 //!     combined_i = (shifted_i + carry_{i+1} * carry_multiplier) mod 256
+//! ```
 //!
 //! where:
 //!
+//! ```text
 //!     carry_multiplier = 1 << (8 - num_bits_to_shift)
+//! ```
 //!
 //! The chip enforces that the least significant 4 bytes of this combined value match `a`,
 //! the CPU's result, via AIR constraints.
