@@ -887,113 +887,101 @@ impl<'a> Executor<'a> {
             Opcode::I32ShrS | Opcode::I32ShrU => {
                 self.record.shift_right_events.push(event);
             }
-            Opcode::I32LtS |
-            Opcode::I32LtU |
             Opcode::I32GeS |
             Opcode::I32GtS |
             Opcode::I32GeU |
             Opcode::I32GtU |
             Opcode::I32LeS |
             Opcode::I32LeU |
+            Opcode::I32LtS |
+            Opcode::I32LtU |
             Opcode::I32Eq |
             Opcode::I32Eqz |
             Opcode::I32Ne => {
-                // We reduce *all* comparisons into a single “primitive” event that LtChip can
-                // verify:
-                //   - signed  primitive: I32LtS(x, y)  => a = [x <_s y]
-                //   - unsigned primitive: I32LtU(x, y) => a = [x <_u y]
-                //
-                // For GT we swap operands:
-                //   b > c  <=>  c < b
-                //
-                // For GE/LE we also emit an LT event, but note:
-                //   b >= c <=> !(b < c)      -> CPU/result logic must take NOT of the emitted LT
-                // witness   b <= c <=> !(c < b)      -> CPU/result logic must take
-                // NOT of the emitted LT witness
-                //
-                // For EQ/EQZ/NE we use XOR tricks so the primitive LT result already equals the
-                // final boolean:   eqz(x):   x == 0  <=>  x < 1
-                //   eq(b,c):  b == c  <=>  (b^c) < 1
-                //   ne(b,c):  b != c  <=>  0 < (b^c)
-
-                let is_signed = matches!(
+                let use_signed_comparison = matches!(
                     opcode,
-                    Opcode::I32LtS | Opcode::I32GtS | Opcode::I32LeS | Opcode::I32GeS
+                    Opcode::I32GeS | Opcode::I32GtS | Opcode::I32LeS | Opcode::I32LtS
                 );
 
-                // Pick the primitive lt opcode (signed or unsigned) and precompute lt/gt booleans.
-                let (cmp_lt, lt_res, gt_res) = if is_signed {
-                    let b = event.b as i32;
-                    let c = event.c as i32;
-                    (Opcode::I32LtS, (b < c) as u32, (b > c) as u32)
-                } else {
-                    (Opcode::I32LtU, (event.b < event.c) as u32, (event.b > event.c) as u32)
+                let (lt_res, gt_res, cmp_opcode) = {
+                    if use_signed_comparison {
+                        (
+                            ((event.b as i32) < (event.c as i32)) as u32,
+                            ((event.b as i32) > (event.c as i32)) as u32,
+                            Opcode::I32LtS,
+                        )
+                    } else {
+                        ((event.b < event.c) as u32, (event.b > event.c) as u32, Opcode::I32LtU)
+                    }
                 };
 
-                // Helper: create an LtChip-compatible event (pc is unused; opcode is cmp_lt).
-                let mk_lt = |a: u32, b: u32, c: u32| AluEvent {
+                let make_lt = |a, b, c| AluEvent {
                     pc: UNUSED_PC,
-                    opcode: cmp_lt,
+                    opcode: cmp_opcode,
                     a,
                     b,
                     c,
-                    code: cmp_lt.code(),
+                    code: cmp_opcode.code(),
                 };
 
-                // Canonical LT witness: [b < c]
-                let ev_lt_bc = mk_lt(lt_res, event.b, event.c);
-                // Canonical “GT witness”: [c < b] == [b > c]
-                let ev_lt_cb = mk_lt(gt_res, event.c, event.b);
+                let lt_comp_event = make_lt(lt_res, event.b, event.c);
+                let gt_comp_event = make_lt(gt_res, event.c, event.b);
+
+                let ev_eqz = AluEvent {
+                    pc: UNUSED_PC,
+                    opcode: Opcode::I32LtU,
+                    a: u32::from(event.b == 0),
+                    b: event.b,
+                    c: 1,
+                    code: Opcode::I32LtU.code(),
+                };
 
                 match opcode {
-                    // Direct: result equals LT witness.
-                    Opcode::I32LtS | Opcode::I32LtU => self.record.lt_events.push(ev_lt_bc),
-
-                    // GT: swap operands so LtChip still checks "<".
-                    Opcode::I32GtS | Opcode::I32GtU => self.record.lt_events.push(ev_lt_cb),
-
-                    // GE: emit LT(b,c); CPU/result must take NOT.
-                    Opcode::I32GeS | Opcode::I32GeU => self.record.lt_events.push(ev_lt_bc),
-
-                    // LE: emit LT(c,b); CPU/result must take NOT.
-                    Opcode::I32LeS | Opcode::I32LeU => self.record.lt_events.push(ev_lt_cb),
-
-                    // EQZ(x): encode as LTU(x,1) so LT result already equals eqz.
-                    Opcode::I32Eqz => self.record.lt_events.push(AluEvent {
-                        pc: UNUSED_PC,
-                        opcode: Opcode::I32LtU,
-                        a: u32::from(event.b == 0),
-                        b: event.b,
-                        c: 1,
-                        code: Opcode::I32LtU.code(),
-                    }),
-
-                    // EQ(b,c): encode as LTU(b^c,1) (true iff xor==0).
-                    Opcode::I32Eq => {
-                        let x = event.b ^ event.c;
+                    // Opcodes that only need a "less than" check.
+                    Opcode::I32LtS | Opcode::I32LtU => {
+                        self.record.lt_events.push(lt_comp_event);
+                    }
+                    // b > c is equivalent to c < b
+                    Opcode::I32GtS | Opcode::I32GtU => {
+                        self.record.lt_events.push(gt_comp_event);
+                    }
+                    // b >= c is equivalent to !(b < c)
+                    Opcode::I32GeS | Opcode::I32GeU => {
+                        self.record.lt_events.push(lt_comp_event);
+                    }
+                    // b <= c is equivalent to !(c < b)
+                    Opcode::I32LeS | Opcode::I32LeU => {
+                        self.record.lt_events.push(gt_comp_event);
+                    }
+                    // EQZ(x): CPU AIR expects two LtU checks:
+                    // 1. LtU(x, 0) -> always false (0)
+                    // 2. LtU(0, x) -> true if x > 0 (i.e. x != 0)
+                    Opcode::I32Eqz => {
                         self.record.lt_events.push(AluEvent {
                             pc: UNUSED_PC,
                             opcode: Opcode::I32LtU,
-                            a: u32::from(x == 0),
-                            b: x,
-                            c: 1,
+                            a: 0, // x < 0 is always false for unsigned
+                            b: event.b,
+                            c: 0,
                             code: Opcode::I32LtU.code(),
                         });
-                    }
-
-                    // NE(b,c): encode as LTU(0,b^c) (true iff xor!=0).
-                    Opcode::I32Ne => {
-                        let x = event.b ^ event.c;
                         self.record.lt_events.push(AluEvent {
                             pc: UNUSED_PC,
                             opcode: Opcode::I32LtU,
-                            a: u32::from(x != 0),
+                            a: u32::from(event.b != 0), // 0 < x is true if x != 0
                             b: 0,
-                            c: x,
+                            c: event.b,
                             code: Opcode::I32LtU.code(),
                         });
                     }
 
+                    // EQ(b,c) / NE(b,c): CPU AIR expects two LtU checks:
+                    // 1. LtU(b, c)
+                    // 2. LtU(c, b)
+                    Opcode::I32Eq | Opcode::I32Ne => {
+                        self.record.lt_events.push(lt_comp_event);
+                        self.record.lt_events.push(gt_comp_event);
+                    }
                     _ => unreachable!(),
                 }
             }

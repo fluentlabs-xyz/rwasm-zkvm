@@ -35,7 +35,45 @@ fn push_ltu(ops: &mut Vec<Opcode>, b: u32, c: u32) {
 fn push_lts(ops: &mut Vec<Opcode>, b: u32, c: u32) {
     push_cmp(ops, Opcode::I32LtS, b, c)
 }
+#[test]
+pub fn test_ltchip_single() {
+    let mut ops: Vec<Opcode> = Vec::new();
+    const NEG2: u32 = 0xFFFF_FFFE;
 
+    push_cmp(&mut ops, Opcode::I32LeS, NEG2, NEG2);
+    push_cmp(&mut ops, Opcode::I32LeU, 15, 15);
+    push_cmp(&mut ops, Opcode::I32GeS, NEG2, NEG2);
+    push_cmp(&mut ops, Opcode::I32GeU, 15, 15);
+
+    push_cmp(&mut ops, Opcode::I32LeS, 14, NEG2);
+    push_cmp(&mut ops, Opcode::I32LeS, NEG2, 16);
+    push_cmp(&mut ops, Opcode::I32LeU, 14, 15);
+    push_cmp(&mut ops, Opcode::I32LeU, 15, 16);
+
+    push_cmp(&mut ops, Opcode::I32GeS, 14, NEG2);
+    push_cmp(&mut ops, Opcode::I32GeS, NEG2, 16);
+    push_cmp(&mut ops, Opcode::I32GeU, 14, 15);
+    push_cmp(&mut ops, Opcode::I32GeU, 15, 16);
+
+    push_eq(&mut ops, 0, 0);
+    push_eq(&mut ops, NEG2, NEG2);
+    push_eq(&mut ops, 22, 22);
+    push_eq(&mut ops, 22, NEG2);
+    push_eq(&mut ops, NEG2, 22);
+
+    push_cmp(&mut ops, Opcode::I32Ne, 0, 0);
+    push_cmp(&mut ops, Opcode::I32Ne, NEG2, NEG2);
+    push_cmp(&mut ops, Opcode::I32Ne, 22, 22);
+    push_cmp(&mut ops, Opcode::I32Ne, 22, NEG2);
+    push_cmp(&mut ops, Opcode::I32Ne, NEG2, 22);
+
+    push_eqz(&mut ops, 0);
+    push_eqz(&mut ops, NEG2);
+    push_eqz(&mut ops, 22);
+
+    let program = Program::from_instrs(ops);
+    run_rwasm_prover(program);
+}
 #[test]
 pub fn test_ltchip_batch_core_edges() {
     // Goal: cover the *critical* edge families but run prover only once.
