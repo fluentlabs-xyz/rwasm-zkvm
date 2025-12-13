@@ -887,14 +887,14 @@ impl<'a> Executor<'a> {
             Opcode::I32ShrS | Opcode::I32ShrU => {
                 self.record.shift_right_events.push(event);
             }
+            Opcode::I32LtS |
+            Opcode::I32LtU |
             Opcode::I32GeS |
             Opcode::I32GtS |
             Opcode::I32GeU |
             Opcode::I32GtU |
             Opcode::I32LeS |
             Opcode::I32LeU |
-            Opcode::I32LtS |
-            Opcode::I32LtU |
             Opcode::I32Eq |
             Opcode::I32Eqz |
             Opcode::I32Ne => {
@@ -928,7 +928,6 @@ impl<'a> Executor<'a> {
                 let gt_comp_event = make_lt(gt_res, event.c, event.b);
 
                 match opcode {
-                    // Opcodes that only need a "less than" check.
                     Opcode::I32LtS | Opcode::I32LtU => {
                         self.record.lt_events.push(lt_comp_event);
                     }
@@ -938,11 +937,11 @@ impl<'a> Executor<'a> {
                     }
                     // b >= c is equivalent to !(b < c)
                     Opcode::I32GeS | Opcode::I32GeU => {
-                        self.record.lt_events.push(AluEvent { a: 1 - gt_res, ..lt_comp_event });
+                        self.record.lt_events.push(lt_comp_event);
                     }
                     // b <= c is equivalent to !(c < b)
                     Opcode::I32LeS | Opcode::I32LeU => {
-                        self.record.lt_events.push(AluEvent { a: 1 - lt_res, ..gt_comp_event });
+                        self.record.lt_events.push(gt_comp_event);
                     }
                     // Equality checks need to know if `b < c` and `c < b` are both false.
                     Opcode::I32Eq | Opcode::I32Eqz | Opcode::I32Ne => {
