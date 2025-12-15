@@ -19,6 +19,7 @@ pub struct AddOperation<T> {
 }
 
 impl<F: Field> AddOperation<F> {
+    #[allow(unused_assignments)]
     pub fn populate(&mut self, record: &mut impl ByteRecord, a_u32: u32, b_u32: u32) -> u32 {
         let expected = a_u32.wrapping_add(b_u32);
         self.value = Word::from(expected);
@@ -36,7 +37,6 @@ impl<F: Field> AddOperation<F> {
         }
         if (a[2] as u32) + (b[2] as u32) + (carry[1] as u32) > 255 {
             carry[2] = 1;
-            let _ = carry[2];
             self.carry[2] = F::one();
         }
 

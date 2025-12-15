@@ -226,7 +226,7 @@ where
         let shl_opcode = AB::Expr::from_canonical_u32(Opcode::I32Shl.code());
 
         // For ROTL(b, k), we depend on `b << k` and `b >> (32 - k)`
-        builder.send_instruction(
+        builder.send_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -241,7 +241,7 @@ where
             AB::Expr::zero(),
             local.is_rotl,
         );
-        builder.send_instruction(
+        builder.send_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -258,7 +258,7 @@ where
         );
 
         // For ROTR(b, k), we depend on `b >> k` and `b << (32 - k)`
-        builder.send_instruction(
+        builder.send_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -273,7 +273,7 @@ where
             AB::Expr::zero(),
             local.is_rotr,
         );
-        builder.send_instruction(
+        builder.send_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -292,7 +292,7 @@ where
         let cpu_opcode = local.is_rotl * AB::Expr::from_canonical_u32(Opcode::I32Rotl.code()) +
             local.is_rotr * AB::Expr::from_canonical_u32(Opcode::I32Rotr.code());
 
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,

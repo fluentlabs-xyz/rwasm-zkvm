@@ -160,7 +160,7 @@ impl CpuChip {
         // as well. If `instruction.op_a_0 == 1`, then `eval_registers` enforces `op_a_val()
         // == 0`. Therefore, in this case, `op_a_val` doesn't need to be constrained in the
         // opcode specific chips.
-        builder.send_instruction(
+        builder.send_instruction_old(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,
@@ -239,7 +239,7 @@ impl CpuChip {
                 AB::Expr::from_canonical_u32(Opcode::I32LtU.code());
 
         // Conditionally send the `lt` check to the ALU table.
-        builder.send_instruction(
+        builder.send_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -256,7 +256,7 @@ impl CpuChip {
         );
 
         // Conditionally send the `gt` check to the ALU table.
-        builder.send_instruction(
+        builder.send_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -274,7 +274,7 @@ impl CpuChip {
     }
 
     fn eval_memory<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CpuCols<AB::Var>) {
-        builder.send_instruction(
+        builder.send_instruction_old(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,
@@ -353,7 +353,7 @@ impl CpuChip {
         builder: &mut AB,
         local: &CpuCols<AB::Var>,
     ) {
-        builder.send_instruction(
+        builder.send_instruction_old(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,
@@ -369,7 +369,7 @@ impl CpuChip {
             local.instruction.is_br + local.instruction.is_brifeqz + local.instruction.is_brifnez,
         );
 
-        builder.send_instruction(
+        builder.send_instruction_old(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,
@@ -395,7 +395,7 @@ impl CpuChip {
     }
 
     pub(crate) fn eval_ecall<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CpuCols<AB::Var>) {
-        builder.send_instruction(
+        builder.send_instruction_old(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,
@@ -725,7 +725,7 @@ impl CpuChip {
                 local.instruction.is_return,
         );
 
-        builder.send_instruction(
+        builder.send_instruction_old(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,

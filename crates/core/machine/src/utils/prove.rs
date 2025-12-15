@@ -417,6 +417,7 @@ where
                             }
 
                             trace_gen_sync.wait_for_turn(index);
+
                             // Send the records to the phase 2 prover.
                             let chunked_records = chunk_vec(records, opts.shard_batch_size);
                             let chunked_main_traces = chunk_vec(main_traces, opts.shard_batch_size);

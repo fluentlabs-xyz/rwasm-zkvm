@@ -85,6 +85,8 @@ where
             local.op_a_val(),
             local.op_b_val(),
             local.op_c_val(),
+            local.instruction.op_a_0,
+            local.op_a_immutable,
             local.is_memory,
             local.is_syscall,
             local.is_halt,

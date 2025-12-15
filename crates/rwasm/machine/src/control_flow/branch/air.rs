@@ -58,7 +58,7 @@ where
         // - `is_syscall = 0`
         // - `is_halt = 0`
         // `next_pc` still has to be constrained, and this is done below.
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc.reduce::<AB>(),
@@ -74,7 +74,7 @@ where
             local.is_br + local.is_brifeqz + local.is_brifnez,
         );
 
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc.reduce::<AB>(),
@@ -112,7 +112,7 @@ where
             );
 
             // When we are branching, assert that local.next_pc <==> local.pc + c.
-            builder.send_instruction(
+            builder.send_instruction_old(
                 AB::Expr::zero(),
                 AB::Expr::zero(),
                 AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -128,7 +128,7 @@ where
                 local.is_branching_non_table,
             );
 
-            builder.send_instruction(
+            builder.send_instruction_old(
                 AB::Expr::zero(),
                 AB::Expr::zero(),
                 AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -206,7 +206,7 @@ where
                 .when(local.is_brifnez + local.is_brifeqz)
                 .assert_word_eq(local.op_arg2_value, Word::zero::<AB>());
 
-            builder.send_instruction(
+            builder.send_instruction_old(
                 AB::Expr::zero(),
                 AB::Expr::zero(),
                 AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -222,7 +222,7 @@ where
                 local.is_brifeqz + local.is_brifnez,
             );
 
-            builder.send_instruction(
+            builder.send_instruction_old(
                 AB::Expr::zero(),
                 AB::Expr::zero(),
                 AB::Expr::from_canonical_u32(UNUSED_PC),

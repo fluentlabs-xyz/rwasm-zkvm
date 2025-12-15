@@ -118,7 +118,7 @@ where
         builder.when(local.is_extend16s).assert_eq(local.a[2], local.msb * ff.clone());
         builder.when(local.is_extend16s).assert_eq(local.a[3], local.msb * ff.clone());
 
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,

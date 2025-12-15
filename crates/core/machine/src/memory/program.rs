@@ -103,6 +103,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryProgramChip {
                     },
                 );
             });
+
         // Convert the trace to a row major matrix.
         Some(RowMajorMatrix::new(values, NUM_MEMORY_PROGRAM_PREPROCESSED_COLS))
     }

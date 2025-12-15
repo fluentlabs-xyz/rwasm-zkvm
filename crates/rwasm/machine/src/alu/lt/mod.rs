@@ -381,7 +381,7 @@ where
         );
 
         // Receive the instruction.
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,

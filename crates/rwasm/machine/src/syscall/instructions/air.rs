@@ -56,7 +56,7 @@ where
         // equal to the return value of `get_num_extra_ecall_cycles`, in `eval`. `op_a_val`
         // is constrained in `eval_ecall`. `is_halt` is checked to be correct in
         // `eval_is_halt_syscall`.
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             local.shard,
             local.clk,
             local.pc,
@@ -72,7 +72,7 @@ where
             local.is_sys_call,
         );
 
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             local.shard,
             local.clk,
             local.pc,
