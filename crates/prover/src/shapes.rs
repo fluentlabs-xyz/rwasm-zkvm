@@ -443,8 +443,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     ) -> Arc<RecursionProgram<BabyBear>> {
         match shape {
             SP1CompressProgramShape::Recursion(shape) => {
-                let input = SP1RecursionWitnessValues::dummy(self.core_prover.machine(), &shape);
-                self.recursion_program(&input)
+                // let input = SP1RecursionWitnessValues::dummy(self.core_prover.machine(), &shape);
+                // self.recursion_program(&input)
+                todo!()
             }
             SP1CompressProgramShape::Deferred(shape) => {
                 let input = SP1DeferredWitnessValues::dummy(self.compress_prover.machine(), &shape);

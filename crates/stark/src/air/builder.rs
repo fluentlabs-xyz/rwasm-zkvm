@@ -192,6 +192,90 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
         a: Word<impl Into<Self::Expr>>,
         b: Word<impl Into<Self::Expr>>,
         c: Word<impl Into<Self::Expr>>,
+        op_a_0: impl Into<Self::Expr>,
+        op_a_immutable: impl Into<Self::Expr>,
+        is_memory: impl Into<Self::Expr>,
+        is_syscall: impl Into<Self::Expr>,
+        is_halt: impl Into<Self::Expr>,
+        multiplicity: impl Into<Self::Expr>,
+    ) {
+        let values = once(shard.into())
+            .chain(once(clk.into()))
+            .chain(once(pc.into()))
+            .chain(once(next_pc.into()))
+            .chain(once(num_extra_cycles.into()))
+            .chain(once(opcode.into()))
+            .chain(a.0.into_iter().map(Into::into))
+            .chain(b.0.into_iter().map(Into::into))
+            .chain(c.0.into_iter().map(Into::into))
+            .chain(once(op_a_0.into()))
+            .chain(once(op_a_immutable.into()))
+            .chain(once(is_memory.into()))
+            .chain(once(is_syscall.into()))
+            .chain(once(is_halt.into()))
+            .collect();
+
+        self.send(
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Instruction),
+            InteractionScope::Local,
+        );
+    }
+
+    /// Receives an ALU operation to be processed.
+    #[allow(clippy::too_many_arguments)]
+    fn receive_instruction(
+        &mut self,
+        shard: impl Into<Self::Expr> + Clone,
+        clk: impl Into<Self::Expr> + Clone,
+        pc: impl Into<Self::Expr>,
+        next_pc: impl Into<Self::Expr>,
+        num_extra_cycles: impl Into<Self::Expr>,
+        opcode: impl Into<Self::Expr>,
+        a: Word<impl Into<Self::Expr>>,
+        b: Word<impl Into<Self::Expr>>,
+        c: Word<impl Into<Self::Expr>>,
+        op_a_0: impl Into<Self::Expr>,
+        op_a_immutable: impl Into<Self::Expr>,
+        is_memory: impl Into<Self::Expr>,
+        is_syscall: impl Into<Self::Expr>,
+        is_halt: impl Into<Self::Expr>,
+        multiplicity: impl Into<Self::Expr>,
+    ) {
+        let values = once(shard.into())
+            .chain(once(clk.into()))
+            .chain(once(pc.into()))
+            .chain(once(next_pc.into()))
+            .chain(once(num_extra_cycles.into()))
+            .chain(once(opcode.into()))
+            .chain(a.0.into_iter().map(Into::into))
+            .chain(b.0.into_iter().map(Into::into))
+            .chain(c.0.into_iter().map(Into::into))
+            .chain(once(op_a_0.into()))
+            .chain(once(op_a_immutable.into()))
+            .chain(once(is_memory.into()))
+            .chain(once(is_syscall.into()))
+            .chain(once(is_halt.into()))
+            .collect();
+
+        self.receive(
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Instruction),
+            InteractionScope::Local,
+        );
+    }
+
+    /// Sends a RISC-V instruction to be processed.
+    #[allow(clippy::too_many_arguments)]
+    fn send_instruction_old(
+        &mut self,
+        shard: impl Into<Self::Expr> + Clone,
+        clk: impl Into<Self::Expr> + Clone,
+        pc: impl Into<Self::Expr>,
+        next_pc: impl Into<Self::Expr>,
+        num_extra_cycles: impl Into<Self::Expr>,
+        opcode: impl Into<Self::Expr>,
+        a: Word<impl Into<Self::Expr>>,
+        b: Word<impl Into<Self::Expr>>,
+        c: Word<impl Into<Self::Expr>>,
         is_memory: impl Into<Self::Expr>,
         is_syscall: impl Into<Self::Expr>,
         is_halt: impl Into<Self::Expr>,
@@ -219,7 +303,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
 
     /// Receives an ALU operation to be processed.
     #[allow(clippy::too_many_arguments)]
-    fn receive_instruction(
+    fn receive_instruction_old(
         &mut self,
         shard: impl Into<Self::Expr> + Clone,
         clk: impl Into<Self::Expr> + Clone,

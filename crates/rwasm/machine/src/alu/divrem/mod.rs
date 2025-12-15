@@ -429,7 +429,7 @@ where
             ];
 
             // The lower 4 bytes of c_times_quotient must match the lower 4 bytes of (c * quotient).
-            builder.send_instruction(
+            builder.send_instruction_old(
                 AB::Expr::zero(),
                 AB::Expr::zero(),
                 AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -460,7 +460,7 @@ where
                 local.c_times_quotient[7].into(),
             ];
 
-            builder.send_instruction(
+            builder.send_instruction_old(
                 AB::Expr::zero(),
                 AB::Expr::zero(),
                 AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -631,7 +631,7 @@ where
             }
             // In the case that `c` or `rem` is negative, instead check that their sum is zero by
             // sending an AddEvent.
-            builder.send_instruction(
+            builder.send_instruction_old(
                 AB::Expr::zero(),
                 AB::Expr::zero(),
                 AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -646,7 +646,7 @@ where
                 AB::Expr::zero(),
                 local.abs_c_alu_event,
             );
-            builder.send_instruction(
+            builder.send_instruction_old(
                 AB::Expr::zero(),
                 AB::Expr::zero(),
                 AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -699,7 +699,7 @@ where
 
             // Dispatch abs(remainder) < max(abs(c), 1), this is equivalent to abs(remainder) <
             // abs(c) if not division by 0.
-            builder.send_instruction(
+            builder.send_instruction_old(
                 AB::Expr::zero(),
                 AB::Expr::zero(),
                 AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -800,7 +800,7 @@ where
             // - `is_memory = 0`
             // - `is_syscall = 0`
             // - `is_halt = 0`
-            builder.receive_instruction(
+            builder.receive_instruction_old(
                 AB::Expr::zero(),
                 AB::Expr::zero(),
                 local.pc,

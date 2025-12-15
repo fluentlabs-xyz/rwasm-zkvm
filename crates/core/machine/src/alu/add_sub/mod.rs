@@ -235,6 +235,8 @@ where
             local.add_operation.value,
             local.operand_1,
             local.operand_2,
+            AB::Expr::one() - local.op_a_not_0,
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -261,6 +263,8 @@ where
             local.operand_1,
             local.add_operation.value,
             local.operand_2,
+            AB::Expr::one() - local.op_a_not_0,
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -338,7 +342,7 @@ mod tests {
         for i in 0..1 {
             let operand_1 = thread_rng().gen_range(0..u32::MAX);
             let operand_2 = thread_rng().gen_range(0..u32::MAX);
-            let result = operand_1.wrapping_add(operand_2).wrapping_add(operand_2);
+            let result = operand_1.wrapping_add(operand_2);
             shard.add_events.push(AluEvent::new(
                 i * DEFAULT_PC_INC,
                 Opcode::ADD,
@@ -460,8 +464,8 @@ mod tests {
                 )> {
                     let mut malicious_record = record.clone();
                     malicious_record.cpu_events[0].a = op_a;
-                    if let Some(MemoryRecordEnum::Write(mut write_record)) =
-                        malicious_record.cpu_events[0].a_record
+                    if let Some(MemoryRecordEnum::Write(write_record)) =
+                        malicious_record.cpu_events[0].a_record.as_mut()
                     {
                         write_record.value = op_a;
                     }
