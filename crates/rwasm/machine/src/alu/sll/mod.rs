@@ -396,7 +396,7 @@ where
         // - `is_memory = 0`
         // - `is_syscall = 0`
         // - `is_halt = 0`
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,

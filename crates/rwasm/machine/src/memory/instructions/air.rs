@@ -95,7 +95,7 @@ where
         // - `is_halt = 0`
         // `op_a_value` when the instruction is load still has to be constrained, as well as memory
         // opcode behavior.
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             local.shard,
             local.clk,
             local.pc,
@@ -145,7 +145,7 @@ impl MemoryInstructionsChip {
         is_store: AB::Expr,
     ) {
         // Send to the ALU table to verify correct calculation of addr_word.
-        builder.send_instruction(
+        builder.send_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -162,7 +162,7 @@ impl MemoryInstructionsChip {
         );
 
         // Send to the ALU table to verify correct calculation of addr_word.
-        builder.send_instruction(
+        builder.send_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
