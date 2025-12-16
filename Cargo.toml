@@ -78,6 +78,14 @@ rwasm-executor = { path = "crates/rwasm/executor", version = "5.2.3", default-fe
 rwasm-machine = { path = "crates/rwasm/machine", version = "5.2.3", default-features = false }
 rwasm-machine-test = { path = "crates/rwasm/machinetest", version = "5.2.3", default-features = false }
 
+#rwasm
+rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/tracing-new", features = [
+    "std",
+    "tracing",
+] }
+
+#
+
 # # For testing.
 # test-artifacts = { path = "crates/test-artifacts" }
 
