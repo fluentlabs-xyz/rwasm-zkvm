@@ -210,7 +210,7 @@ where
 
         let opcode: AB::Expr = AB::F::from_canonical_u32(Opcode::I32Mul.code()).into();
         // 4. Receive Instruction
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,

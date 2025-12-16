@@ -207,7 +207,7 @@ pub fn build_vk_map<C: SP1ProverComponents + 'static>(
                 let panic_tx = panic_tx.clone();
                 s.spawn(move || {
                     while let Ok((i, shape)) = shape_rx.lock().unwrap().recv() {
-                        eprintln!("shape: {:?}", shape);
+                        eprintln!("shape: {shape:?}");
                         let is_shrink = matches!(shape, SP1CompressProgramShape::Shrink(_));
                         let prover = prover.clone();
                         let shape_clone = shape.clone();
@@ -443,8 +443,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
     ) -> Arc<RecursionProgram<BabyBear>> {
         match shape {
             SP1CompressProgramShape::Recursion(shape) => {
-                let input = SP1RecursionWitnessValues::dummy(self.core_prover.machine(), &shape);
-                self.recursion_program(&input)
+                // let input = SP1RecursionWitnessValues::dummy(self.core_prover.machine(), &shape);
+                // self.recursion_program(&input)
+                todo!()
             }
             SP1CompressProgramShape::Deferred(shape) => {
                 let input = SP1DeferredWitnessValues::dummy(self.compress_prover.machine(), &shape);

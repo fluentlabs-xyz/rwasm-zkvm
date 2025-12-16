@@ -1120,7 +1120,7 @@ where
             local.is_rem_s * op_rem_s +
             local.is_div_s * op_div_s;
 
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             zero.clone(),                                            // shard / context
             zero.clone(),                                            // cycle
             local.pc,                                                // pc

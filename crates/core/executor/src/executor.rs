@@ -192,9 +192,10 @@ pub struct Executor<'a> {
 }
 
 /// The different modes the executor can run in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 pub enum ExecutorMode {
     /// Run the execution with no tracing or checkpointing.
+    #[default]
     Simple,
     /// Run the execution with checkpoints for memory.
     Checkpoint,
@@ -503,7 +504,7 @@ impl<'a> Executor<'a> {
     ) -> MemoryReadRecord {
         // Check that the memory address is within the babybear field and not within the registers'
         // address space.  Also check that the address is aligned.
-        if addr % 4 != 0 || addr <= Register::X31 as u32 || addr >= BABYBEAR_PRIME {
+        if !addr.is_multiple_of(4) || addr <= Register::X31 as u32 || addr >= BABYBEAR_PRIME {
             panic!("Invalid memory access: addr={addr}");
         }
 
@@ -736,7 +737,7 @@ impl<'a> Executor<'a> {
     ) -> MemoryWriteRecord {
         // Check that the memory address is within the babybear field and not within the registers'
         // address space.  Also check that the address is aligned.
-        if addr % 4 != 0 || addr <= Register::X31 as u32 || addr >= BABYBEAR_PRIME {
+        if !addr.is_multiple_of(4) || addr <= Register::X31 as u32 || addr >= BABYBEAR_PRIME {
             panic!("Invalid memory access: addr={addr}");
         }
 
@@ -1409,7 +1410,7 @@ impl<'a> Executor<'a> {
                 self.memory_accesses,
                 exit_code,
             );
-        };
+        }
 
         // Update the program counter.
         self.state.pc = next_pc;
@@ -1718,7 +1719,7 @@ impl<'a> Executor<'a> {
             //
             // If we're close to not fitting, early stop the shard to ensure we don't OOM.
             let mut shape_match_found = true;
-            if self.state.global_clk % self.shape_check_frequency == 0 {
+            if self.state.global_clk.is_multiple_of(self.shape_check_frequency) {
                 // Estimate the number of events in the trace.
                 Self::estimate_riscv_event_counts(
                     &mut self.event_counts,
@@ -1744,7 +1745,11 @@ impl<'a> Executor<'a> {
                 // Check if we're too "close" to a maximal shape.
                 else if let Some(maximal_shapes) = &self.maximal_shapes {
                     let distance = |threshold: usize, count: usize| {
-                        (count != 0).then(|| threshold - count).unwrap_or(usize::MAX)
+                        if count != 0 {
+                            threshold - count
+                        } else {
+                            usize::MAX
+                        }
                     };
 
                     shape_match_found = false;
@@ -1950,6 +1955,8 @@ impl<'a> Executor<'a> {
         for (&addr, value) in &self.program.memory_image {
             self.state.memory.insert(addr, MemoryRecord { value: *value, shard: 0, timestamp: 0 });
         }
+        // Insert the memory record for 0.
+        self.state.memory.insert(0, MemoryRecord { value: 0, shard: 0, timestamp: 0 });
     }
 
     /// Executes the program without tracing and without emitting events.
@@ -2161,7 +2168,7 @@ impl<'a> Executor<'a> {
 
             let addr_0_final_record = match addr_0_record {
                 Some(record) => record,
-                None => &MemoryRecord { value: 0, shard: 0, timestamp: 1 },
+                None => &MemoryRecord { value: 0, shard: 0, timestamp: 0 },
             };
             memory_finalize_events
                 .push(MemoryInitializeFinalizeEvent::finalize_from_record(0, addr_0_final_record));
@@ -2169,48 +2176,45 @@ impl<'a> Executor<'a> {
             let memory_initialize_events = &mut self.record.global_memory_initialize_events;
             memory_initialize_events
                 .reserve_exact(self.state.memory.page_table.estimate_len() + 32);
-            let addr_0_initialize_event =
-                MemoryInitializeFinalizeEvent::initialize(0, 0, addr_0_record.is_some());
+            let addr_0_initialize_event = MemoryInitializeFinalizeEvent::initialize(0, 0);
             memory_initialize_events.push(addr_0_initialize_event);
 
             // Count the number of touched memory addresses manually, since `PagedMemory` doesn't
             // already know its length.
-            self.report.touched_memory_addresses = 0;
+            if self.print_report {
+                self.report.touched_memory_addresses = 0;
+            }
             for addr in 1..32 {
                 let record = self.state.memory.registers.get(addr);
-                if record.is_some() {
-                    self.report.touched_memory_addresses += 1;
-
+                if let Some(record) = record {
+                    if self.print_report {
+                        self.report.touched_memory_addresses += 1;
+                    }
                     // Program memory is initialized in the MemoryProgram chip and doesn't require
                     // any events, so we only send init events for other memory
                     // addresses.
                     if !self.record.program.memory_image.contains_key(&addr) {
                         let initial_value =
                             self.state.uninitialized_memory.registers.get(addr).unwrap_or(&0);
-                        memory_initialize_events.push(MemoryInitializeFinalizeEvent::initialize(
-                            addr,
-                            *initial_value,
-                            true,
-                        ));
+                        memory_initialize_events
+                            .push(MemoryInitializeFinalizeEvent::initialize(addr, *initial_value));
                     }
 
-                    let record = *record.unwrap();
                     memory_finalize_events
-                        .push(MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record));
+                        .push(MemoryInitializeFinalizeEvent::finalize_from_record(addr, record));
                 }
             }
             for addr in self.state.memory.page_table.keys() {
-                self.report.touched_memory_addresses += 1;
+                if self.print_report {
+                    self.report.touched_memory_addresses += 1;
+                }
 
                 // Program memory is initialized in the MemoryProgram chip and doesn't require any
                 // events, so we only send init events for other memory addresses.
                 if !self.record.program.memory_image.contains_key(&addr) {
                     let initial_value = self.state.uninitialized_memory.get(addr).unwrap_or(&0);
-                    memory_initialize_events.push(MemoryInitializeFinalizeEvent::initialize(
-                        addr,
-                        *initial_value,
-                        true,
-                    ));
+                    memory_initialize_events
+                        .push(MemoryInitializeFinalizeEvent::initialize(addr, *initial_value));
                 }
 
                 let record = *self.state.memory.get(addr).unwrap();
@@ -2296,7 +2300,7 @@ impl<'a> Executor<'a> {
             opcode_counts[Opcode::SH] +
             opcode_counts[Opcode::SW];
 
-        // Compute the number of events in the syscall instruction chip.
+        // Compute the number of events in the syscall instruction chip.b
         event_counts[RiscvAirId::SyscallInstrs] = opcode_counts[Opcode::ECALL];
 
         // Compute the number of events in the syscall core chip.
@@ -2323,15 +2327,9 @@ impl<'a> Executor<'a> {
             }
         }
 
-        if !self.unconstrained && self.state.global_clk % 10_000_000 == 0 {
+        if !self.unconstrained && self.state.global_clk.is_multiple_of(10_000_000) {
             tracing::info!("clk = {} pc = 0x{:x?}", self.state.global_clk, self.state.pc);
         }
-    }
-}
-
-impl Default for ExecutorMode {
-    fn default() -> Self {
-        Self::Simple
     }
 }
 

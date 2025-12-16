@@ -236,7 +236,7 @@ where
         let result = a_any.clone() + local.is_popcnt * (popcnt_result - a_any);
         builder.assert_zero(local.a - result);
 
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,

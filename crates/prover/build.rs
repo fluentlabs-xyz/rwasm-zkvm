@@ -1,18 +1,19 @@
 use std::{
     env, fs,
+    io::Write,
     path::{Path, PathBuf},
     str::FromStr,
 };
 
-use downloader::{verify, Download, DownloadSummary, Downloader};
 use sha2::{Digest, Sha256};
 
 const FILENAME: &str = "vk_map.bin";
 const SRC_PATH: &str = "src/vk_map.bin";
-const SHA256_HASH: &str = "5791e67cb339f4936f21f0e7aa40fea6e534b4284175285444935613f7d61827";
+const SHA256_HASH: &str = "5e735f6e44f56e9eee91e5626252663afcc5263287d1c5980367b3f9f930a0e8";
 
 fn check_sha2(path: &Path) -> bool {
     let data = fs::read(path).unwrap();
+
     hex::encode(Sha256::digest(data)) == SHA256_HASH
 }
 
@@ -47,15 +48,25 @@ fn main() {
         return;
     }
 
-    let mut downloader = Downloader::builder().download_folder(out_dir).build().unwrap();
-    let url = "https://sp1-circuits.s3.us-east-2.amazonaws.com/vk-map-v4.0.0-rc.3".to_string();
+    let url = "https://sp1-circuits.s3.us-east-2.amazonaws.com/vk-map-v5.0.0";
     eprintln!("Downloading {url}");
-    let dl = Download::new(&url)
-        .file_name(&PathBuf::from_str(FILENAME).unwrap())
-        .verify(verify::with_digest::<Sha256>(hex::decode(SHA256_HASH).unwrap()));
-    let results = downloader.download(&[dl]).unwrap();
-    for result in results {
-        let summary: DownloadSummary = result.unwrap();
-        eprintln!("{summary}");
+
+    let client = reqwest::blocking::Client::builder().use_rustls_tls().build().unwrap();
+
+    let response = client.get(url).send().unwrap();
+    if !response.status().is_success() {
+        panic!("Failed to download file: HTTP {}", response.status());
     }
+
+    let bytes = response.bytes().unwrap();
+
+    let computed_hash = hex::encode(Sha256::digest(&bytes));
+    if computed_hash != SHA256_HASH {
+        panic!("SHA256 mismatch: expected {}, got {}", SHA256_HASH, computed_hash);
+    }
+
+    let mut file = fs::File::create(&out_path).unwrap();
+    file.write_all(&bytes).unwrap();
+
+    eprintln!("Successfully downloaded and verified {} ({} bytes)", FILENAME, bytes.len());
 }

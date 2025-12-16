@@ -1,9 +1,9 @@
-use crate::air::WordAirBuilder;
+use crate::{air::WordAirBuilder, memory::MemoryCols};
 use core::borrow::Borrow;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use rwasm::mem_index::UNIT;
+use rwasm::mem_index::{LAST_SIG_ADDR, UNIT};
 use rwasm_executor::{ByteOpcode, Opcode, DEFAULT_CLK_INC, DEFAULT_PC_INC};
 use sp1_stark::{
     air::{BaseAirBuilder, PublicValues, SP1AirBuilder, SP1_PROOF_NUM_PV_ELTS},
@@ -73,7 +73,7 @@ where
         self.eval_alu(builder, local);
         self.eval_alu_i64(builder, local, clk.clone());
         self.eval_branching(builder, local);
-        self.eval_call(builder, local, next);
+        self.eval_call(builder, local, next, clk.clone());
         self.eval_memory(builder, local);
         self.eval_local(builder, local, clk.clone());
         self.eval_ecall(builder, local);
@@ -160,7 +160,7 @@ impl CpuChip {
         // as well. If `instruction.op_a_0 == 1`, then `eval_registers` enforces `op_a_val()
         // == 0`. Therefore, in this case, `op_a_val` doesn't need to be constrained in the
         // opcode specific chips.
-        builder.send_instruction(
+        builder.send_instruction_old(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,
@@ -239,7 +239,7 @@ impl CpuChip {
                 AB::Expr::from_canonical_u32(Opcode::I32LtU.code());
 
         // Conditionally send the `lt` check to the ALU table.
-        builder.send_instruction(
+        builder.send_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -256,7 +256,7 @@ impl CpuChip {
         );
 
         // Conditionally send the `gt` check to the ALU table.
-        builder.send_instruction(
+        builder.send_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
@@ -274,7 +274,7 @@ impl CpuChip {
     }
 
     fn eval_memory<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CpuCols<AB::Var>) {
-        builder.send_instruction(
+        builder.send_instruction_old(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,
@@ -353,7 +353,7 @@ impl CpuChip {
         builder: &mut AB,
         local: &CpuCols<AB::Var>,
     ) {
-        builder.send_instruction(
+        builder.send_instruction_old(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,
@@ -369,7 +369,7 @@ impl CpuChip {
             local.instruction.is_br + local.instruction.is_brifeqz + local.instruction.is_brifnez,
         );
 
-        builder.send_instruction(
+        builder.send_instruction_old(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,
@@ -395,7 +395,7 @@ impl CpuChip {
     }
 
     pub(crate) fn eval_ecall<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CpuCols<AB::Var>) {
-        builder.send_instruction(
+        builder.send_instruction_old(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,
@@ -708,6 +708,7 @@ impl CpuChip {
         builder: &mut AB,
         local: &CpuCols<AB::Var>,
         next: &CpuCols<AB::Var>,
+        clk: AB::Expr,
     ) {
         builder.send_call(
             AB::Expr::zero(),
@@ -724,7 +725,7 @@ impl CpuChip {
                 local.instruction.is_return,
         );
 
-        builder.send_instruction(
+        builder.send_instruction_old(
             local.shard_to_send,
             local.clk_to_send,
             local.pc,
@@ -742,6 +743,29 @@ impl CpuChip {
                 local.instruction.is_callindirect +
                 local.instruction.is_return,
         );
+
+        builder.eval_memory_access(
+            local.shard,
+            clk.clone(),
+            AB::Expr::from_canonical_u32(LAST_SIG_ADDR),
+            &local.op_arg1_access,
+            local.instruction.is_sig_check,
+        );
+
+        builder.eval_memory_access(
+            local.shard,
+            clk + AB::Expr::one(),
+            AB::Expr::from_canonical_u32(LAST_SIG_ADDR),
+            &local.op_res_access,
+            local.instruction.is_callindirect,
+        );
+
+        builder
+            .when(local.instruction.is_callindirect)
+            .assert_word_eq(local.instruction.aux_val, *local.op_res_access.value());
+        builder
+            .when(local.instruction.is_sig_check)
+            .assert_word_eq(local.instruction.aux_val, *local.op_arg1_access.value());
         builder
             .when(
                 AB::Expr::one() -

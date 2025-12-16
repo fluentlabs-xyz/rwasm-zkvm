@@ -1,5 +1,6 @@
 //! An implementation of an exucutor for the SP1 RISC-V zkVM.
 
+#![warn(clippy::pedantic)]
 #![allow(clippy::similar_names)]
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::cast_possible_truncation)]
@@ -17,6 +18,7 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::explicit_iter_loop)]
 #![allow(clippy::struct_excessive_bools)]
+#![warn(missing_docs)]
 
 mod air;
 mod context;
@@ -35,7 +37,6 @@ mod opcode;
 mod profiler;
 mod program;
 mod record;
-mod reduce;
 mod register;
 mod report;
 mod state;
@@ -52,11 +53,12 @@ pub use instruction::*;
 pub use opcode::*;
 pub use program::*;
 pub use record::*;
-pub use reduce::*;
 pub use register::*;
 pub use report::*;
 pub use state::*;
 pub use utils::*;
+
+pub use sp1_stark::SP1ReduceProof;
 
 /// Used for testing.
 #[cfg(test)]

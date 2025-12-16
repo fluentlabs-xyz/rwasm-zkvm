@@ -74,7 +74,7 @@ pub struct LtCols<T> {
 
     /// The result of the intermediate SLTU operation `b_comp < c_comp`.
     pub sltu: T,
-    /// A bollean flag for an intermediate comparison.
+    /// A boolean flag for an intermediate comparison.
     pub is_comp_eq: T,
     /// A boolean flag for comparing the sign bits.
     pub is_sign_eq: T,
@@ -455,6 +455,8 @@ where
             Word::extend_var::<AB>(local.a),
             local.b,
             local.c,
+            AB::Expr::one() - local.op_a_not_0,
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -599,8 +601,8 @@ mod tests {
                 )> {
                     let mut malicious_record = record.clone();
                     malicious_record.cpu_events[0].a = op_a as u32;
-                    if let Some(MemoryRecordEnum::Write(mut write_record)) =
-                        malicious_record.cpu_events[0].a_record
+                    if let Some(MemoryRecordEnum::Write(write_record)) =
+                        malicious_record.cpu_events[0].a_record.as_mut()
                     {
                         write_record.value = op_a as u32;
                     }

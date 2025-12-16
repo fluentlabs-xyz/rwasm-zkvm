@@ -486,7 +486,7 @@ impl<'a> Executor<'a> {
     ) -> MemoryReadRecord {
         // Check that the memory address is within the babybear field and not within the registers'
         // address space.  Also check that the address is aligned.
-        if addr % 4 != 0 || addr >= BABYBEAR_PRIME {
+        if !addr.is_multiple_of(4) || addr >= BABYBEAR_PRIME {
             panic!("Invalid memory access: addr={addr}");
         }
 
@@ -596,7 +596,7 @@ impl<'a> Executor<'a> {
     ) -> MemoryWriteRecord {
         // Check that the memory address is within the babybear field and not within the registers'
         // address space.  Also check that the address is aligned.
-        if addr % 4 != 0 || addr >= BABYBEAR_PRIME {
+        if !addr.is_multiple_of(4) || addr >= BABYBEAR_PRIME {
             panic!("Invalid memory access: addr={addr}");
         }
 
@@ -777,10 +777,6 @@ impl<'a> Executor<'a> {
         } else if opcode.is_const_instruction() {
             self.emit_const_event(opcode);
         } else if opcode.is_state_instrucition() {
-            #[cfg(debug_assertions)]
-            {
-                println!("sys_state_event not generated here");
-            }
         } else if opcode.is_call_instruction() {
             let call_sp_record = record.call_sp_access;
             match call_data {
@@ -1377,7 +1373,7 @@ impl<'a> Executor<'a> {
             //
             // If we're close to not fitting, early stop the shard to ensure we don't OOM.
             let mut shape_match_found = true;
-            if self.state.global_clk % self.shape_check_frequency == 0 {
+            if self.state.global_clk.is_multiple_of(self.shape_check_frequency) {
                 // Estimate the number of events in the trace.
 
                 // Check if the LDE size is too large.
@@ -2018,7 +2014,7 @@ impl<'a> Executor<'a> {
             }
         }
 
-        if !self.unconstrained && self.state.global_clk % 10_000_000 == 0 {
+        if !self.unconstrained && self.state.global_clk.is_multiple_of(10_000_000) {
             tracing::info!("clk = {} pc = 0x{:x?}", self.state.global_clk, self.state.pc);
         }
     }
@@ -5376,6 +5372,36 @@ mod tests {
                 assert_eq!(top, expected, "I32Extend16S({:#010x}) mismatch", input);
             }
         }
+    }
+
+    #[test]
+    fn test_sig_id_check() {
+        let ops = vec![
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(2.into()),
+            Opcode::TableGrow(0),
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(2.into()),
+            Opcode::TableInit(0),
+            Opcode::TableGet(0),
+            Opcode::I32Const(1.into()),
+            Opcode::CallIndirect(1u32),
+            Opcode::TableGet(0),
+            Opcode::SignatureCheck(1),
+            Opcode::Return,
+            Opcode::I32Const(99.into()),
+            Opcode::I32Const(98.into()),
+            Opcode::I32Add,
+            Opcode::Return,
+        ];
+
+        let elements = vec![12u32, 12u32];
+        let program = Program::from_instrs(ops).with_elements(elements);
+
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+
+        rt.run().unwrap();
     }
     /// Helper to run a program and return the value at the top of the stack.
     fn run_and_get_stack_top(opcodes: Vec<Opcode>) -> u32 {

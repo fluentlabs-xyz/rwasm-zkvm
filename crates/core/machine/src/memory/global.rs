@@ -119,7 +119,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
         let mut rows: Vec<[F; NUM_MEMORY_INIT_COLS]> = memory_events
             .par_iter()
             .map(|event| {
-                let MemoryInitializeFinalizeEvent { addr, value, shard, timestamp, used } =
+                let MemoryInitializeFinalizeEvent { addr, value, shard, timestamp } =
                     event.to_owned();
 
                 let mut row = [F::zero(); NUM_MEMORY_INIT_COLS];
@@ -129,7 +129,7 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 cols.shard = F::from_canonical_u32(shard);
                 cols.timestamp = F::from_canonical_u32(timestamp);
                 cols.value = array::from_fn(|i| F::from_canonical_u32((value >> i) & 1));
-                cols.is_real = F::from_canonical_u32(used);
+                cols.is_real = F::one();
 
                 row
             })
@@ -147,14 +147,13 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 cols.is_prev_addr_zero.populate(prev_addr);
                 cols.is_first_comp = F::from_bool(prev_addr != 0);
                 if prev_addr != 0 {
-                    debug_assert!(prev_addr < addr, "prev_addr {} < addr {}", prev_addr, addr);
+                    debug_assert!(prev_addr < addr, "prev_addr {prev_addr} < addr {addr}");
                     let addr_bits: [_; 32] = array::from_fn(|i| (addr >> i) & 1);
                     cols.lt_cols.populate(&previous_addr_bits, &addr_bits);
                 }
             }
             if i != 0 {
-                let prev_is_real = memory_events[i - 1].used;
-                cols.is_next_comp = F::from_canonical_u32(prev_is_real);
+                cols.is_next_comp = F::one();
                 let previous_addr = memory_events[i - 1].addr;
                 assert_ne!(previous_addr, addr);
 
@@ -387,12 +386,6 @@ where
         // address bigger than zero being committed to.
         builder.when_first_row().when(local.is_prev_addr_zero.result).assert_one(next.is_next_comp);
 
-        // Make assertions for specific types of memory chips.
-
-        if self.kind == MemoryChipType::Initialize {
-            builder.when(local.is_real).assert_eq(local.timestamp, AB::F::one());
-        }
-
         // Constraints related to register %x0.
 
         // Register %x0 should always be 0. See 2.6 Load and Store Instruction on
@@ -468,7 +461,7 @@ mod tests {
         println!("{:?}", trace.values);
 
         for mem_event in shard.global_memory_finalize_events {
-            println!("{:?}", mem_event);
+            println!("{mem_event:?}");
         }
     }
 

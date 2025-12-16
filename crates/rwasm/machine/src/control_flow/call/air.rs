@@ -47,7 +47,7 @@ where
             local.is_call + local.is_call_indirect + local.is_call_internal + local.is_return;
         let is_call_ins =
             local.is_call + local.is_call_indirect + local.is_call_internal + local.is_return;
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             local.shard,
             local.clk,
             local.pc.reduce::<AB>(),

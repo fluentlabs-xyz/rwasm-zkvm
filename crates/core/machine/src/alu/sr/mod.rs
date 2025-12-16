@@ -528,6 +528,8 @@ where
             local.a,
             local.b,
             local.c,
+            AB::Expr::one() - local.op_a_not_0,
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -670,8 +672,8 @@ mod tests {
                 )> {
                     let mut malicious_record = record.clone();
                     malicious_record.cpu_events[0].a = op_a as u32;
-                    if let Some(MemoryRecordEnum::Write(mut write_record)) =
-                        malicious_record.cpu_events[0].a_record
+                    if let Some(MemoryRecordEnum::Write(write_record)) =
+                        malicious_record.cpu_events[0].a_record.as_mut()
                     {
                         write_record.value = op_a as u32;
                     }

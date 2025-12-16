@@ -94,18 +94,14 @@ use utils::{sp1_committed_values_digest_bn254, sp1_vkey_digest_bn254, words_to_b
 
 use components::{CpuProverComponents, SP1ProverComponents};
 
+pub use sp1_stark::{CoreSC, InnerSC};
+
 /// The global version for all components of SP1.
 ///
 /// This string should be updated whenever any step in verifying an SP1 proof changes, including
 /// core, recursion, and plonk-bn254. This string is used to download SP1 artifacts and the gnark
 /// docker image.
 pub const SP1_CIRCUIT_VERSION: &str = include_str!("../SP1_VERSION");
-
-/// The configuration for the core prover.
-pub type CoreSC = BabyBearPoseidon2;
-
-/// The configuration for the inner prover.
-pub type InnerSC = BabyBearPoseidon2;
 
 /// The configuration for the outer prover.
 pub type OuterSC = BabyBearPoseidon2Outer;
@@ -323,7 +319,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         elf: &[u8],
         stdin: &SP1Stdin,
         mut context: SP1Context<'a>,
-    ) -> Result<(SP1PublicValues, ExecutionReport), ExecutionError> {
+    ) -> Result<(SP1PublicValues, [u8; 32], ExecutionReport), ExecutionError> {
         context.subproof_verifier = Some(self);
 
         let calculate_gas = context.calculate_gas;
@@ -363,7 +359,19 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 .ok();
         }
 
-        Ok((SP1PublicValues::from(&runtime.state.public_values_stream), runtime.report))
+        let mut committed_value_digest = [0u8; 32];
+        runtime.record.public_values.committed_value_digest.iter().enumerate().for_each(
+            |(i, word)| {
+                let bytes = word.to_le_bytes();
+                committed_value_digest[i * 4..(i + 1) * 4].copy_from_slice(&bytes);
+            },
+        );
+
+        Ok((
+            SP1PublicValues::from(&runtime.state.public_values_stream),
+            committed_value_digest,
+            runtime.report,
+        ))
     }
 
     /// Generate shard proofs which split up and prove the valid execution of a RISC-V program with
@@ -984,12 +992,14 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let proof = prover.prove(witness, build_dir.to_path_buf());
 
         // Verify the proof.
-        prover.verify(
-            &proof,
-            &vkey_hash.as_canonical_biguint(),
-            &committed_values_digest.as_canonical_biguint(),
-            build_dir,
-        );
+        prover
+            .verify(
+                &proof,
+                &vkey_hash.as_canonical_biguint(),
+                &committed_values_digest.as_canonical_biguint(),
+                build_dir,
+            )
+            .unwrap();
 
         proof
     }
@@ -1017,12 +1027,14 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let proof = prover.prove(witness, build_dir.to_path_buf());
 
         // Verify the proof.
-        prover.verify(
-            &proof,
-            &vkey_hash.as_canonical_biguint(),
-            &committed_values_digest.as_canonical_biguint(),
-            build_dir,
-        );
+        prover
+            .verify(
+                &proof,
+                &vkey_hash.as_canonical_biguint(),
+                &committed_values_digest.as_canonical_biguint(),
+                build_dir,
+            )
+            .unwrap();
 
         proof
     }
@@ -1031,9 +1043,14 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         &self,
         input: &SP1RecursionWitnessValues<CoreSC>,
     ) -> Arc<RecursionProgram<BabyBear>> {
+        // Check if the program is in the cache.
         let mut cache = self.lift_programs_lru.lock().unwrap_or_else(|e| e.into_inner());
-        cache
-            .get_or_insert(input.shape(), || {
+        let shape = input.shape();
+        let program = cache.get(&shape).cloned();
+        drop(cache);
+        match program {
+            Some(program) => program,
+            None => {
                 let misses = self.lift_cache_misses.fetch_add(1, Ordering::Relaxed);
                 tracing::debug!("core cache miss, misses: {}", misses);
                 // Get the operations.
@@ -1043,7 +1060,8 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 let input =
                     tracing::debug_span!("read input").in_scope(|| input.read(&mut builder));
                 tracing::debug_span!("verify").in_scope(|| {
-                    SP1RecursiveVerifier::verify(&mut builder, self.core_prover.machine(), input)
+                    // SP1RecursiveVerifier::verify(&mut builder, self.core_prover.machine(), input)
+                    todo!()
                 });
                 let block =
                     tracing::debug_span!("build block").in_scope(|| builder.into_root_block());
@@ -1061,9 +1079,14 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 }
                 let program = Arc::new(program);
                 compiler_span.exit();
+
+                // Insert the program into the cache.
+                let mut cache = self.lift_programs_lru.lock().unwrap_or_else(|e| e.into_inner());
+                cache.put(shape, program.clone());
+                drop(cache);
                 program
-            })
-            .clone()
+            }
+        }
     }
 
     pub fn compress_program(
@@ -1230,14 +1253,14 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         core_inputs
     }
 
-    pub fn get_recursion_deferred_inputs<'a>(
+    pub fn get_recursion_deferred_inputs_with_initial_digest<'a>(
         &'a self,
         vk: &'a StarkVerifyingKey<CoreSC>,
         deferred_proofs: &[SP1ReduceProof<InnerSC>],
+        mut deferred_digest: [Val<CoreSC>; 8],
         batch_size: usize,
     ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [BabyBear; 8]) {
         // Prepare the inputs for the deferred proofs recursive verification.
-        let mut deferred_digest = [Val::<CoreSC>::zero(); DIGEST_SIZE];
         let mut deferred_inputs = Vec::new();
 
         for batch in deferred_proofs.chunks(batch_size) {
@@ -1266,6 +1289,20 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             deferred_digest = Self::hash_deferred_proofs(deferred_digest, batch);
         }
         (deferred_inputs, deferred_digest)
+    }
+
+    pub fn get_recursion_deferred_inputs<'a>(
+        &'a self,
+        vk: &'a StarkVerifyingKey<CoreSC>,
+        deferred_proofs: &[SP1ReduceProof<InnerSC>],
+        batch_size: usize,
+    ) -> (Vec<SP1DeferredWitnessValues<InnerSC>>, [BabyBear; 8]) {
+        self.get_recursion_deferred_inputs_with_initial_digest(
+            vk,
+            deferred_proofs,
+            [Val::<CoreSC>::zero(); DIGEST_SIZE],
+            batch_size,
+        )
     }
 
     /// Generate the inputs for the first layer of recursive proofs.
@@ -1419,6 +1456,7 @@ pub mod tests {
     use crate::build::try_build_plonk_bn254_artifacts_dev;
     use anyhow::Result;
     use build::{build_constraints_and_witness, try_build_groth16_bn254_artifacts_dev};
+    use itertools::Itertools;
     use p3_field::PrimeField32;
 
     use shapes::SP1ProofShape;
@@ -1573,7 +1611,7 @@ pub mod tests {
         );
         let plonk_bn254_proof =
             prover.wrap_plonk_bn254(wrapped_bn254_proof.clone(), &artifacts_dir);
-        println!("{:?}", plonk_bn254_proof);
+        println!("{plonk_bn254_proof:?}");
 
         prover.verify_plonk_bn254(&plonk_bn254_proof, &vk, &public_values, &artifacts_dir)?;
 
@@ -1583,7 +1621,7 @@ pub mod tests {
             &wrapped_bn254_proof.proof,
         );
         let groth16_bn254_proof = prover.wrap_groth16_bn254(wrapped_bn254_proof, &artifacts_dir);
-        println!("{:?}", groth16_bn254_proof);
+        println!("{groth16_bn254_proof:?}");
 
         if verify {
             prover.verify_groth16_bn254(
@@ -1726,5 +1764,53 @@ pub mod tests {
     fn test_e2e_with_deferred_proofs() -> Result<()> {
         setup_logger();
         test_e2e_with_deferred_proofs_prover::<CpuProverComponents>(SP1ProverOpts::auto())
+    }
+
+    /// Checks that the constants, types, etc. in sp1-verifier are valid.
+    ///
+    /// # How to obtain constants
+    ///
+    /// To obtain `RECURSION_VK_ROOT`, just print the value of `prover.recursion_vk_root`.
+    /// To obtain `RECURSION_VK_SET`:
+    /// - Prepare to use `cargo run --release -p sp1-prover --bin build_recursion_vks [...]` to run
+    ///   the shape-generation code. Be aware that it writes to the specified directory, so either
+    ///   prevent writing to the filesystem or avoid committing the generated artifacts.
+    /// - Locate `sp1_prover::shapes::build_vk_map`.
+    ///   - In the `false` branch of `if dummy [...]`, locate the `let height = [...];` statement.
+    ///   - Hardcode the value of `height`. (For example, obtain it with `panic!("{height}")`.) The
+    ///     value is 19 as of the time of writing this.
+    /// - Locate `sp1_prover::shapes::SP1ProofShape::generate`.
+    ///   - Find the iterator consisting of data piped through `Self::Compress`. Comment out
+    ///   - the other iterators so the function just returns the `Self::Compress` iterator.
+    ///   - Print out the returned `vk_set: BTreeSet<[_; 8]>`. Q.E.D.
+    #[test]
+    fn sp1_verifier_valid() {
+        use sp1_verifier::compressed::internal::{
+            self, COMPRESS_DEGREE, RECURSION_VK_ROOT, RECURSION_VK_SET,
+        };
+
+        // The field and stark config types are the same.
+        type F = BabyBear;
+        type SC = BabyBearPoseidon2;
+        let _: Option<internal::F> = Option::<F>::None;
+        let _: Option<internal::SC> = Option::<SC>::None;
+
+        // The compress degree is correct.
+        assert_eq!(COMPRESS_DEGREE, super::COMPRESS_DEGREE);
+
+        let prover = SP1Prover::<CpuProverComponents>::new();
+
+        // The vk root matches.
+        assert_eq!(RECURSION_VK_ROOT.map(F::from_canonical_u32), prover.recursion_vk_root);
+        // The verifier's set of vkeys is a subset of the (true) set of vkeys.
+        assert_eq!(
+            RECURSION_VK_SET.iter().find(|digest| !prover
+                .recursion_vk_map
+                .contains_key(&digest.map(F::from_canonical_u32))),
+            None
+        );
+        // The list canonically represents a set, i.e. it is sorted and consists of unique elements.
+        assert!(RECURSION_VK_SET.is_sorted());
+        assert!(RECURSION_VK_SET.iter().all_unique());
     }
 }

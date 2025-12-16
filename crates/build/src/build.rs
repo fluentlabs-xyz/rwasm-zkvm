@@ -6,7 +6,7 @@ use cargo_metadata::camino::Utf8PathBuf;
 use crate::{
     command::{docker::create_docker_command, local::create_local_command, utils::execute_command},
     utils::{cargo_rerun_if_changed, current_datetime},
-    BuildArgs, BUILD_TARGET, HELPER_TARGET_SUBDIR,
+    BuildArgs, WarningLevel, BUILD_TARGET, HELPER_TARGET_SUBDIR,
 };
 
 /// Build a program with the specified [`BuildArgs`]. The `program_dir` is specified as an argument
@@ -129,16 +129,18 @@ pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
     }
 
     // Build the program with the given arguments.
-    let path_output = if let Some(args) = args {
-        execute_build_program(&args, Some(program_dir.to_path_buf()))
+    let path_output = if let Some(args) = &args {
+        execute_build_program(args, Some(program_dir.to_path_buf()))
     } else {
         execute_build_program(&BuildArgs::default(), Some(program_dir.to_path_buf()))
     };
     if let Err(err) = path_output {
-        panic!("Failed to build SP1 program: {}.", err);
+        panic!("Failed to build SP1 program: {err}.");
     }
 
-    println!("cargo:warning={} built at {}", root_package_name, current_datetime());
+    if args.map(|args| matches!(args.warning_level, WarningLevel::All)).unwrap_or(true) {
+        println!("cargo:warning={} built at {}", root_package_name, current_datetime());
+    }
 }
 
 /// Collects the list of targets that would be built and their output ELF file paths.
@@ -203,6 +205,6 @@ pub fn generate_elf_paths(
 /// Prints cargo directives setting relevant `SP1_ELF_` environment variables.
 fn print_elf_paths_cargo_directives(target_elf_paths: &[(String, Utf8PathBuf)]) {
     for (target_name, elf_path) in target_elf_paths.iter() {
-        println!("cargo:rustc-env=SP1_ELF_{}={}", target_name, elf_path);
+        println!("cargo:rustc-env=SP1_ELF_{target_name}={elf_path}");
     }
 }
