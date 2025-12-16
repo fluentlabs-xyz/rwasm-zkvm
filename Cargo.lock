@@ -8351,6 +8351,7 @@ dependencies = [
  "sp1-recursion-core",
  "sp1-recursion-gnark-ffi",
  "sp1-stark 5.2.3",
+ "test-artifacts",
  "tracing",
  "zkhash",
 ]
@@ -8507,6 +8508,7 @@ dependencies = [
  "strum_macros 0.26.4",
  "sysinfo",
  "tempfile",
+ "test-artifacts",
  "thiserror 1.0.69",
  "tokio",
  "tokio-test",
@@ -8608,6 +8610,7 @@ dependencies = [
  "sp1-sdk",
  "sp1-stark 5.2.3",
  "substrate-bn-succinct",
+ "test-artifacts",
  "thiserror 2.0.17",
 ]
 

@@ -539,7 +539,7 @@ pub mod tests {
     use crate::witness::*;
 
     type F = InnerVal;
-    type A = RiscvAir<F>;
+    type A = RwasmAir<F>;
     type SC = BabyBearPoseidon2;
 
     pub fn build_verify_shard_with_provers<
@@ -555,7 +555,7 @@ pub mod tests {
         setup_logger();
 
         let program = Program::from(elf).unwrap();
-        let machine = RiscvAir::<C::F>::machine(SC::default());
+        let machine = RwasmAir::<C::F>::machine(SC::default());
         let prover = CoreP::new(machine);
         let (pk, vk) = prover.setup(&program);
 
