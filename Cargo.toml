@@ -18,7 +18,7 @@ members = [
   "crates/derive",
   "crates/eval",
   "crates/helper",
- 
+
   "crates/prover",
   "crates/recursion/circuit",
   "crates/recursion/compiler",
@@ -31,11 +31,11 @@ members = [
   "crates/verifier",
   "crates/stark",
   "crates/zkvm/*",
- 
+
   "crates/rwasm/executor",
   "crates/rwasm/machine",
   "crates/rwasm/machinetest",
-  "crates/rwasm/prover"
+  "crates/rwasm/prover",
 ]
 exclude = ["examples/target"]
 resolver = "2"

@@ -609,9 +609,9 @@ where
         }
 
         //
-        // 8. CPU wiring (receive_instruction).
+        // 8. CPU wiring (receive_instruction_old).
         //
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,

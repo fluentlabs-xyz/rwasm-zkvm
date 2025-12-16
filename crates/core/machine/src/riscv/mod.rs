@@ -90,9 +90,12 @@ pub enum RiscvAir<F: PrimeField32> {
     ShiftRight(ShiftRightChip),
     /// An AIR for RISC-V memory instructions.
     Memory(MemoryInstructionsChip),
-
+    /// An AIR for RISC-V AUIPC instruction.
+    AUIPC(AuipcChip),
     /// An AIR for RISC-V branch instructions.
     Branch(BranchChip),
+    /// An AIR for RISC-V jump instructions.
+    Jump(JumpChip),
     /// An AIR for RISC-V ecall instructions.
     SyscallInstrs(SyscallInstrsChip),
     /// A lookup table for byte operations.
@@ -370,9 +373,17 @@ impl<F: PrimeField32> RiscvAir<F> {
         costs.insert(memory_instructions.name(), memory_instructions.cost());
         chips.push(memory_instructions);
 
+        let auipc = Chip::new(RiscvAir::AUIPC(AuipcChip::default()));
+        costs.insert(auipc.name(), auipc.cost());
+        chips.push(auipc);
+
         let branch = Chip::new(RiscvAir::Branch(BranchChip::default()));
         costs.insert(branch.name(), branch.cost());
         chips.push(branch);
+
+        let jump = Chip::new(RiscvAir::Jump(JumpChip::default()));
+        costs.insert(jump.name(), jump.cost());
+        chips.push(jump);
 
         let syscall_instrs = Chip::new(RiscvAir::SyscallInstrs(SyscallInstrsChip::default()));
         costs.insert(syscall_instrs.name(), syscall_instrs.cost());
@@ -430,7 +441,9 @@ impl<F: PrimeField32> RiscvAir<F> {
             RiscvAir::ShiftLeft(ShiftLeft::default()),
             RiscvAir::ShiftRight(ShiftRightChip::default()),
             RiscvAir::Memory(MemoryInstructionsChip::default()),
+            RiscvAir::AUIPC(AuipcChip::default()),
             RiscvAir::Branch(BranchChip::default()),
+            RiscvAir::Jump(JumpChip::default()),
             RiscvAir::SyscallInstrs(SyscallInstrsChip::default()),
             RiscvAir::MemoryLocal(MemoryLocalChip::new()),
             RiscvAir::Global(GlobalChip),
@@ -517,7 +530,9 @@ impl From<RiscvAirDiscriminants> for RiscvAirId {
             RiscvAirDiscriminants::ShiftLeft => RiscvAirId::ShiftLeft,
             RiscvAirDiscriminants::ShiftRight => RiscvAirId::ShiftRight,
             RiscvAirDiscriminants::Memory => RiscvAirId::MemoryInstrs,
+            RiscvAirDiscriminants::AUIPC => RiscvAirId::Auipc,
             RiscvAirDiscriminants::Branch => RiscvAirId::Branch,
+            RiscvAirDiscriminants::Jump => RiscvAirId::Jump,
             RiscvAirDiscriminants::SyscallInstrs => RiscvAirId::SyscallInstrs,
             RiscvAirDiscriminants::ByteLookup => RiscvAirId::Byte,
             RiscvAirDiscriminants::MemoryGlobalInit => RiscvAirId::MemoryGlobalInit,
@@ -575,7 +590,6 @@ pub mod tests {
         SP1CoreOpts, StarkProvingKey, StarkVerifyingKey,
     };
     use strum::IntoEnumIterator;
-
     #[test]
     fn test_primitives_and_machine_air_names_match() {
         let chips = RiscvAir::<BabyBear>::chips();

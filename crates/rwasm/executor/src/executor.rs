@@ -777,10 +777,6 @@ impl<'a> Executor<'a> {
         } else if opcode.is_const_instruction() {
             self.emit_const_event(opcode);
         } else if opcode.is_state_instrucition() {
-            #[cfg(debug_assertions)]
-            {
-                println!("sys_state_event not generated here");
-            }
         } else if opcode.is_call_instruction() {
             let call_sp_record = record.call_sp_access;
             match call_data {
@@ -5376,6 +5372,36 @@ mod tests {
                 assert_eq!(top, expected, "I32Extend16S({:#010x}) mismatch", input);
             }
         }
+    }
+
+    #[test]
+    fn test_sig_id_check() {
+        let ops = vec![
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(2.into()),
+            Opcode::TableGrow(0),
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(0.into()),
+            Opcode::I32Const(2.into()),
+            Opcode::TableInit(0),
+            Opcode::TableGet(0),
+            Opcode::I32Const(1.into()),
+            Opcode::CallIndirect(1u32),
+            Opcode::TableGet(0),
+            Opcode::SignatureCheck(1),
+            Opcode::Return,
+            Opcode::I32Const(99.into()),
+            Opcode::I32Const(98.into()),
+            Opcode::I32Add,
+            Opcode::Return,
+        ];
+
+        let elements = vec![12u32, 12u32];
+        let program = Program::from_instrs(ops).with_elements(elements);
+
+        let mut rt = Executor::new(program, SP1CoreOpts::default());
+
+        rt.run().unwrap();
     }
     /// Helper to run a program and return the value at the top of the stack.
     fn run_and_get_stack_top(opcodes: Vec<Opcode>) -> u32 {

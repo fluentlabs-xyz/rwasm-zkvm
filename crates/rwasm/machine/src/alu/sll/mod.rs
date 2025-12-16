@@ -462,9 +462,9 @@ where
         builder.slice_range_check_u8(&local.bit_shift_result_carry, is_real);
 
         //
-        // 7. CPU wiring (receive_instruction).
+        // 7. CPU wiring (receive_instruction_old).
         //
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,

@@ -200,7 +200,7 @@ where
             local.is_and * AB::Expr::from_canonical_u32(Opcode::I32And.code());
 
         // Receive the instruction from the CPU.
-        builder.receive_instruction(
+        builder.receive_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,
