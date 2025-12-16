@@ -66,7 +66,8 @@ sysinfo = "0.30.13"
 k256 = { version = "0.13.3", features = ["serde"], optional = true } # Signing
 eventsource-stream = { version = "0.2.0", optional = true }          # SSE Extenstion for reqwest
 
-
+[dev-dependencies]
+test-artifacts = { path = "../test-artifacts" }
 tokio-test = { version = "0.4" }
 
 [features]

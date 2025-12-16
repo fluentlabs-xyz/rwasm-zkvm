@@ -2022,9 +2022,9 @@ dependencies = [
 
 [[package]]
 name = "camino"
-version = "1.2.1"
+version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "276a59bf2b2c967788139340c9f0c5b12d7fd6630315c15c217e559de85d2609"
+checksum = "e629a66d692cb9ff1a1c664e41771b3dcaf961985a9774c0eb0bd1b51cf60a48"
 dependencies = [
  "serde_core",
 ]
@@ -2211,9 +2211,9 @@ checksum = "a1d728cc89cf3aee9ff92b05e62b19ee65a02b5702cff7d5a377e32c6ae29d8d"
 
 [[package]]
 name = "cmake"
-version = "0.1.54"
+version = "0.1.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7caa3f9de89ddbe2c607f4101924c5abec803763ae9534e4f4d7d8f84aa81f0"
+checksum = "b042e5d8a74ae91bb0961acd039822472ec99f8ab0948cbf6d1369588f8be586"
 dependencies = [
  "cc",
 ]
@@ -3582,7 +3582,7 @@ dependencies = [
  "k256",
  "num",
  "p256",
- "rwasm",
+ "rwasm 0.0.0",
  "schnellru",
  "sha2 0.10.9",
  "smallvec",
@@ -3607,7 +3607,7 @@ dependencies = [
  "paste",
  "revm-rwasm-precompile",
  "revm-rwasm-primitives",
- "rwasm",
+ "rwasm 0.0.0",
  "serde",
  "strum_macros 0.27.2",
 ]
@@ -6674,9 +6674,9 @@ checksum = "ba39f3699c378cd8970968dcbff9c43159ea4cfbd88d43c00b22f2ef10a435d2"
 
 [[package]]
 name = "reqwest"
-version = "0.12.25"
+version = "0.12.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6eff9328d40131d43bd911d42d79eb6a47312002a4daefc9e37f17e74a7701a"
+checksum = "3b4c14b2d9afca6a60277086b0cc6a6ae0b568f6f7916c943a8cdc79f8be240f"
 dependencies = [
  "base64 0.22.1",
  "bytes 1.11.0",
@@ -7140,6 +7140,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "rwasm"
+version = "0.3.2"
+source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing-new#0f2b612790a8dbb7fe1e9f3ae24e24a05dd620d1"
+dependencies = [
+ "anyhow",
+ "bincode 2.0.1",
+ "bitvec",
+ "bytes 1.11.0",
+ "downcast-rs 2.0.2",
+ "futures",
+ "hashbrown 0.15.5",
+ "libm",
+ "num-derive",
+ "num-traits",
+ "paste",
+ "serde",
+ "smallvec",
+ "spin 0.10.0",
+ "tiny-keccak",
+ "wasmi",
+ "wasmparser-nostd",
+ "wasmtime-rwasm",
+]
+
+[[package]]
 name = "rwasm-executor"
 version = "5.2.3"
 dependencies = [
@@ -7167,7 +7192,7 @@ dependencies = [
  "range-set-blaze",
  "rrs-succinct",
  "rustc-demangle",
- "rwasm",
+ "rwasm 0.3.2",
  "serde",
  "serde_json",
  "sp1-curves 5.2.3",
@@ -7219,7 +7244,7 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "rayon-scan",
- "rwasm",
+ "rwasm 0.3.2",
  "rwasm-executor",
  "serde",
  "serde_json",
@@ -7276,7 +7301,7 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "rayon-scan",
- "rwasm",
+ "rwasm 0.3.2",
  "rwasm-executor",
  "rwasm-machine",
  "serde",
@@ -7325,7 +7350,7 @@ dependencies = [
  "p3-symmetric",
  "p3-util",
  "rayon",
- "rwasm",
+ "rwasm 0.3.2",
  "rwasm-executor",
  "rwasm-machine",
  "serde",
@@ -8351,6 +8376,7 @@ dependencies = [
  "sp1-recursion-core",
  "sp1-recursion-gnark-ffi",
  "sp1-stark 5.2.3",
+ "test-artifacts",
  "tracing",
  "zkhash",
 ]
@@ -8507,6 +8533,7 @@ dependencies = [
  "strum_macros 0.26.4",
  "sysinfo",
  "tempfile",
+ "test-artifacts",
  "thiserror 1.0.69",
  "tokio",
  "tokio-test",
@@ -8608,6 +8635,7 @@ dependencies = [
  "sp1-sdk",
  "sp1-stark 5.2.3",
  "substrate-bn-succinct",
+ "test-artifacts",
  "thiserror 2.0.17",
 ]
 
