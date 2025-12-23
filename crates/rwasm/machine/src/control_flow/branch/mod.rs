@@ -168,7 +168,6 @@ mod tests {
         let cols: &mut BranchColumns<BabyBear> = row0.borrow_mut();
 
         // Force "not branching" path (fall-through), and lie about condition.
-        cols.not_branching = BabyBear::one();
         cols.is_branching = BabyBear::zero();
         cols.is_branching_table = BabyBear::zero();
         cols.is_branching_non_table = BabyBear::zero();
