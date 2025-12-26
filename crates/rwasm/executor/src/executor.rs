@@ -739,7 +739,7 @@ impl<'a> Executor<'a> {
                 res_hi,
                 record,
                 0u32,
-                call_data,
+                call_data.clone(),
             );
         } else {
             self.emit_cpu(
@@ -756,7 +756,7 @@ impl<'a> Executor<'a> {
                 res_hi,
                 record,
                 0u32,
-                call_data,
+                call_data.clone(),
             );
         }
 
@@ -1395,7 +1395,7 @@ impl<'a> Executor<'a> {
             op_state.res,
             op_state.res_hi,
             op_state.memory_access,
-            op_state.call_state,
+            op_state.call_state.clone(),
             op_state.fat_op.clone(),
             dataop_event.cloned(),
         );

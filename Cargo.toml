@@ -79,7 +79,7 @@ rwasm-machine = { path = "crates/rwasm/machine", version = "5.2.3", default-feat
 rwasm-machine-test = { path = "crates/rwasm/machinetest", version = "5.2.3", default-features = false }
 
 #rwasm
-rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/tracing-new", features = [
+rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/add-call", features = [
     "std",
     "tracing",
 ] }
@@ -133,4 +133,10 @@ default.extend-ignore-words-re = ["(?i)groth", "TRE"]
 
 [patch.crates-io]
 sp1-lib = { path = "crates/zkvm/lib" }
+rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/add-call", features = [
+    "std",
+    "tracing",
+] }
+
+
 [workspace.lints]
