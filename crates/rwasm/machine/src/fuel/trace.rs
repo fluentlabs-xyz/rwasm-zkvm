@@ -6,7 +6,6 @@ use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
-use rwasm::event;
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, EmptyByteRecord, FuelEvent},
     ExecutionRecord, Opcode, Program,

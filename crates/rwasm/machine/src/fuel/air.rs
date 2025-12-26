@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 
-use p3_air::{Air, AirBuilder};
+use p3_air::{Air};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
 use rwasm::mem_index::TypedAddress;

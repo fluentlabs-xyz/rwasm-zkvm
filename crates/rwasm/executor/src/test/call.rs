@@ -1,5 +1,7 @@
-use fluentbase_types::SysFuncIdx;
+
 #[cfg(test)]
+mod test{
+    use fluentbase_types::SysFuncIdx;
 use rwasm::mem_index::SP_START;
 use sp1_stark::SP1CoreOpts;
 
@@ -24,3 +26,5 @@ fn test_call() {
     let mut runtime = Executor::new(program, SP1CoreOpts::default());
     runtime.run().unwrap();
 }
+}
+

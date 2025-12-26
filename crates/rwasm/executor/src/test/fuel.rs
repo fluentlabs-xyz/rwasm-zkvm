@@ -1,5 +1,6 @@
 #[cfg(test)]
-use rwasm::mem_index::SP_START;
+mod test{
+    use rwasm::mem_index::SP_START;
 use sp1_stark::SP1CoreOpts;
 
 use crate::{Executor, Opcode, Program};
@@ -27,3 +28,5 @@ fn test_consume_fuel_stack() {
     runtime.run().unwrap();
     assert_eq!(runtime.store.fuel_consumed(), 5000);
 }
+}
+
