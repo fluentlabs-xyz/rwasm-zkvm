@@ -32,6 +32,7 @@ use sp1_primitives::consts::BABYBEAR_PRIME;
 use sp1_stark::{air::PublicValues, SP1CoreOpts};
 use strum::IntoEnumIterator;
 use thiserror::Error;
+use tracing::warn;
 
 use crate::{
     context::{IoOptions, SP1Context},
@@ -836,7 +837,7 @@ impl<'a> Executor<'a> {
             // Fuel consumption opcodes do not emit any events.
             self.emit_fuel_event(clk, pc, next_pc, opcode, record);
         } else {
-            panic!("Unimplemented opcode in emit_events: {:?}", opcode);
+            println!("Unimplemented opcode in emit_events: {:?}", opcode);
         }
     }
 
