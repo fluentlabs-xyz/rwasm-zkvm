@@ -32,7 +32,6 @@ use sp1_primitives::consts::BABYBEAR_PRIME;
 use sp1_stark::{air::PublicValues, SP1CoreOpts};
 use strum::IntoEnumIterator;
 use thiserror::Error;
-use tracing::warn;
 
 use crate::{
     context::{IoOptions, SP1Context},
