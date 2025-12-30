@@ -11,6 +11,10 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::*;
 use rwasm::Opcode;
 
+use crate::{
+    air::WordAirBuilder,
+    utils::{next_power_of_two, zeroed_f_vec},
+};
 use rwasm_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ByteOpcode, ExecutionRecord, Program, DEFAULT_PC_INC,
@@ -20,8 +24,6 @@ use sp1_stark::{
     air::{MachineAir, SP1AirBuilder},
     Word,
 };
-
-use crate::utils::{next_power_of_two, zeroed_f_vec};
 
 /// The number of main trace columns for `LtChip`.
 pub const NUM_LT_COLS: usize = size_of::<LtCols<u8>>();
@@ -337,6 +339,11 @@ where
 
         // Optional hygiene: padding rows should not select a differing byte.
         builder.when_not(is_real.clone()).assert_zero(sum_flags.clone());
+
+        // If no differing byte selected, all bytes must be equal
+        builder.when_not(sum_flags.clone()).assert_word_eq(b_comp.clone(), c_comp.clone());
+
+        builder.when_not(sum_flags.clone()).assert_zero(local.sltu);
 
         // Enforce "first differing byte" semantics and compute the selected comparison bytes.
         let mut is_inequality_visited = AB::Expr::zero();
