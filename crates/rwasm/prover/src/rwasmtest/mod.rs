@@ -4,6 +4,7 @@ mod bitwise;
 mod call;
 mod comp;
 mod extend;
+mod lt;
 mod rotate;
 mod table_grow;
 mod table_init;

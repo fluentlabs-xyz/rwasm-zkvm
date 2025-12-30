@@ -927,6 +927,15 @@ impl<'a> Executor<'a> {
                 let lt_comp_event = make_lt(lt_res, event.b, event.c);
                 let gt_comp_event = make_lt(gt_res, event.c, event.b);
 
+                let ev_eqz = AluEvent {
+                    pc: UNUSED_PC,
+                    opcode: Opcode::I32LtU,
+                    a: u32::from(event.b == 0),
+                    b: event.b,
+                    c: 1,
+                    code: Opcode::I32LtU.code(),
+                };
+
                 match opcode {
                     // Opcodes that only need a "less than" check.
                     Opcode::I32LtS | Opcode::I32LtU => {
@@ -938,16 +947,40 @@ impl<'a> Executor<'a> {
                     }
                     // b >= c is equivalent to !(b < c)
                     Opcode::I32GeS | Opcode::I32GeU => {
-                        self.record.lt_events.push(AluEvent { a: 1 - gt_res, ..lt_comp_event });
+                        self.record.lt_events.push(lt_comp_event);
                     }
                     // b <= c is equivalent to !(c < b)
                     Opcode::I32LeS | Opcode::I32LeU => {
-                        self.record.lt_events.push(AluEvent { a: 1 - lt_res, ..gt_comp_event });
-                    }
-                    // Equality checks need to know if `b < c` and `c < b` are both false.
-                    Opcode::I32Eq | Opcode::I32Eqz | Opcode::I32Ne => {
                         self.record.lt_events.push(gt_comp_event);
+                    }
+                    // EQZ(x): CPU AIR expects two LtU checks:
+                    // 1. LtU(x, 0) -> always false (0)
+                    // 2. LtU(0, x) -> true if x > 0 (i.e. x != 0)
+                    Opcode::I32Eqz => {
+                        self.record.lt_events.push(AluEvent {
+                            pc: UNUSED_PC,
+                            opcode: Opcode::I32LtU,
+                            a: 0, // x < 0 is always false for unsigned
+                            b: event.b,
+                            c: 0,
+                            code: Opcode::I32LtU.code(),
+                        });
+                        self.record.lt_events.push(AluEvent {
+                            pc: UNUSED_PC,
+                            opcode: Opcode::I32LtU,
+                            a: u32::from(event.b != 0), // 0 < x is true if x != 0
+                            b: 0,
+                            c: event.b,
+                            code: Opcode::I32LtU.code(),
+                        });
+                    }
+
+                    // EQ(b,c) / NE(b,c): CPU AIR expects two LtU checks:
+                    // 1. LtU(b, c)
+                    // 2. LtU(c, b)
+                    Opcode::I32Eq | Opcode::I32Ne => {
                         self.record.lt_events.push(lt_comp_event);
+                        self.record.lt_events.push(gt_comp_event);
                     }
                     _ => unreachable!(),
                 }
