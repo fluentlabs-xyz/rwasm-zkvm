@@ -48,10 +48,7 @@ enum-map = { version = "2.7.3" }
 
 
 # rwasm
-rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/tracing", features = [
-    "std",
-    "tracing",
-] }
+rwasm = { workspace = true}
 
 
 

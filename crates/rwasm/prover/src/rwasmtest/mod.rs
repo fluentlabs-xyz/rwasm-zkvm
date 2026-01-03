@@ -1,11 +1,13 @@
 mod addmul64;
 mod addsub;
 mod bitwise;
+mod branch;
 mod call;
 mod comp;
 mod divrem;
 mod extend;
 mod mul;
+mod lt;
 mod rotate;
 mod table_grow;
 mod table_init;
