@@ -1,3 +1,6 @@
+use p3_air::AirBuilder;
+use sp1_stark::Word;
+
 pub mod concurrency;
 mod logger;
 mod prove;
@@ -6,7 +9,7 @@ mod test;
 pub mod uni_stark;
 
 pub use logger::*;
-use p3_field::Field;
+use p3_field::{AbstractField, Field};
 pub use prove::*;
 use sp1_curves::params::Limbs;
 pub use span::*;
@@ -142,9 +145,8 @@ where
 }
 
 /// Returns whether the `SP1_DEBUG` environment variable is enabled or disabled.
-///
-/// This variable controls whether backtraces are attached to compiled circuit programs, as well
-/// as whether cycle tracking is performed for circuit programs.
+// This variable controls whether backtraces are attached to compiled circuit programs, as well
+// as whether cycle tracking is performed for circuit programs.
 ///
 /// By default, the variable is disabled.
 pub fn sp1_debug_mode() -> bool {
@@ -161,4 +163,12 @@ pub fn zeroed_f_vec<F: Field>(len: usize) -> Vec<F> {
 
     let vec = vec![0u32; len];
     unsafe { std::mem::transmute::<Vec<u32>, Vec<F>>(vec) }
+}
+
+pub fn word_to_expr<AB: AirBuilder>(word: &Word<AB::Var>) -> AB::Expr {
+    let mut expr = AB::Expr::zero();
+    for (i, byte) in word.0.iter().enumerate() {
+        expr = expr + (*byte).into() * AB::Expr::from_canonical_u32(1 << (i * 8));
+    }
+    expr
 }

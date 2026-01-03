@@ -114,7 +114,6 @@ impl<F: PrimeField> InstructionCols<F> {
                     self.is_comparison_alu = F::one();
                 }
                 _ => {
-                    println!("ordinary:");
                     self.is_ordinary_alu = F::one();
                 }
             }

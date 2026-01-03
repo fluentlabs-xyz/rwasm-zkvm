@@ -4,11 +4,13 @@ use rwasm::{is_multi_align, Opcode};
 
 use crate::{
     events::{AluEvent, BranchEvent, MemInstrEvent},
-    utils::{get_msb, get_quotient_and_remainder, is_signed_operation},
-    Executor, I32MULHU_CODE, I32MULH_CODE, UNUSED_PC,
+    //utils::{get_msb, get_quotient_and_remainder, is_signed_operation},
+    Executor,
+    UNUSED_PC,
+    //I32MULHU_CODE, I32MULH_CODE,
 };
 use rwasm::mem_index::GLOBAL_MEM_START;
-/// Emits the dependencies for division and remainder operations.
+/*/// Emits the dependencies for division and remainder operations.
 #[allow(clippy::too_many_lines)]
 pub fn emit_divrem_dependencies(executor: &mut Executor, event: AluEvent) {
     let (quotient, remainder) = get_quotient_and_remainder(event.b, event.c, event.opcode);
@@ -103,7 +105,7 @@ pub fn emit_divrem_dependencies(executor: &mut Executor, event: AluEvent) {
         executor.record.lt_events.push(lt_event);
     }
 }
-
+*/
 /// Emit the dependencies for memory opcodes.
 pub fn emit_memory_dependencies(executor: &mut Executor, event: MemInstrEvent) {
     if matches!(

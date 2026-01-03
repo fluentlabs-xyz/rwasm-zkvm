@@ -1,7 +1,7 @@
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
 use crate::{
-    dependencies::{emit_branch_dependencies, emit_divrem_dependencies, emit_memory_dependencies},
+    dependencies::{emit_branch_dependencies, emit_memory_dependencies}, //emit_divrem_dependencies
     estimator::RecordEstimator,
     events::{CallEvent, ConstEvent, I64AluEvent, PrecompileEvent, SyscallEvent},
 };
@@ -993,7 +993,7 @@ impl<'a> Executor<'a> {
             }
             Opcode::I32DivS | Opcode::I32DivU | Opcode::I32RemS | Opcode::I32RemU => {
                 self.record.divrem_events.push(event);
-                emit_divrem_dependencies(self, event);
+                //emit_divrem_dependencies(self, event);
             }
             Opcode::I32Rotl | Opcode::I32Rotr => {
                 self.record.rotate_events.push(event);
@@ -2822,31 +2822,120 @@ mod tests {
     }
     #[test]
     fn test_divs_divu() {
-        let sp_value: u32 = SP_START;
-        let x_value: u32 = 320;
-        let y_value: u32 = 10;
-        let z_value: u32 = 2;
-        let mut mem = HashMap::new();
-        mem.insert(sp_value - 8, x_value);
-        mem.insert(sp_value - 4, y_value);
-        mem.insert(sp_value, z_value);
+        use std::collections::HashMap;
 
-        let opcodes = vec![
-            Opcode::I32Const(x_value.into()),
-            Opcode::I32Const(y_value.into()),
-            Opcode::I32Const(z_value.into()),
-            Opcode::I32DivS, // divide x_value by y_value and return quotient (x and y are signed)
-            Opcode::I32DivU, // divide x_value by y_value and return quotient
+        // Helper: mirror the semantics used in the DivRem chip tests.
+        fn compute_expected(opcode: Opcode, b: u32, c: u32) -> u32 {
+            match opcode {
+                Opcode::I32DivU => {
+                    if c == 0 {
+                        0
+                    } else {
+                        b / c
+                    }
+                }
+                Opcode::I32RemU => {
+                    if c == 0 {
+                        b
+                    } else {
+                        b % c
+                    }
+                }
+                Opcode::I32DivS => {
+                    if c == 0 {
+                        0
+                    } else {
+                        (b as i32).wrapping_div(c as i32) as u32
+                    }
+                }
+                Opcode::I32RemS => {
+                    if c == 0 {
+                        b
+                    } else {
+                        (b as i32).wrapping_rem(c as i32) as u32
+                    }
+                }
+                _ => panic!("unexpected opcode in div/rem test: {:?}", opcode),
+            }
+        }
+
+        let sp_value: u32 = SP_START;
+
+        // Same edge-case set as the DivRemChip proof test.
+        let instructions: &[(u32, u32)] = &[
+            // --- Basic Identity ---
+            (0, 1),   // 0 / 1 = 0
+            (1, 1),   // 1 / 1 = 1
+            (50, 50), // x / x = 1
+            // --- Basic Arithmetic / remainder sanity ---
+            (100, 3), // 100 / 3, remainder 1
+            (1, 2),   // 1 / 2: quotient 0, remainder 1
+            // --- Unsigned Boundaries ---
+            (u32::MAX, 1),            // Max / 1
+            (u32::MAX, u32::MAX),     // Max / Max
+            (u32::MAX, 2),            // Large / Small
+            (u32::MAX, u32::MAX - 1), // Max / (Max-1)
+            (1, u32::MAX),            // Small / Large
+            // --- Signed Boundaries (Two's Complement) ---
+            (i32::MIN as u32, 1),               // INT_MIN / 1
+            (i32::MAX as u32, 1),               // INT_MAX / 1
+            (i32::MIN as u32, i32::MIN as u32), // INT_MIN / INT_MIN
+            // --- Signed Overflow-style Case (wrapping semantics) ---
+            //(i32::MIN as u32, u32::MAX), // INT_MIN / -1
+
+            // --- Signed Negative Operand Combos ---
+            ((-5i32) as u32, 2),              // -5 / 2
+            (5, (-2i32) as u32),              // 5 / -2
+            ((-5i32) as u32, (-2i32) as u32), // -5 / -2
+            // --- Division by Zero Cases ---
+            //   (100, 0),
+            //   (0, 0),
+            //   (u32::MAX, 0),
+
+            // Extra mixed sign edge cases
+            //   (0x80000000u32, -1i32 as u32),
+            (-1i32 as u32, 0x80000000u32),
         ];
 
-        let program = Program::from_instrs(opcodes);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
-            x_value / (y_value / z_value)
-        );
-        assert_eq!(sp_value, runtime.state.sp + 4);
+        let opcodes = [Opcode::I32DivU, Opcode::I32DivS, Opcode::I32RemU, Opcode::I32RemS];
+
+        for &(b, c) in instructions {
+            for &op in &opcodes {
+                println!("next test: {:?} with b = {:#010x}, c = {:#010x}", op, b, c);
+                // For each (b, c, op) we run a tiny program: push b, push c, apply op.
+                let program = Program::from_instrs(vec![
+                    Opcode::I32Const(b.into()),
+                    Opcode::I32Const(c.into()),
+                    op,
+                ]);
+
+                let mut runtime = Executor::new(program, SP1CoreOpts::default());
+                runtime.run().unwrap();
+
+                // Top-of-stack is at runtime.state.sp (stack grows down).
+                let top =
+                    runtime.state.memory.get(runtime.state.sp).expect("stack top must exist").value;
+
+                let expected = compute_expected(op, b, c);
+
+                assert_eq!(
+                    top, expected,
+                    "div/rem result mismatch for {:?} with b = {:#010x}, c = {:#010x}",
+                    op, b, c
+                );
+
+                // Stack pointer should have moved by exactly one 32-bit word:
+                // initial SP = SP_START, final SP = SP_START - 4  =>  SP_START == sp + 4
+                assert_eq!(
+                    sp_value,
+                    runtime.state.sp + 4,
+                    "unexpected SP movement for {:?} with b = {:#010x}, c = {:#010x}",
+                    op,
+                    b,
+                    c
+                );
+            }
+        }
     }
     #[test]
     fn test_rems_remu() {
@@ -2872,6 +2961,7 @@ mod tests {
         );
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
+
     #[test]
     fn test_shl() {
         let sp_value: u32 = SP_START;
@@ -2896,6 +2986,7 @@ mod tests {
         );
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
+
     #[test]
     fn test_shr_shru() {
         let sp_value: u32 = SP_START;
