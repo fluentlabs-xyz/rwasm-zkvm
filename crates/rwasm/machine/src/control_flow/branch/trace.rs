@@ -133,8 +133,6 @@ impl BranchChip {
             } else {
                 cols.is_branching_non_table = F::from_bool(true);
             }
-        } else {
-            cols.not_branching = F::one();
         }
     }
 }

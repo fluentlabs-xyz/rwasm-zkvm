@@ -11,79 +11,80 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::*;
 use rwasm::Opcode;
 
+use crate::{
+    air::WordAirBuilder,
+    utils::{next_power_of_two, zeroed_f_vec},
+};
 use rwasm_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ByteOpcode, ExecutionRecord, Program, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
-    air::{BaseAirBuilder, MachineAir, SP1AirBuilder},
+    air::{MachineAir, SP1AirBuilder},
     Word,
 };
-
-use crate::utils::{next_power_of_two, zeroed_f_vec};
 
 /// The number of main trace columns for `LtChip`.
 pub const NUM_LT_COLS: usize = size_of::<LtCols<u8>>();
 
-/// A chip that implements bitwise operations for the opcodes SLT and SLTU.
+/// A chip that implements comparisons for I32LtS and I32LtU (used as a building block for others).
 #[derive(Default)]
 pub struct LtChip;
 
-/// The column layout for the chip.
+/// Optimized (degree<=3) column layout.
+///
+/// Removed (vs original):
+/// - op_a_not_0 (always 1 in event_to_row; instead we constrain `a` for all rows)
+/// - msb_b, msb_c (derived in AIR from masked bytes)
+/// - is_comp_eq (derived as `1 - sum_flags`)
+/// - is_sign_eq (derived as `1 - (bit_b-bit_c)^2`)
+/// - byte_equality_check[4] (unused)
 #[derive(AlignedBorrow, Default, Clone, Copy)]
 #[repr(C)]
 pub struct LtCols<T> {
     /// The program counter.
     pub pc: T,
 
-    /// If the opcode is SLT.
+    /// If the opcode is SLT (signed).
     pub is_slt: T,
 
-    /// If the opcode is SLTU.
+    /// If the opcode is SLTU (unsigned).
     pub is_sltu: T,
 
-    /// The output operand.
+    /// The output operand (1 byte; later extended to a word by receive_instruction).
     pub a: T,
 
-    /// The first input operand.
+    /// The first input operand (little-endian bytes).
     pub b: Word<T>,
 
-    /// The second input operand.
+    /// The second input operand (little-endian bytes).
     pub c: Word<T>,
 
-    /// Whether the first operand is not register 0.
-    pub op_a_not_0: T,
-
-    /// Boolean flag to indicate which byte pair differs if the operands are not equal.
+    /// Boolean flags indicating which *most-significant* differing byte is selected.
+    /// Exactly one is set iff b_comp != c_comp.
     pub byte_flags: [T; 4],
 
-    /// The masking b\[3\] & 0x7F.
+    /// b[3] & 0x7F (only meaningful for signed LT).
     pub b_masked: T,
-    /// The masking c\[3\] & 0x7F.
+
+    /// c[3] & 0x7F (only meaningful for signed LT).
     pub c_masked: T,
-    /// An inverse of differing byte if c_comp != b_comp.
+
+    /// Inverse hint for proving inequality of selected bytes when b_comp != c_comp.
     pub not_eq_inv: T,
 
-    /// The most significant bit of operand b.
-    pub msb_b: T,
-    /// The most significant bit of operand c.
-    pub msb_c: T,
-    /// The multiplication msb_b * is_slt.
+    /// bit_b = msb(b) * is_slt   (0 for SLTU, sign bit for SLT).
     pub bit_b: T,
-    /// The multiplication msb_c * is_slt.
+
+    /// bit_c = msb(c) * is_slt
     pub bit_c: T,
 
-    /// The result of the intermediate SLTU operation `b_comp < c_comp`.
+    /// sltu = b_comp < c_comp where b_comp/c_comp are described in `eval()`.
     pub sltu: T,
-    /// A bollean flag for an intermediate comparison.
-    pub is_comp_eq: T,
-    /// A boolean flag for comparing the sign bits.
-    pub is_sign_eq: T,
-    /// The comparison bytes to be looked up.
+
+    /// The selected comparison bytes (0,0 if equal; otherwise the first differing byte-pair).
     pub comparison_bytes: [T; 2],
-    /// Boolean fags to indicate which byte differs between the perands `b_comp`, `c_comp`.
-    pub byte_equality_check: [T; 4],
 }
 
 impl LtCols<u32> {
@@ -96,7 +97,6 @@ impl LtCols<u32> {
 
 impl<F: PrimeField32> MachineAir<F> for LtChip {
     type Record = ExecutionRecord;
-
     type Program = Program;
 
     fn name(&self) -> String {
@@ -108,12 +108,12 @@ impl<F: PrimeField32> MachineAir<F> for LtChip {
         input: &ExecutionRecord,
         _: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
-        // Generate the trace rows for each event.
         let nb_rows = input.lt_events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
         let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
+
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_LT_COLS);
-        let chunk_size = std::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
+        let chunk_size = core::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
 
         values.chunks_mut(chunk_size * NUM_LT_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
@@ -130,13 +130,11 @@ impl<F: PrimeField32> MachineAir<F> for LtChip {
             },
         );
 
-        // Convert the trace to a row major matrix.
-
         RowMajorMatrix::new(values, NUM_LT_COLS)
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
-        let chunk_size = std::cmp::max(input.lt_events.len() / num_cpus::get(), 1);
+        let chunk_size = core::cmp::max(input.lt_events.len() / num_cpus::get(), 1);
 
         let blu_batches = input
             .lt_events
@@ -169,7 +167,6 @@ impl<F: PrimeField32> MachineAir<F> for LtChip {
 }
 
 impl LtChip {
-    /// Create a row from an event.
     fn event_to_row<F: PrimeField32>(
         &self,
         event: &AluEvent,
@@ -185,15 +182,17 @@ impl LtChip {
         cols.a = F::from_canonical_u8(a[0]);
         cols.b = Word(b.map(F::from_canonical_u8));
         cols.c = Word(c.map(F::from_canonical_u8));
-        cols.op_a_not_0 = F::from_bool(true); //<-- added
 
-        // If this is SLT, mask the MSB of b & c before computing cols.bits.
+        cols.is_slt = F::from_bool(event.code == Opcode::I32LtS.code());
+        cols.is_sltu = F::from_bool(event.code == Opcode::I32LtU.code());
+
+        // If this is SLT, mask the MSB of b & c (clear sign bit in the top byte).
         let masked_b = b[3] & 0x7f;
         let masked_c = c[3] & 0x7f;
         cols.b_masked = F::from_canonical_u8(masked_b);
         cols.c_masked = F::from_canonical_u8(masked_c);
 
-        // Send the masked interaction.
+        // AND lookups for mask correctness.
         blu.add_byte_lookup_event(ByteLookupEvent {
             opcode: ByteOpcode::AND,
             a1: masked_b as u16,
@@ -209,46 +208,48 @@ impl LtChip {
             c: 0x7f,
         });
 
+        // Precompute b_comp/c_comp for software (just to set sltu & find differing byte).
         let mut b_comp = b;
         let mut c_comp = c;
         if event.code == Opcode::I32LtS.code() {
             b_comp[3] = masked_b;
             c_comp[3] = masked_c;
         }
-        cols.sltu = F::from_bool(b_comp < c_comp);
-        cols.is_comp_eq = F::from_bool(b_comp == c_comp);
 
-        // Set the byte equality flags.
+        cols.sltu = F::from_bool(b_comp < c_comp);
+
+        // Set bit_b/bit_c (0 for SLTU, msb for SLT).
+        let msb_b = (b[3] >> 7) & 1;
+        let msb_c = (c[3] >> 7) & 1;
+        cols.bit_b = F::from_canonical_u8(msb_b) * cols.is_slt;
+        cols.bit_c = F::from_canonical_u8(msb_c) * cols.is_slt;
+
+        // Set the byte flags: find the first differing byte from MSB->LSB (index 3..0).
+        // If equal, all flags stay 0 and comparison_bytes stay (0,0).
         for (b_byte, c_byte, flag) in
             izip!(b_comp.iter().rev(), c_comp.iter().rev(), cols.byte_flags.iter_mut().rev())
         {
             if c_byte != b_byte {
                 *flag = F::one();
                 cols.sltu = F::from_bool(b_byte < c_byte);
-                let b_byte = F::from_canonical_u8(*b_byte);
-                let c_byte = F::from_canonical_u8(*c_byte);
-                cols.not_eq_inv = (b_byte - c_byte).inverse();
-                cols.comparison_bytes = [b_byte, c_byte];
+
+                let b_f = F::from_canonical_u8(*b_byte);
+                let c_f = F::from_canonical_u8(*c_byte);
+
+                cols.not_eq_inv = (b_f - c_f).inverse();
+                cols.comparison_bytes = [b_f, c_f];
                 break;
             }
         }
 
-        cols.msb_b = F::from_canonical_u8((b[3] >> 7) & 1);
-        cols.msb_c = F::from_canonical_u8((c[3] >> 7) & 1);
-        cols.is_sign_eq = if event.code == Opcode::I32LtS.code() {
-            F::from_bool((b[3] >> 7) == (c[3] >> 7))
-        } else {
-            F::one()
-        };
+        // Final output check (debug-only): a = bit_b*(1-bit_c) + is_sign_eq*sltu
+        // where is_sign_eq = 1 - (bit_b - bit_c)^2.
+        let d = cols.bit_b - cols.bit_c;
+        let is_sign_eq = F::one() - d * d;
+        let expected_a = cols.bit_b * (F::one() - cols.bit_c) + is_sign_eq * cols.sltu;
+        debug_assert_eq!(cols.a, expected_a);
 
-        cols.is_slt = F::from_bool(event.code == Opcode::I32LtS.code());
-        cols.is_sltu = F::from_bool(event.code == Opcode::I32LtU.code());
-
-        cols.bit_b = cols.msb_b * cols.is_slt;
-        cols.bit_c = cols.msb_c * cols.is_slt;
-
-        assert_eq!(cols.a, cols.bit_b * (F::one() - cols.bit_c) + cols.is_sign_eq * cols.sltu);
-
+        // LTU lookup on selected bytes (0,0 in equal case).
         blu.add_byte_lookup_event(ByteLookupEvent {
             opcode: ByteOpcode::LTU,
             a1: cols.sltu.as_canonical_u32() as u16,
@@ -274,34 +275,22 @@ where
         let local = main.row_slice(0);
         let local: &LtCols<AB::Var> = (*local).borrow();
 
+        // Operation selectors.
+        builder.assert_bool(local.is_slt);
+        builder.assert_bool(local.is_sltu);
         let is_real = local.is_slt + local.is_sltu;
+        builder.assert_bool(is_real.clone());
 
-        // We can compute the signed set-less-than as follows:
-        // SLT (signed) = b_s * (1 - c_s) + (b_s == c_s) * SLTU(b_<s, c_<s)
-        // Source: Jolt 5.3: Set Less Than (https://people.cs.georgetown.edu/jthaler/Jolt-paper.pdf)
-
-        // We will compute SLTU(b_comp, c_comp) where `b_comp` and `c_comp` where:
-        // * if the operation is `STLU`, `b_comp = b` and `c_comp = c`
-        // * if the operation is `STL`, `b_comp = b & 0x7FFFFFFF` and `c_comp = c & 0x7FFFFFFF``
-        //
-        // We will set booleans `b_bit` and `c_bit` so that:
-        // * If the operation is `SLTU`, then `b_bit = 0` and `c_bit = 0`.
-        // * If the operation is `SLT`, then `b_bit`, `c_bit` are the most significant bits of `b`
-        //   and `c` respectively.
-        //
-        // Then, we will compute the answer as:
-        // SLT = b_bit * (1 - c_bit) + (b_bit == c_bit) * SLTU(b_comp, c_comp)
-
-        // First, we set up the values of `b_comp` and `c_comp`.
+        // Build b_comp/c_comp in expressions:
+        // - for SLTU: b_comp = b, c_comp = c
+        // - for SLT:  b_comp[3] = b_masked, c_comp[3] = c_masked (top bit cleared)
         let mut b_comp: Word<AB::Expr> = local.b.map(|x| x.into());
         let mut c_comp: Word<AB::Expr> = local.c.map(|x| x.into());
 
         b_comp[3] = local.b[3] * local.is_sltu + local.b_masked * local.is_slt;
         c_comp[3] = local.c[3] * local.is_sltu + local.c_masked * local.is_slt;
 
-        // Constrain the `masked_b` and `masked_c` values via lookup.
-        //
-        // The values are given by `b_masked = b[3] & 0x7F` and `c_masked = c[3] & 0x7F`.
+        // Mask correctness via AND lookup (gated by is_real).
         builder.send_byte(
             ByteOpcode::AND.as_field::<AB::F>(),
             local.b_masked,
@@ -317,105 +306,79 @@ where
             is_real.clone(),
         );
 
-        // Set the values of `b_bit` and `c_bit`.
-        builder.assert_eq(local.bit_b, local.msb_b * local.is_slt);
-        builder.assert_eq(local.bit_c, local.msb_c * local.is_slt);
-
-        // Assert the correctness of `local.msb_b` and `local.msb_c` using the mask.
+        // Derive msb expressions from masked bytes:
+        // msb = (byte - (byte & 0x7f)) / 128.
         let inv_128 = AB::F::from_canonical_u32(128).inverse();
-        builder.assert_eq(local.msb_b, (local.b[3] - local.b_masked) * inv_128);
-        builder.assert_eq(local.msb_c, (local.c[3] - local.c_masked) * inv_128);
+        let msb_b_expr = (local.b[3] - local.b_masked) * inv_128;
+        let msb_c_expr = (local.c[3] - local.c_masked) * inv_128;
 
-        // Constrain that when is_sign_eq = (bit_b == bit_c).
+        // Constrain bit_b/bit_c and force them boolean (degree<=3 safe).
+        builder.assert_eq(local.bit_b, msb_b_expr * local.is_slt);
+        builder.assert_eq(local.bit_c, msb_c_expr * local.is_slt);
+        builder.assert_bool(local.bit_b);
+        builder.assert_bool(local.bit_c);
 
-        // assert the flag is a boolean.
-        builder.assert_bool(local.is_sign_eq);
+        // is_sign_eq := 1 - (bit_b - bit_c)^2  (degree 2)
+        let d = local.bit_b - local.bit_c;
+        let is_sign_eq = AB::Expr::one() - d.clone() * d;
 
-        // assert the correction of the comparison.
-        builder.when(local.is_sign_eq).assert_eq(local.bit_b, local.bit_c);
-        builder
-            .when(is_real.clone())
-            .when_not(local.is_sign_eq)
-            .assert_one(local.bit_b + local.bit_c);
-
-        // Assert the final result `a` is correct.
-
-        // Check that `a[0]` is set correctly.
-        // This check is done only when `op_a_not_0 == 1`.
-        builder.when(local.op_a_not_0).assert_eq(
+        // Final result (NO gating to keep degree<=3):
+        // a = bit_b*(1-bit_c) + is_sign_eq*sltu
+        builder.assert_eq(
             local.a,
-            local.bit_b * (AB::Expr::one() - local.bit_c) + local.is_sign_eq * local.sltu,
+            local.bit_b * (AB::Expr::one() - local.bit_c) + is_sign_eq * local.sltu,
         );
 
-        // Verify that the byte equality flags are set correctly, i.e. all are boolean and only
-        // at most a single byte flag is set.
+        // Byte-flag constraints: each boolean; sum is boolean (thus <=1 flag set).
+        for f in local.byte_flags.iter() {
+            builder.assert_bool(*f);
+        }
         let sum_flags =
             local.byte_flags[0] + local.byte_flags[1] + local.byte_flags[2] + local.byte_flags[3];
-        builder.assert_bool(local.byte_flags[0]);
-        builder.assert_bool(local.byte_flags[1]);
-        builder.assert_bool(local.byte_flags[2]);
-        builder.assert_bool(local.byte_flags[3]);
         builder.assert_bool(sum_flags.clone());
-        builder.when(is_real.clone()).assert_eq(AB::Expr::one() - local.is_comp_eq, sum_flags);
 
-        // Constrain `local.sltu == STLU(b_comp, c_comp)`.
-        //
-        // We define bytes `b_comp_byte` and `c_comp_byte` as follows: If `b_comp == c_comp`, then
-        // `b_comp_byte = c_comp_byte = 0`. Otherwise, we set `b_comp_byte` and `c_comp_byte` to
-        // the first differing byte (in most significant order). We will use the `local.is_comp_eq`
-        // flag to indicate whether the bytes are equal.
+        // Optional hygiene: padding rows should not select a differing byte.
+        builder.when_not(is_real.clone()).assert_zero(sum_flags.clone());
 
-        // Check the equality flag is boolean.
-        builder.assert_bool(local.is_comp_eq);
+        // If no differing byte selected, all bytes must be equal
+        builder.when_not(sum_flags.clone()).assert_word_eq(b_comp.clone(), c_comp.clone());
 
-        // Find the differing byte if `b_comp != c_comp` and assert equality in case the flag
-        // `local.is_comp_eq` is set to `1`.
+        builder.when_not(sum_flags.clone()).assert_zero(local.sltu);
 
-        // A flag to indicate whether an equality check is necessary (this is for all bytes from
-        // most significant until the first inequality.
+        // Enforce "first differing byte" semantics and compute the selected comparison bytes.
         let mut is_inequality_visited = AB::Expr::zero();
+        let mut b_selected = AB::Expr::zero();
+        let mut c_selected = AB::Expr::zero();
 
-        // Expressions for computing the comparison bytes.
-        let mut b_comparison_byte = AB::Expr::zero();
-        let mut c_comparison_byte = AB::Expr::zero();
-        // Iterate over the bytes in reverse order and select the differing bytes using the byte
-        // flag columns values.
         for (b_byte, c_byte, &flag) in
             izip!(b_comp.0.iter().rev(), c_comp.0.iter().rev(), local.byte_flags.iter().rev())
         {
-            // Once the byte flag was set to one, we turn off the quality check flag.
-            // We can do this by calculating the sum of the flags since only `1` is set to `1`.
+            // Accumulate visited flags (degree 1).
             is_inequality_visited = is_inequality_visited.clone() + flag.into();
 
-            b_comparison_byte = b_comparison_byte.clone() + b_byte.clone() * flag;
-            c_comparison_byte = c_comparison_byte.clone() + c_byte.clone() * flag;
+            // Select the flagged byte-pair (note b_comp[3]/c_comp[3] are degree-2 expressions).
+            b_selected = b_selected.clone() + b_byte.clone() * flag;
+            c_selected = c_selected.clone() + c_byte.clone() * flag;
 
-            // If inequality is not visited, assert that the bytes are equal.
+            // Until the first inequality is visited, bytes must be equal.
             builder
                 .when_not(is_inequality_visited.clone())
                 .assert_eq(b_byte.clone(), c_byte.clone());
-            // If the numbers are assumed equal, inequality should not be visited.
-            builder.when(local.is_comp_eq).assert_zero(is_inequality_visited.clone());
         }
-        // We need to verify that the comparison bytes are set correctly. This is only relevant in
-        // the case where the bytes are not equal.
 
-        // Constrain the row comparison byte values to be equal to the calciulated ones.
-        let (b_comp_byte, c_comp_byte) = (local.comparison_bytes[0], local.comparison_bytes[1]);
-        builder.assert_eq(b_comp_byte, b_comparison_byte);
-        builder.assert_eq(c_comp_byte, c_comparison_byte);
+        // Constrain stored comparison bytes to match the selected expressions.
+        let b_comp_byte = local.comparison_bytes[0];
+        let c_comp_byte = local.comparison_bytes[1];
+        builder.assert_eq(b_comp_byte, b_selected);
+        builder.assert_eq(c_comp_byte, c_selected);
 
-        // Using the values above, we can constrain the `local.is_comp_eq` flag. We already asserted
-        // in the loop that when `local.is_comp_eq == 1` then all bytes are equal. It is left to
-        // verify that when `local.is_comp_eq == 0` the comparison bytes are indeed not equal.
-        // This is done using the inverse hint `not_eq_inv`.
+        // If sum_flags == 1 (i.e., not equal), enforce the selected bytes differ using not_eq_inv:
+        // sum_flags * (not_eq_inv*(b_comp_byte - c_comp_byte) - is_real) = 0   (degree <= 3)
         builder
-            .when_not(local.is_comp_eq)
+            .when(sum_flags.clone())
             .assert_eq(local.not_eq_inv * (b_comp_byte - c_comp_byte), is_real.clone());
 
-        // Now the value of `local.sltu` is equal to the same value for the comparison bytes.
-        //
-        // Set `local.sltu = STLU(b_comp_byte, c_comp_byte)` via a lookup.
+        // Constrain sltu via LTU lookup on the selected bytes (gated by is_real).
         builder.send_byte(
             ByteOpcode::LTU.as_field::<AB::F>(),
             local.sltu,
@@ -424,28 +387,7 @@ where
             is_real.clone(),
         );
 
-        // Constrain the operation flags.
-
-        // SAFETY: All selectors `is_slt`, `is_sltu` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real = is_slt + is_sltu` is
-        // boolean. Therefore, the `opcode` matches the corresponding opcode.
-
-        // Check that the operation flags are boolean.
-        builder.assert_bool(local.is_slt);
-        builder.assert_bool(local.is_sltu);
-        // Check that at most one of the operation flags is set.
-        builder.assert_bool(local.is_slt + local.is_sltu);
-
-        // Receive the arguments.
-        // SAFETY: This checks the following.
-        // - `next_pc = pc + 4`
-        // - `num_extra_cycles = 0`
-        // - `op_a_val` is constrained by the chip when `op_a_not_0 == 1`
-        // - `op_a_not_0` is correct, due to the sent `op_a_0` being equal to `1 - op_a_not_0`
-        // - `op_a_immutable = 0`
-        // - `is_memory = 0`
-        // - `is_syscall = 0`
-        // - `is_halt = 0`
+        // Receive the instruction.
         builder.receive_instruction_old(
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -497,7 +439,7 @@ mod tests {
         let chip = LtChip::default();
         let generate_trace = chip.generate_trace(&shard, &mut ExecutionRecord::default());
         let trace: RowMajorMatrix<BabyBear> = generate_trace;
-        println!("{:?}", trace.values)
+        println!("{:?}", trace.width)
     }
 
     fn prove_babybear_template(shard: &mut ExecutionRecord) {
@@ -520,21 +462,13 @@ mod tests {
         const NEG_3: u32 = 0b11111111111111111111111111111101;
         const NEG_4: u32 = 0b11111111111111111111111111111100;
         shard.lt_events = vec![
-            // 0 == 3 < 2
             AluEvent::new(0, Opcode::I32LtS, 0, 3, 2, Opcode::I32LtS.code()),
-            // 1 == 2 < 3
             AluEvent::new(0, Opcode::I32LtS, 1, 2, 3, Opcode::I32LtS.code()),
-            // 0 == 5 < -3
             AluEvent::new(0, Opcode::I32LtS, 0, 5, NEG_3, Opcode::I32LtS.code()),
-            // 1 == -3 < 5
             AluEvent::new(0, Opcode::I32LtS, 1, NEG_3, 5, Opcode::I32LtS.code()),
-            // 0 == -3 < -4
             AluEvent::new(0, Opcode::I32LtS, 0, NEG_3, NEG_4, Opcode::I32LtS.code()),
-            // 1 == -4 < -3
             AluEvent::new(0, Opcode::I32LtS, 1, NEG_4, NEG_3, Opcode::I32LtS.code()),
-            // 0 == 3 < 3
             AluEvent::new(0, Opcode::I32LtS, 0, 3, 3, Opcode::I32LtS.code()),
-            // 0 == -3 < -3
             AluEvent::new(0, Opcode::I32LtS, 0, NEG_3, NEG_3, Opcode::I32LtS.code()),
             AluEvent::new(
                 0,
@@ -550,98 +484,137 @@ mod tests {
     }
 
     #[test]
+    fn prove_babybear_all_comparisons_single() {
+        // One proof that matches the *new executor lowering*:
+        //
+        // The executor emits ONLY LtChip-primitive events:
+        //   - signed  primitive: I32LtS(b,c)  with a = [b <_s c]
+        //   - unsigned primitive: I32LtU(b,c) with a = [b <_u c]
+        //
+        // Lowerings in the executor:
+        //   LT*: emit LT(b,c)                      (a = b<c)
+        //   GT*: emit LT(c,b)                      (a = b>c)
+        //   GE*: emit LT(b,c)                      (witness for b<c ; CPU takes NOT later)
+        //   LE*: emit LT(c,b)                      (witness for b>c ; CPU takes NOT later)
+        //   EQZ: emit LTU(x,1)                     (a = x==0)
+        //   EQ:  emit LTU(b^c,1)                   (a = b==c)
+        //   NE:  emit LTU(0,b^c)                   (a = b!=c)
+        //
+        // This test does NOT try to check CPU's NOT wiring for GE/LE directly here;
+        // it verifies that LtChip accepts the exact primitive events that executor produces.
+
+        const I32_MIN: u32 = 0x8000_0000;
+        const I32_MAX: u32 = 0x7FFF_FFFF;
+        const NEG1: u32 = 0xFFFF_FFFF; // -1
+        const NEG2: u32 = 0xFFFF_FFFE; // -2
+        const NEG3: u32 = 0xFFFF_FFFD; // -3
+        const NEG4: u32 = 0xFFFF_FFFC; // -4
+
+        let mut shard = ExecutionRecord::default();
+        let mut evs: Vec<AluEvent> = Vec::new();
+
+        // Push a *primitive* LtChip event (opcode determines signed/unsigned semantics).
+        let mut push_lt = |primitive: Opcode, a: u32, b: u32, c: u32| {
+            debug_assert!(matches!(primitive, Opcode::I32LtS | Opcode::I32LtU));
+            evs.push(AluEvent::new(0, primitive, a, b, c, primitive.code()));
+        };
+
+        // --- EQZ(x) -> LTU(x, 1)
+        for &x in &[0, 1, 2, I32_MAX, I32_MIN, NEG1, 0xDEAD_BEEF] {
+            push_lt(Opcode::I32LtU, u32::from(x == 0), x, 1);
+        }
+
+        // --- EQ/NE via XOR lowering
+        for &(b, c) in &[
+            (0, 0),
+            (0, 1),
+            (1, 0),
+            (NEG1, NEG1),
+            (NEG1, 0),
+            (0, NEG1),
+            (I32_MIN, I32_MAX),
+            (I32_MAX, I32_MIN),
+            (0xDEAD_BEEF, 0xDEAD_BEEF),
+            (0xDEAD_BEEF, 0xDEAD_BEEE),
+        ] {
+            let x = b ^ c;
+
+            // Eq(b,c): LTU(x,1)  == [x==0]
+            push_lt(Opcode::I32LtU, u32::from(x == 0), x, 1);
+
+            // Ne(b,c): LTU(0,x)  == [x!=0]
+            push_lt(Opcode::I32LtU, u32::from(x != 0), 0, x);
+        }
+
+        // Canonical (b,c) pairs used for LT/GT/GE/LE primitives.
+        // Include: equal, boundaries, sign boundary, neg/pos, and first-diff byte3/2/1/0.
+        let pairs: &[(u32, u32)] = &[
+            (0, 0),
+            (0, 1),
+            (1, 0),
+            (I32_MAX, I32_MIN),
+            (I32_MIN, I32_MAX),
+            (0, NEG1),
+            (NEG1, 0),
+            // first differing byte (MSB..LSB)
+            (0x0100_0000, 0x0200_0000), // byte3
+            (0x0001_0000, 0x0002_0000), // byte2
+            (0x0000_0100, 0x0000_0200), // byte1
+            (0x0000_0001, 0x0000_0002), // byte0
+            (0xDEAD_BEEF, 0xDEAD_BEF0),
+            (0x80FF_0000, 0x80FE_FFFF),
+            // extra signed stress
+            (NEG4, NEG3),
+            (NEG3, NEG4),
+            (NEG3, NEG2),
+            (NEG2, NEG3),
+            (0x8000_0001, 0x8000_0002),
+            (0x8000_0002, 0x8000_0001),
+        ];
+
+        // --- LT primitives (what executor emits for I32LtS/I32LtU)
+        for &(b, c) in pairs {
+            push_lt(Opcode::I32LtU, u32::from(b < c), b, c);
+            push_lt(Opcode::I32LtS, u32::from((b as i32) < (c as i32)), b, c);
+        }
+
+        // --- GT primitives (what executor emits for I32GtS/I32GtU): LT(c,b)
+        for &(b, c) in pairs {
+            push_lt(Opcode::I32LtU, u32::from(b > c), c, b); // c < b  == b > c
+            push_lt(Opcode::I32LtS, u32::from((b as i32) > (c as i32)), c, b);
+        }
+
+        // --- GE primitives (what executor emits for I32GeS/I32GeU): LT(b,c) witness
+        // CPU must later compute GE = 1 - LT(b,c).
+        for &(b, c) in pairs {
+            push_lt(Opcode::I32LtU, u32::from(b < c), b, c);
+            push_lt(Opcode::I32LtS, u32::from((b as i32) < (c as i32)), b, c);
+        }
+
+        // --- LE primitives (what executor emits for I32LeS/I32LeU): LT(c,b) witness
+        // CPU must later compute LE = 1 - LT(c,b) = 1 - (b > c).
+        for &(b, c) in pairs {
+            push_lt(Opcode::I32LtU, u32::from(b > c), c, b);
+            push_lt(Opcode::I32LtS, u32::from((b as i32) > (c as i32)), c, b);
+        }
+
+        shard.lt_events = evs;
+        prove_babybear_template(&mut shard);
+    }
+    #[test]
     fn prove_babybear_sltu() {
         let mut shard = ExecutionRecord::default();
 
         const LARGE: u32 = 0b11111111111111111111111111111101;
         shard.lt_events = vec![
-            // 0 == 3 < 2
             AluEvent::new(0, Opcode::I32LtU, 0, 3, 2, Opcode::I32LtU.code()),
-            // 1 == 2 < 3
             AluEvent::new(0, Opcode::I32LtU, 1, 2, 3, Opcode::I32LtU.code()),
-            // 0 == LARGE < 5
             AluEvent::new(0, Opcode::I32LtU, 0, LARGE, 5, Opcode::I32LtU.code()),
-            // 1 == 5 < LARGE
             AluEvent::new(0, Opcode::I32LtU, 1, 5, LARGE, Opcode::I32LtU.code()),
-            // 0 == 0 < 0
             AluEvent::new(0, Opcode::I32LtU, 0, 0, 0, Opcode::I32LtU.code()),
-            // 0 == LARGE < LARGE
             AluEvent::new(0, Opcode::I32LtU, 0, LARGE, LARGE, Opcode::I32LtU.code()),
         ];
 
-        prove_babybear_template(&mut shard);
-    }
-    #[test]
-    fn prove_babybear_comparisons() {
-        let mut shard = ExecutionRecord::default();
-
-        // Reuse patterns from the SLT/SLTU proofs and cover edge cases.
-        const NEG_3: u32 = 0xFFFF_FFFD;
-        const NEG_4: u32 = 0xFFFF_FFFC;
-        const LARGE: u32 = 0xFFFF_FFFD; // same as NEG_3
-
-        shard.lt_events = vec![
-            // ---- I32Eqz ----
-            // Encode eqz(x) by unsigned check x < 1.
-            AluEvent::new(0, Opcode::I32Eqz, 1, 0, 1, Opcode::I32LtU.code()), // 0 == 0
-            AluEvent::new(0, Opcode::I32Eqz, 0, 5, 1, Opcode::I32LtU.code()), // 5 != 0
-            AluEvent::new(0, Opcode::I32Eqz, 0, 1, 1, Opcode::I32LtU.code()), // 1 != 0
-            AluEvent::new(0, Opcode::I32Eqz, 0, NEG_3, 1, Opcode::I32LtU.code()), // NEG_3 != 0
-            // ---- I32Eq ----
-            // For equality rows, set b == c so LT(b,c) == 0; a must be 0 for the LtChip
-            // constraint.
-            AluEvent::new(0, Opcode::I32Eq, 0, 7, 7, Opcode::I32LtU.code()),
-            AluEvent::new(0, Opcode::I32Eq, 0, 0, 0, Opcode::I32LtU.code()),
-            AluEvent::new(0, Opcode::I32Eq, 0, NEG_3, NEG_3, Opcode::I32LtU.code()),
-            AluEvent::new(0, Opcode::I32Eq, 0, 123_456, 123_456, Opcode::I32LtU.code()),
-            // ---- I32LtS (signed) ----
-            AluEvent::new(0, Opcode::I32LtS, 0, 3, 2, Opcode::I32LtS.code()), // 3 < 2 ? 0
-            AluEvent::new(0, Opcode::I32LtS, 1, 2, 3, Opcode::I32LtS.code()), // 2 < 3 ? 1
-            AluEvent::new(0, Opcode::I32LtS, 1, NEG_3, 5, Opcode::I32LtS.code()), // -3 < 5 ? 1
-            AluEvent::new(0, Opcode::I32LtS, 0, 5, NEG_3, Opcode::I32LtS.code()), // 5 < -3 ? 0
-            // ---- I32GtS (signed) -> encode as c < b with LT(S) (swap operands) ----
-            AluEvent::new(0, Opcode::I32GtS, 1, NEG_3, 5, Opcode::I32LtS.code()), // 5 > -3
-            AluEvent::new(0, Opcode::I32GtS, 0, NEG_3, NEG_4, Opcode::I32LtS.code()), /* -4 > -3 ? 0
-                                                                                   * (swap: -3 <
-                                                                                   * -4) */
-            AluEvent::new(0, Opcode::I32GtS, 0, 3, 2, Opcode::I32LtS.code()), /* 2 > 3 ? 0  (swap: 3 < 2) */
-            AluEvent::new(0, Opcode::I32GtS, 1, 2, 3, Opcode::I32LtS.code()), /* 3 > 2 ? 1  (swap: 2 < 3) */
-            // ---- I32LtU (unsigned) ----
-            AluEvent::new(0, Opcode::I32LtU, 0, 3, 2, Opcode::I32LtU.code()),
-            AluEvent::new(0, Opcode::I32LtU, 1, 2, 3, Opcode::I32LtU.code()),
-            AluEvent::new(0, Opcode::I32LtU, 0, LARGE, 5, Opcode::I32LtU.code()),
-            AluEvent::new(0, Opcode::I32LtU, 1, 5, LARGE, Opcode::I32LtU.code()),
-            // ---- I32GtU (unsigned) -> encode as c < b with LT(U) (swap operands) ----
-            AluEvent::new(0, Opcode::I32GtU, 0, LARGE, 5, Opcode::I32LtU.code()), // 5 > LARGE ? 0
-            AluEvent::new(0, Opcode::I32GtU, 1, 5, LARGE, Opcode::I32LtU.code()), // LARGE > 5 ? 1
-            AluEvent::new(0, Opcode::I32GtU, 1, 2, 3, Opcode::I32LtU.code()), /* 3 > 2 ? 1 (swap: 2 < 3) */
-            AluEvent::new(0, Opcode::I32GtU, 0, 3, 2, Opcode::I32LtU.code()), /* 2 > 3 ? 0 (swap: 3 < 2) */
-            // ---- I32LeS (signed) ----
-            // Choose unequal pairs so (b <= c) == (b < c) for these rows.
-            AluEvent::new(0, Opcode::I32LeS, 1, NEG_4, NEG_3, Opcode::I32LtS.code()), // -4 <= -3
-            AluEvent::new(0, Opcode::I32LeS, 0, NEG_3, NEG_4, Opcode::I32LtS.code()), /* -3 <= -4 ? 0 */
-            AluEvent::new(0, Opcode::I32LeS, 1, 2, 3, Opcode::I32LtS.code()),         // 2 <= 3
-            AluEvent::new(0, Opcode::I32LeS, 0, 3, 2, Opcode::I32LtS.code()),         // 3 <= 2 ? 0
-            // ---- I32GeS (signed) -> encode as c < b (swap operands) ----
-            // Use unequal pairs so (b >= c) == (b > c) == (c < b).
-            AluEvent::new(0, Opcode::I32GeS, 1, 2, 3, Opcode::I32LtS.code()), // 3 >= 2
-            AluEvent::new(0, Opcode::I32GeS, 0, 3, 2, Opcode::I32LtS.code()), // 2 >= 3 ? 0
-            AluEvent::new(0, Opcode::I32GeS, 1, NEG_4, NEG_3, Opcode::I32LtS.code()), // -3 >= -4
-            AluEvent::new(0, Opcode::I32GeS, 0, NEG_3, NEG_4, Opcode::I32LtS.code()), /* -4 >= -3 ? 0 */
-            // ---- I32LeU (unsigned) ----
-            // Use unequal pairs so (b <= c) == (b < c).
-            AluEvent::new(0, Opcode::I32LeU, 1, 0, 1, Opcode::I32LtU.code()),
-            AluEvent::new(0, Opcode::I32LeU, 0, 1, 0, Opcode::I32LtU.code()),
-            AluEvent::new(0, Opcode::I32LeU, 1, 5, LARGE, Opcode::I32LtU.code()),
-            AluEvent::new(0, Opcode::I32LeU, 0, LARGE, 5, Opcode::I32LtU.code()),
-            // ---- I32GeU (unsigned) -> encode as c < b (swap operands) ----
-            AluEvent::new(0, Opcode::I32GeU, 1, 0, 1, Opcode::I32LtU.code()), // 1 >= 0
-            AluEvent::new(0, Opcode::I32GeU, 0, 1, 0, Opcode::I32LtU.code()), // 0 >= 1 ? 0
-            AluEvent::new(0, Opcode::I32GeU, 1, 5, LARGE, Opcode::I32LtU.code()), // LARGE >= 5
-            AluEvent::new(0, Opcode::I32GeU, 0, LARGE, 5, Opcode::I32LtU.code()), // 5 >= LARGE ? 0
-        ];
-
-        // now prove & verify on LtChip.
         prove_babybear_template(&mut shard);
     }
 
@@ -667,10 +640,10 @@ mod tests {
         use core::borrow::BorrowMut;
         const NUM_TESTS: usize = 1;
 
-        let rng = thread_rng();
+        let mut rng = thread_rng();
         for _ in 0..NUM_TESTS {
-            let op_b = thread_rng().gen_range(0..u32::MAX);
-            let op_c = thread_rng().gen_range(0..u32::MAX);
+            let op_b = rng.gen_range(0..u32::MAX);
+            let op_c = rng.gen_range(0..u32::MAX);
 
             let correct_op_a = if opcode == Opcode::I32LtU {
                 op_b < op_c
@@ -695,8 +668,9 @@ mod tests {
             } else {
                 true
             };
-            //Pops rhs, then lhs, pushes i32( lhs <_s rhs ? 1 : 0 )
+
             let op_a = !correct_op_a;
+
             let program = Program::from_instrs(vec![
                 Opcode::I32Const(op_b.into()),
                 Opcode::I32Const(op_c.into()),
@@ -707,23 +681,22 @@ mod tests {
 
             let malicious_trace_pv_generator = move |prover: &P, record: &mut ExecutionRecord| {
                 let mut malicious_record = record.clone();
-                // The ALU op is the 3rd instruction (index 2)
                 if malicious_record.cpu_events.len() > 2 {
                     malicious_record.cpu_events[2].res = op_a as u32;
-                    // keep memory write consistent
                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
                         &mut malicious_record.cpu_events[2].res_record
                     {
                         write_record.value = op_a as u32;
                     }
                 }
+
                 let mut traces = prover.generate_traces(&malicious_record);
                 let lt_chip_name = chip_name!(LtChip, BabyBear);
                 if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == lt_chip_name)
                 {
                     let row = trace.row_mut(0);
                     let row: &mut LtCols<BabyBear> = row.borrow_mut();
-                    row.a = BabyBear::from_bool(op_a); // inject the forged value
+                    row.a = BabyBear::from_bool(op_a); // inject forged value
                 }
 
                 traces
@@ -731,6 +704,7 @@ mod tests {
 
             let result =
                 run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
+
             let chip_name = chip_name!(CpuChip, BabyBear);
             println!("run_malicious_lt for opcode : {:?}", opcode);
             assert!(result.is_err());
