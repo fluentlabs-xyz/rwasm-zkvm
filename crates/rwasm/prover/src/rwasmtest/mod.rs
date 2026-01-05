@@ -9,6 +9,7 @@ mod extend;
 mod lt;
 mod mul;
 mod rotate;
+mod sr;
 mod table_grow;
 mod table_init;
 mod trailing;

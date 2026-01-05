@@ -51,6 +51,10 @@ pub struct BytePreprocessedCols<T> {
 
     /// The result of the `U16CLZ` operation on `value_u16`.
     pub u16_clz: T,
+
+    pub shift_meta: T,
+
+    pub carry_mul: T,
 }
 
 /// For each byte operation in the preprocessed table, a corresponding ByteMultCols row tracks the

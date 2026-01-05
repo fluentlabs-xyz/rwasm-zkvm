@@ -21,7 +21,7 @@ use self::{
 use crate::{bytes::trace::NUM_ROWS, utils::zeroed_f_vec};
 
 /// The number of different byte operations.
-pub const NUM_BYTE_OPS: usize = 12;
+pub const NUM_BYTE_OPS: usize = 13;
 
 /// A chip for computing byte operations.
 ///
@@ -116,6 +116,23 @@ impl<F: Field> ByteChip<F> {
                         let clz = u16_val.leading_zeros() as u8;
                         col.u16_clz = F::from_canonical_u8(clz);
                         ByteLookupEvent::new(*opcode, clz as u16, 0, b, c)
+                    }
+                    ByteOpcode::ShiftMeta => {
+                        let shift_lo = c;
+                        let masked = shift_lo & 31; // 0..31
+                        let k = masked & 7; // low 3 bits
+                        let raw_cm: u16 = 1u16 << (8 - k as u16);
+
+                        // You can store them in separate columns if you want:
+                        col.shift_meta = F::from_canonical_u8(masked);
+                        col.carry_mul = F::from_canonical_u32(raw_cm as u32);
+
+                        // Key:
+                        //   a1 = carry_multiplier (u16)
+                        //   a2 = masked (0..31)
+                        //   b  = arbitrary (we'll use b=0 in SR)
+                        //   c  = shift_lo
+                        ByteLookupEvent::new(*opcode, raw_cm, masked, b, c)
                     }
                 };
             }
