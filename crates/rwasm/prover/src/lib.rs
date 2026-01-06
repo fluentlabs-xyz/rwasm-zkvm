@@ -1630,6 +1630,9 @@ pub mod tests {
     /// The input and output of the callee program is contained in the reduce proof of the callee program and witness by the compresser wihile 
     /// proving the caller program.
     /// By doing so we established the proof of the caller program which implicitly contains the verification of the proof of the callee program.
+    /// TODO: initial prover with multi rwasm runtime such that we collet all the traces the rwasm binaries executed.
+    /// TODO: check wether we can use one caller to verfiy nested callee programs.
+    /// TODO: integrated test with all the steps including plonk and groth16 wrapping.
     #[instrument(name = "test_e2e_with_caller_callee_prover", level = "info", skip_all)]
     pub fn test_e2e_with_caller_callee_prover<C: SP1ProverComponents>(
         opts: SP1ProverOpts,
