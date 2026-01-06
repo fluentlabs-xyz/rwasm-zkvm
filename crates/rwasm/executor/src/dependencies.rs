@@ -4,8 +4,7 @@ use rwasm::{is_multi_align, Opcode};
 
 use crate::{
     events::{AluEvent, BranchEvent, FuelEvent, I64AluEvent, MemInstrEvent},
-    utils::{get_msb, get_quotient_and_remainder, is_signed_operation},
-    Executor, I32MULHU_CODE, I32MULH_CODE, UNUSED_PC,
+    Executor, UNUSED_PC,
 };
 use rwasm::mem_index::GLOBAL_MEM_START;
 /*/// Emits the dependencies for division and remainder operations.

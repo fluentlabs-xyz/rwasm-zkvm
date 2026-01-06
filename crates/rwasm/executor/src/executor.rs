@@ -1,10 +1,7 @@
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
 use crate::{
-    dependencies::{
-        emit_branch_dependencies, emit_divrem_dependencies, emit_fuel_dependencies,
-        emit_memory_dependencies,
-    },
+    dependencies::{emit_branch_dependencies, emit_fuel_dependencies, emit_memory_dependencies},
     estimator::RecordEstimator,
     events::{CallEvent, ConstEvent, FuelEvent, I64AluEvent, PrecompileEvent, SyscallEvent},
     syscalls::func_id_to_syscall_code,
