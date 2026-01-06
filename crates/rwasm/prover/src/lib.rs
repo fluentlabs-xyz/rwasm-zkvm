@@ -1618,109 +1618,108 @@ pub mod tests {
 
         Ok(())
     }
+    ///Test e2e workflow with a  program which will do Rwasm::OPCode::Call(exec) to call another rwasm program.
+    /// This workflow solves the following problems:
+    /// 1. How to prove the callee program and merge its proof into the caller program proof.
+    /// 2 How to show that the input of the callee program is indeed coming from the caller program.
+    /// We will need the SP1VerifyProof syscall. Note this will defer the verfication of the callee program to the
+    /// recursion layer.
+    /// One  prover can generate the proving key and verifying key for both caller and callee programs.
+    /// Thus, we can let the same prover prove both programs. More importantly, the prover can compress the callee proof
+    /// into a reduce proof which can be used as input the compresser of the caller program. 
+    /// The input and output of the callee program is contained in the reduce proof of the callee program and witness by the compresser wihile 
+    /// proving the caller program.
+    /// By doing so we established the proof of the caller program which implicitly contains the verification of the proof of the callee program.
+    #[instrument(name = "test_e2e_with_caller_callee_prover", level = "info", skip_all)]
+    pub fn test_e2e_with_caller_callee_prover<C: SP1ProverComponents>(
+        opts: SP1ProverOpts,
+    ) -> Result<()> {
+        // the dummy callee program;
+        let callee_elf = &[0u8;1];//TODO: replace with actual callee rwasm binary
+        let caller_elf = &[0u8;1];//TODO: replace with actual caller rwasm binary which will call the callee program
+        // the dummy caller programme which will call the callee program;
+        tracing::info!("initializing prover");
+        let prover = SP1Prover::<C>::new();
 
-    // pub fn test_e2e_with_deferred_proofs_prover<C: SP1ProverComponents>(
-    //     opts: SP1ProverOpts,
-    // ) -> Result<()> {
-    //     // Test program which proves the Keccak-256 hash of various inputs.
-    //     let keccak_elf = test_artifacts::KECCAK256_ELF;
+        tracing::info!("setup keccak elf");
+        let (_, calleepk_d, callee_program, callee_vk) = prover.setup(callee_elf);
 
-    //     // Test program which verifies proofs of a vkey and a list of committed inputs.
-    //     let verify_elf = test_artifacts::VERIFY_PROOF_ELF;
+        tracing::info!("setup verify elf");
+        let (_, caller_pk_d, caller_program, caller_vk) = prover.setup(caller_elf);
 
-    //     tracing::info!("initializing prover");
-    //     let prover = SP1Prover::<C>::new();
+        tracing::info!("prove subproof 1");
+        let mut stdin = SP1Stdin::new();
+        let callee_input_len =1usize;
+        stdin.write(&callee_input_len);
+        let callee_input = vec![0u8; callee_input_len];
+        stdin.write(&callee_input);
+       
+        let callee_proof_1 = prover.prove_core(
+            &calleepk_d,
+            callee_program.clone(),
+            &stdin,
+            opts,
+            Default::default(),
+        )?;
+        let pv_1 = callee_proof_1.public_values.as_slice().to_vec().clone();
 
-    //     tracing::info!("setup keccak elf");
-    //     let (_, keccak_pk_d, keccak_program, keccak_vk) = prover.setup(keccak_elf);
+       
+        // Generate recursive proof of first subproof.
+        tracing::info!("compress subproof 1");
+        let callee_reduce_1 = prover.compress(&callee_vk, callee_proof_1, vec![], opts)?;
+        prover.verify_compressed(&callee_reduce_1, &callee_vk)?;
 
-    //     tracing::info!("setup verify elf");
-    //     let (_, verify_pk_d, verify_program, verify_vk) = prover.setup(verify_elf);
+        
 
-    //     tracing::info!("prove subproof 1");
-    //     let mut stdin = SP1Stdin::new();
-    //     stdin.write(&1usize);
-    //     stdin.write(&vec![0u8, 0, 0]);
-    //     let deferred_proof_1 = prover.prove_core(
-    //         &keccak_pk_d,
-    //         keccak_program.clone(),
-    //         &stdin,
-    //         opts,
-    //         Default::default(),
-    //     )?;
-    //     let pv_1 = deferred_proof_1.public_values.as_slice().to_vec().clone();
+        // Run verify program with keccak vkey, subproofs, and their committed values.
+        let mut stdin = SP1Stdin::new();
+        let vkey_digest = callee_vk.hash_babybear();
+        let vkey_digest: [u32; 8] = vkey_digest
+            .iter()
+            .map(|n| n.as_canonical_u32())
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        stdin.write(&vkey_digest);
+        stdin.write(&vec![pv_1.clone()]);
+        stdin.write_proof(callee_reduce_1.clone(), callee_vk.vk.clone());
+      
 
-    //     // Generate a second proof of keccak of various inputs.
-    //     tracing::info!("prove subproof 2");
-    //     let mut stdin = SP1Stdin::new();
-    //     stdin.write(&3usize);
-    //     stdin.write(&vec![0u8, 1, 2]);
-    //     stdin.write(&vec![2, 3, 4]);
-    //     stdin.write(&vec![5, 6, 7]);
-    //     let deferred_proof_2 =
-    //         prover.prove_core(&keccak_pk_d, keccak_program, &stdin, opts, Default::default())?;
-    //     let pv_2 = deferred_proof_2.public_values.as_slice().to_vec().clone();
+        tracing::info!("proving verify program (core)");
+        let verify_proof =
+            prover.prove_core(&caller_pk_d, caller_program, &stdin, opts, Default::default())?;
+        // let public_values = verify_proof.public_values.clone();
 
-    //     // Generate recursive proof of first subproof.
-    //     tracing::info!("compress subproof 1");
-    //     let deferred_reduce_1 = prover.compress(&keccak_vk, deferred_proof_1, vec![], opts)?;
-    //     prover.verify_compressed(&deferred_reduce_1, &keccak_vk)?;
+        // Generate recursive proof of verify program
+        tracing::info!("compress verify program");
+        let caller_reduce = prover.compress(
+            &caller_vk,
+            verify_proof,
+            vec![callee_reduce_1.clone()],
+            opts,
+        )?;
+        let reduce_pv: &RecursionPublicValues<_> =
+            caller_reduce.proof.public_values.as_slice().borrow();
+        println!("deferred_hash: {:?}", reduce_pv.deferred_proofs_digest);
+        println!("complete: {:?}", reduce_pv.is_complete);
 
-    //     // Generate recursive proof of second subproof.
-    //     tracing::info!("compress subproof 2");
-    //     let deferred_reduce_2 = prover.compress(&keccak_vk, deferred_proof_2, vec![], opts)?;
-    //     prover.verify_compressed(&deferred_reduce_2, &keccak_vk)?;
+        tracing::info!("verify verify program");
+        prover.verify_compressed(&caller_reduce, &caller_vk)?;
 
-    //     // Run verify program with keccak vkey, subproofs, and their committed values.
-    //     let mut stdin = SP1Stdin::new();
-    //     let vkey_digest = keccak_vk.hash_babybear();
-    //     let vkey_digest: [u32; 8] = vkey_digest
-    //         .iter()
-    //         .map(|n| n.as_canonical_u32())
-    //         .collect::<Vec<_>>()
-    //         .try_into()
-    //         .unwrap();
-    //     stdin.write(&vkey_digest);
-    //     stdin.write(&vec![pv_1.clone(), pv_2.clone(), pv_2.clone()]);
-    //     stdin.write_proof(deferred_reduce_1.clone(), keccak_vk.vk.clone());
-    //     stdin.write_proof(deferred_reduce_2.clone(), keccak_vk.vk.clone());
-    //     stdin.write_proof(deferred_reduce_2.clone(), keccak_vk.vk.clone());
+        let shrink_proof = prover.shrink(caller_reduce, opts)?;
 
-    //     tracing::info!("proving verify program (core)");
-    //     let verify_proof =
-    //         prover.prove_core(&verify_pk_d, verify_program, &stdin, opts, Default::default())?;
-    //     // let public_values = verify_proof.public_values.clone();
+        tracing::info!("verify shrink");
+        prover.verify_shrink(&shrink_proof, &caller_vk)?;
 
-    //     // Generate recursive proof of verify program
-    //     tracing::info!("compress verify program");
-    //     let verify_reduce = prover.compress(
-    //         &verify_vk,
-    //         verify_proof,
-    //         vec![deferred_reduce_1, deferred_reduce_2.clone(), deferred_reduce_2],
-    //         opts,
-    //     )?;
-    //     let reduce_pv: &RecursionPublicValues<_> =
-    //         verify_reduce.proof.public_values.as_slice().borrow();
-    //     println!("deferred_hash: {:?}", reduce_pv.deferred_proofs_digest);
-    //     println!("complete: {:?}", reduce_pv.is_complete);
+        tracing::info!("wrap bn254");
+        let wrapped_bn254_proof = prover.wrap_bn254(shrink_proof, opts)?;
 
-    //     tracing::info!("verify verify program");
-    //     prover.verify_compressed(&verify_reduce, &verify_vk)?;
+        tracing::info!("verify wrap bn254");
+        println!("verify wrap bn254 {:#?}", wrapped_bn254_proof.vk.commit);
+        prover.verify_wrap_bn254(&wrapped_bn254_proof, &caller_vk).unwrap();
 
-    //     let shrink_proof = prover.shrink(verify_reduce, opts)?;
-
-    //     tracing::info!("verify shrink");
-    //     prover.verify_shrink(&shrink_proof, &verify_vk)?;
-
-    //     tracing::info!("wrap bn254");
-    //     let wrapped_bn254_proof = prover.wrap_bn254(shrink_proof, opts)?;
-
-    //     tracing::info!("verify wrap bn254");
-    //     println!("verify wrap bn254 {:#?}", wrapped_bn254_proof.vk.commit);
-    //     prover.verify_wrap_bn254(&wrapped_bn254_proof, &verify_vk).unwrap();
-
-    //     Ok(())
-    // }
+        Ok(())
+    }
 
     // Tests an end-to-end workflow of proving a program across the entire proof generation
     // pipeline.
