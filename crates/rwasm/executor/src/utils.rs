@@ -34,7 +34,7 @@ pub fn is_signed_operation(ins: Opcode) -> bool {
     ins == Opcode::I32DivS || ins == Opcode::I32RemS
 }
 
-/// Calculate the correct `quotient` and `remainder` for the given `b` and `c` per RISC-V spec.
+/// Calculate the correct `quotient` and `remainder` for the given `b` and `c` per Rwasm spec.
 #[must_use]
 pub fn get_quotient_and_remainder(b: u32, c: u32, ins: Opcode) -> (u32, u32) {
     if c == 0 {

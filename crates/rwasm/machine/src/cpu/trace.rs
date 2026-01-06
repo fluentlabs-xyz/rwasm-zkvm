@@ -168,18 +168,24 @@ impl CpuChip {
                 // For ecall instructions, pass in a dummy byte lookup vector.
                 cols.op_res_access.populate(record_lo, &mut Vec::new());
             } else {
-                // Lo write
-                cols.op_res_access.populate(record_lo, blu_events);
-                let do_check = !matches!(instruction, Opcode::CallIndirect(_));
-                cols.op_res_addr.populate(
-                    event.res_addr.unwrap().to_virtual_addr(),
-                    blu_events,
-                    do_check,
-                );
+                let do_populate =
+                    !matches!(instruction, |Opcode::ConsumeFuel(_)| Opcode::ConsumeFuelStack);
+                if do_populate {
+                    // Lo write
+                    cols.op_res_access.populate(record_lo, blu_events);
+                    let do_check = !matches!(instruction, Opcode::CallIndirect(_));
+
+                    cols.op_res_addr.populate(
+                        event.res_addr.unwrap().to_virtual_addr(),
+                        blu_events,
+                        do_check,
+                    );
+                }
             }
         }
         if let Some(record_hi) = event.res_hi_record {
             // Hi write for 64-bit ops
+
             if instruction.is_64b_op() {
                 cols.op_res_hi_access.populate(record_hi, blu_events);
                 cols.op_res_hi_addr.populate(
@@ -193,16 +199,21 @@ impl CpuChip {
         }
         // Populate arg1/arg2 memory reads.
         if let Some(MemoryRecordEnum::Read(record)) = event.arg1_record {
-            cols.op_arg1_access.populate(record, blu_events);
             //Do not check for LAST_SIG_ADDR because there is only one address.
-            let do_check = !matches!(instruction, Opcode::SignatureCheck(_));
-            cols.op_arg1_addr.populate(
-                event.arg1_addr.unwrap().to_virtual_addr(),
-                blu_events,
-                do_check,
-            );
+            let do_populate =
+                !matches!(instruction, Opcode::ConsumeFuel(_) | Opcode::ConsumeFuelStack);
+            if do_populate {
+                cols.op_arg1_access.populate(record, blu_events);
+                let do_check = !matches!(instruction, Opcode::SignatureCheck(_));
+                cols.op_arg1_addr.populate(
+                    event.arg1_addr.unwrap().to_virtual_addr(),
+                    blu_events,
+                    do_check,
+                );
+            }
         }
         if let Some(MemoryRecordEnum::Read(record)) = event.arg2_record {
+            let do_populate = !matches!(instruction, Opcode::ConsumeFuel(_));
             cols.op_arg2_access.populate(record, blu_events);
             cols.op_arg2_addr.populate(
                 event.arg2_addr.unwrap().to_virtual_addr(),
@@ -228,7 +239,7 @@ impl CpuChip {
             cols.num_extra_cycles = num_extra_cycles;
         }
 
-        if let Some(call_data) = event.call_data {
+        if let Some(call_data) = &&event.call_data {
             println!("event.opcode:{},call_data:{:?}", instruction, event.call_data);
             cols.call_data.signature_id = F::from_canonical_u32(call_data.signature_id);
             cols.call_data.func_ref = F::from_canonical_u32(call_data.func_ref);

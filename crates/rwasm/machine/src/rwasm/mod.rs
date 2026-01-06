@@ -16,6 +16,7 @@ use crate::{
     alu::{AddMul64Chip, TrailingChip},
     bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
     control_flow::{BranchChip, CallChip},
+    fuel::FuelChip,
     global::GlobalChip,
     memory::{MemoryChipType, MemoryInstructionsChip, MemoryLocalChip},
     shape::Shapeable,
@@ -26,7 +27,7 @@ use crate::{
     },
 };
 
-/// A module for importing all the different RISC-V chips.
+/// A module for importing all the different Rwasm chips.
 pub(crate) mod rwasm_chips {
     pub use crate::{
         alu::{
@@ -67,33 +68,33 @@ pub const MAX_LOG_NUMBER_OF_SHARDS: usize = 16;
 /// The maximum number of shards in core.
 pub const MAX_NUMBER_OF_SHARDS: usize = 1 << MAX_LOG_NUMBER_OF_SHARDS;
 
-/// An AIR for encoding RISC-V execution.
+/// An AIR for encoding Rwasm execution.
 ///
-/// This enum contains all the different AIRs that are used in the Sp1 RISC-V IOP. Each variant is
-/// a different AIR that is used to encode a different part of the RISC-V execution, and the
+/// This enum contains all the different AIRs that are used in the Sp1 Rwasm IOP. Each variant is
+/// a different AIR that is used to encode a different part of the Rwasm execution, and the
 /// different AIR variants have a joint lookup argument.
 #[derive(sp1_derive::MachineAirRwasm, EnumDiscriminants)]
 #[strum_discriminants(derive(Hash, EnumIter))]
 pub enum RwasmAir<F: PrimeField32> {
     /// An AIR that contains a preprocessed program table and a lookup for the instructions.
     Program(ProgramChip),
-    /// An AIR for the RISC-V CPU. Each row represents a cpu cycle.
+    /// An AIR for the RwasmCPU. Each row represents a cpu cycle.
     Cpu(CpuChip),
-    /// An AIR for the RISC-V Add and SUB instruction.
+    /// An AIR for the RWASM Add and SUB instruction.
     Add(AddSubChip),
-    /// An AIR for RISC-V Bitwise instructions.
+    /// An AIR for Rwasm Bitwise instructions.
     Bitwise(BitwiseChip),
-    /// An AIR for RISC-V Mul instruction.
+    /// An AIR for Rwasm Mul instruction.
     Mul(MulChip),
-    /// An AIR for RISC-V Add64 and Mul64 instructions.
+    /// An AIR for Rwasm Add64 and Mul64 instructions.
     AddMul64(AddMul64Chip),
-    /// An AIR for RISC-V Div and Rem instructions.
+    /// An AIR for Rwasm Div and Rem instructions.
     DivRem(DivRemChip),
-    /// An AIR for RISC-V Lt instruction.
+    /// An AIR for Rwasm Lt instruction.
     Lt(LtChip),
-    /// An AIR for RISC-V SLL instruction.
+    /// An AIR for Rwasm SLL instruction.
     ShiftLeft(ShiftLeft),
-    /// An AIR for RISC-V SRL and SRA instruction.
+    /// An AIR for Rwasm SRL and SRA instruction.
     ShiftRight(ShiftRightChip),
     /// An AIR for WASM Rotl, Rotr instruction.
     Rotate(RotateChip),
@@ -101,13 +102,15 @@ pub enum RwasmAir<F: PrimeField32> {
     Trailing(TrailingChip),
     /// An AIR for WASM Extend instructions.
     Extend(ExtendChip),
-    /// An AIR for RISC-V memory instructions.
+    /// An AIR for Rwasm memory instructions.
     Memory(MemoryInstructionsChip),
-    /// An AIR for RISC-V branch instructions.
+    /// An AIR for Rwasm branch instructions.
     Branch(BranchChip),
-    /// An AIR for RISC-V branch instructions.
+    ///An Air for Rwasm Fuel instructions.
+    Fuel(FuelChip),
+    /// An AIR for Rwasm branch instructions.
     Call(CallChip),
-    /// An AIR for RISC-V ecall instructions.
+    /// An AIR for Rwasm ecall instructions.
     SyscallInstrs(SyscallInstrsChip),
     /// A lookup table for byte operations.
     ByteLookup(ByteChip<F>),
@@ -187,25 +190,25 @@ impl<F: PrimeField32> RwasmAir<F> {
         StarkMachine::new(config, chips, SP1_PROOF_NUM_PV_ELTS, true)
     }
 
-    /// Get all the different RISC-V AIRs.
+    /// Get all the different Rwasm AIRs.
     pub fn chips() -> Vec<Chip<F, Self>> {
         let (chips, _) = Self::get_chips_and_costs();
         chips
     }
 
-    /// Get all the costs of the different RISC-V AIRs.
+    /// Get all the costs of the different Rwasm AIRs.
     pub fn costs() -> HashMap<String, u64> {
         let (_, costs) = Self::get_chips_and_costs();
         costs
     }
 
-    /// Get all the different RISC-V AIRs and their costs.
+    /// Get all the different Rwasm AIRs and their costs.
     pub fn get_airs_and_costs() -> (Vec<Self>, HashMap<String, u64>) {
         let (chips, costs) = Self::get_chips_and_costs();
         (chips.into_iter().map(|chip| chip.into_inner()).collect(), costs)
     }
 
-    /// Get all the different RISC-V chips and their costs.
+    /// Get all the different Rwasm chips and their costs.
     pub fn get_chips_and_costs() -> (Vec<Chip<F, Self>>, HashMap<String, u64>) {
         let mut costs: HashMap<String, u64> = HashMap::new();
 
@@ -407,7 +410,9 @@ impl<F: PrimeField32> RwasmAir<F> {
         let branch = Chip::new(RwasmAir::Branch(BranchChip::default()));
         costs.insert(branch.name(), branch.cost());
         chips.push(branch);
-
+        let fuel = Chip::new(RwasmAir::Fuel(FuelChip::default()));
+        costs.insert(fuel.name(), fuel.cost());
+        chips.push(fuel);
         let call = Chip::new(RwasmAir::Call(CallChip::default()));
         costs.insert(call.name(), call.cost());
         chips.push(call);
@@ -481,6 +486,7 @@ impl<F: PrimeField32> RwasmAir<F> {
             RwasmAir::Extend(ExtendChip::default()),
             RwasmAir::Memory(MemoryInstructionsChip::default()),
             RwasmAir::Branch(BranchChip::default()),
+            RwasmAir::Fuel(FuelChip::default()),
             RwasmAir::Call(CallChip::default()),
             RwasmAir::SyscallInstrs(SyscallInstrsChip::default()),
             RwasmAir::MemoryLocal(MemoryLocalChip::new()),
@@ -570,6 +576,7 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::ShiftRight => RwasmAirId::ShiftRight,
             RwasmAirDiscriminants::Memory => RwasmAirId::MemoryInstrs,
             RwasmAirDiscriminants::Branch => RwasmAirId::Branch,
+            RwasmAirDiscriminants::Fuel => RwasmAirId::Fuel,
             RwasmAirDiscriminants::Call => RwasmAirId::Call,
             RwasmAirDiscriminants::SyscallInstrs => RwasmAirId::SyscallInstrs,
             RwasmAirDiscriminants::ByteLookup => RwasmAirId::Byte,

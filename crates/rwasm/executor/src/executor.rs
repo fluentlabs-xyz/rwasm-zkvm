@@ -1,9 +1,10 @@
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
 use crate::{
-    dependencies::{emit_branch_dependencies, emit_memory_dependencies}, //emit_divrem_dependencies
+    dependencies::{emit_branch_dependencies, emit_fuel_dependencies, emit_memory_dependencies},
     estimator::RecordEstimator,
-    events::{CallEvent, ConstEvent, I64AluEvent, PrecompileEvent, SyscallEvent},
+    events::{CallEvent, ConstEvent, FuelEvent, I64AluEvent, PrecompileEvent, SyscallEvent},
+    syscalls::func_id_to_syscall_code,
 };
 #[cfg(feature = "profiling")]
 use std::{fs::File, io::BufWriter};
@@ -11,14 +12,18 @@ use std::{str::FromStr, sync::Arc};
 
 use clap::ValueEnum;
 use enum_map::EnumMap;
+use fluentbase_runtime::RuntimeContext;
+use fluentbase_types::import_linker_v1_preview;
 use hashbrown::HashMap;
 
 use rwasm::{
     event::FatOpEvent,
     mem::{MemoryLocalEvent, MemoryRecordEnum},
-    CallStack, DataOpEvent, InstructionPtr, Opcode, RwasmExecutor, RwasmStore, TraceCallData,
-    TrapCode, ValueStack, ValueStackPtr,
+    CallStack, DataOpEvent, FuelConfig, InstructionPtr, Opcode, RwasmExecutor, RwasmStore,
+    TraceCallData, TrapCode, ValueStack, ValueStackPtr,
 };
+
+use fluentbase_runtime::syscall_handler::runtime_syscall_handler;
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
 use sp1_stark::{air::PublicValues, SP1CoreOpts};
@@ -87,7 +92,7 @@ pub struct RwasmExecutorState {
     pub ip: InstructionPtr,
 }
 
-/// An executor for the SP1 RISC-V zkVM.
+/// An executor for the SP1 Rwasm zkVM.
 ///
 /// The exeuctor is responsible for executing a user program and tracing important events which
 /// occur during execution (i.e., memory reads, alu operations, etc).
@@ -98,7 +103,7 @@ pub struct Executor<'a> {
     pub value_stack: ValueStack,
     pub call_stack: CallStack,
     pub register_state: Option<RwasmExecutorState>,
-    pub store: RwasmStore<()>,
+    pub store: RwasmStore<RuntimeContext>,
 
     /// The state of the execution.
     pub state: ExecutionState,
@@ -351,8 +356,14 @@ impl<'a> Executor<'a> {
             serde_json::from_str(include_str!("./artifacts/rv32im_costs.json")).unwrap();
         let costs: HashMap<RwasmAirId, usize> =
             costs.into_iter().map(|(k, v)| (RwasmAirId::from_str(&k).unwrap(), v)).collect();
-
-        let store = RwasmStore::default();
+        let ctx = RuntimeContext::default();
+        let limit = ctx.fuel_limit;
+        let store = RwasmStore::new(
+            import_linker_v1_preview(),
+            ctx,
+            runtime_syscall_handler,
+            FuelConfig::default().with_fuel_limit(500000),
+        );
 
         Self {
             record: Box::new(record),
@@ -732,7 +743,7 @@ impl<'a> Executor<'a> {
                 res_hi,
                 record,
                 0u32,
-                call_data,
+                call_data.clone(),
             );
         } else {
             self.emit_cpu(
@@ -749,7 +760,7 @@ impl<'a> Executor<'a> {
                 res_hi,
                 record,
                 0u32,
-                call_data,
+                call_data.clone(),
             );
         }
 
@@ -763,6 +774,7 @@ impl<'a> Executor<'a> {
             let syscall_code = match opcode {
                 Opcode::TableInit(_) => SyscallCode::TABLE_INIT,
                 Opcode::TableGrow(_) => SyscallCode::TABLE_GROW,
+                Opcode::Call(sys_funcid) => func_id_to_syscall_code(sys_funcid),
                 _ => syscall_code,
             };
             self.emit_syscall_event(
@@ -817,8 +829,11 @@ impl<'a> Executor<'a> {
             }
         } else if opcode.is_64b_op() {
             self.emit_i64_event(clk, pc, next_pc, opcode, res, res_hi, arg1, arg2, record);
+        } else if matches!(opcode, Opcode::ConsumeFuel(_) | Opcode::ConsumeFuelStack) {
+            // Fuel consumption opcodes do not emit any events.
+            self.emit_fuel_event(clk, pc, next_pc, opcode, record);
         } else {
-            println!("no event :ins:{:?},", opcode);
+            println!("Unimplemented opcode in emit_events: {:?}", opcode);
         }
     }
 
@@ -1167,6 +1182,7 @@ impl<'a> Executor<'a> {
                     unreachable!();
                 }
             },
+            SyscallCode::FUEL => (),
         }
     }
 
@@ -1249,6 +1265,49 @@ impl<'a> Executor<'a> {
                 unreachable!();
             }
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[inline]
+    fn emit_fuel_event(
+        &mut self,
+        clk: u32,
+        pc: u32,
+        next_pc: u32,
+        opcode: Opcode,
+        record: MemoryAccessRecord,
+    ) {
+        println!("fuel record in emit:{:?}", record);
+        let fuel_low = record.arg1_record.unwrap().value();
+        let fuel_high = record.arg1_hi_record.unwrap().value();
+        let fuel = ((fuel_high as u64) << 32) | (fuel_low as u64);
+        let next_fuel_low = record.res_record.unwrap().value();
+        let next_fuel_high = record.res_hi_record.unwrap().value();
+        let next_fuel = ((next_fuel_high as u64) << 32) | (next_fuel_low as u64);
+        let to_consume_fuel = match opcode {
+            Opcode::ConsumeFuel(consume_fuel) => consume_fuel,
+            Opcode::ConsumeFuelStack => record.arg2_record.unwrap().value(),
+            _ => {
+                panic!("Invalid opcode for fuel event: {:?}", opcode);
+            }
+        };
+
+        let event = FuelEvent {
+            clk,
+            shard: self.shard(),
+            pc,
+            next_pc,
+            opcode,
+            fuel,
+            next_fuel,
+            to_consume_fuel,
+            fuel_consumed_low_record: record.arg1_record.unwrap(),
+            fuel_consumed_high_record: record.arg1_hi_record.unwrap(),
+            next_consumed_fuel_low_record: record.res_record.unwrap(),
+            next_consumed_fuel_high_record: record.res_hi_record.unwrap(),
+        };
+        self.record.fuel_events.push(event);
+        emit_fuel_dependencies(self, event);
     }
 
     /// Execute an ecall opcode.
@@ -1386,7 +1445,7 @@ impl<'a> Executor<'a> {
             op_state.res,
             op_state.res_hi,
             op_state.memory_access,
-            op_state.call_state,
+            op_state.call_state.clone(),
             op_state.fat_op.clone(),
             dataop_event.cloned(),
         );

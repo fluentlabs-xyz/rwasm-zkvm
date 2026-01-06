@@ -37,7 +37,7 @@ __SP1_HOSTDEV__ void event_to_row(const AluEvent& event,
     // }]);
   }
 
-  // Note that we take the least significant 5 bits per the RISC-V spec.
+  // Note that we take the least significant 5 bits per the Rwasm spec.
   const uintptr_t num_bytes_to_shift = (event.c % 32) / BYTE_SIZE;
   const uintptr_t num_bits_to_shift = (event.c % 32) % BYTE_SIZE;
 

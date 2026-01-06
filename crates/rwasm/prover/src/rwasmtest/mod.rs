@@ -6,6 +6,7 @@ mod call;
 mod comp;
 mod divrem;
 mod extend;
+mod fuel;
 mod lt;
 mod mul;
 mod rotate;
@@ -13,7 +14,6 @@ mod sr;
 mod table_grow;
 mod table_init;
 mod trailing;
-
 use rwasm_executor::Program;
 use rwasm_machine::utils::setup_logger;
 

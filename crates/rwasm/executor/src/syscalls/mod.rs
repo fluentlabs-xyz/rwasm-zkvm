@@ -49,7 +49,7 @@ use write::WriteSyscall;
 
 use crate::events::FieldOperation;
 
-/// A system call in the SP1 RISC-V zkVM.
+/// A system call in the SP1 Rwasm zkVM.
 ///
 /// This trait implements methods needed to execute a system call inside the [`crate::Executor`].
 pub trait Syscall: Send + Sync {

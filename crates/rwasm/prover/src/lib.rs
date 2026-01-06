@@ -1,8 +1,8 @@
-//! An end-to-end-prover implementation for the SP1 RISC-V zkVM.
+//! An end-to-end-prover implementation for the SP1 Rwasm zkVM.
 //!
 //! Separates the proof generation process into multiple stages:
 //!
-//! 1. Generate shard proofs which split up and prove the valid execution of a RISC-V program.
+//! 1. Generate shard proofs which split up and prove the valid execution of a Rwasm program.
 //! 2. Compress shard proofs into a single shard proof.
 //! 3. Wrap the shard proof into a SNARK-friendly field.
 //! 4. Wrap the last shard proof, proven over the SNARK-friendly field, into a PLONK proof.
@@ -129,7 +129,7 @@ pub type CompressAir<F> = RecursionAir<F, COMPRESS_DEGREE>;
 pub type ShrinkAir<F> = RecursionAir<F, SHRINK_DEGREE>;
 pub type WrapAir<F> = RecursionAir<F, WRAP_DEGREE>;
 
-/// A end-to-end for the SP1 RISC-V zkVM.
+/// A end-to-end for the SP1 Rwasm zkVM.
 ///
 /// This object coordinates the proving along all the steps: core, compression, shrinkage, and
 /// wrapping.
@@ -270,7 +270,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         }
     }
 
-    /// Creates a proving key and a verifying key for a given RISC-V ELF.
+    /// Creates a proving key and a verifying key for a given Rwasm ELF.
     #[instrument(name = "setup", level = "debug", skip_all)]
     pub fn setup(
         &self,
@@ -385,7 +385,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         Ok((SP1PublicValues::from(&runtime.state.public_values_stream), runtime.report))
     }
 
-    /// Generate shard proofs which split up and prove the valid execution of a RISC-V program with
+    /// Generate shard proofs which split up and prove the valid execution of a Rwasm program with
     /// the core prover. Uses the provided context.
     #[instrument(name = "prove_core", level = "info", skip_all)]
     pub fn prove_core<'a>(
