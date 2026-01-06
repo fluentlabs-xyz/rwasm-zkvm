@@ -3,11 +3,9 @@ use std::cmp;
 use rwasm::{is_multi_align, Opcode};
 
 use crate::{
-    events::{AluEvent, BranchEvent, MemInstrEvent},
-    //utils::{get_msb, get_quotient_and_remainder, is_signed_operation},
-    Executor,
-    UNUSED_PC,
-    //I32MULHU_CODE, I32MULH_CODE,
+    events::{AluEvent, BranchEvent, FuelEvent, I64AluEvent, MemInstrEvent},
+    utils::{get_msb, get_quotient_and_remainder, is_signed_operation},
+    Executor, I32MULHU_CODE, I32MULH_CODE, UNUSED_PC,
 };
 use rwasm::mem_index::GLOBAL_MEM_START;
 /*/// Emits the dependencies for division and remainder operations.
@@ -292,4 +290,38 @@ pub fn emit_branch_dependencies(executor: &mut Executor, event: BranchEvent) {
             }
         }
     }
+}
+
+pub fn emit_fuel_dependencies(executor: &mut Executor, event: FuelEvent) {
+    let is_carryed = {
+        let fuel_low = event.fuel as u32;
+        fuel_low.checked_add(event.to_consume_fuel).is_none()
+    };
+
+    let add_low_event = I64AluEvent {
+        pc: UNUSED_PC,
+        opcode: Opcode::I32Add64,
+        a_lo: event.next_fuel as u32,
+        a_hi: is_carryed as u32,
+        b: event.fuel as u32,
+        c: event.to_consume_fuel,
+        code: Opcode::I32Add64.code(),
+        res_hi_addr: 0u32,
+        res_hi_access: None,
+    };
+    executor.record.add64_events.push(add_low_event);
+
+    let carry_value = if is_carryed { 1 } else { 0 };
+    let add_high_event = I64AluEvent {
+        pc: UNUSED_PC,
+        opcode: Opcode::I32Add64,
+        a_lo: (event.next_fuel >> 32) as u32,
+        a_hi: carry_value,
+        b: (event.fuel >> 32) as u32,
+        c: carry_value,
+        code: Opcode::I32Add64.code(),
+        res_hi_addr: 0u32,
+        res_hi_access: None,
+    };
+    executor.record.add64_events.push(add_high_event);
 }

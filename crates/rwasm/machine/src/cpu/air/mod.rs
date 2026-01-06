@@ -73,6 +73,7 @@ where
         self.eval_alu(builder, local);
         self.eval_alu_i64(builder, local, clk.clone());
         self.eval_branching(builder, local);
+        self.eval_fuel(builder, local, clk.clone());
         self.eval_call(builder, local, next, clk.clone());
         self.eval_memory(builder, local);
         self.eval_local(builder, local, clk.clone());
@@ -409,6 +410,53 @@ impl CpuChip {
             local.is_syscall,
             local.is_halt,
             local.instruction.is_ecall,
+        );
+    }
+
+    pub(crate) fn eval_fuel<AB: SP1AirBuilder>(
+        &self,
+        builder: &mut AB,
+        local: &CpuCols<AB::Var>,
+        clk: AB::Expr,
+    ) {
+        builder.send_64_instruction(
+            local.shard,
+            clk.clone(),
+            local.pc,
+            local.next_pc,
+            local.num_extra_cycles,
+            local.instruction.opcode,
+            local.op_res_val(),
+            local.op_res_hi_val(),
+            Word::zero::<AB>(),
+            local.instruction.aux_val,
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.instruction.is_consume_fuel,
+        );
+        builder.send_64_instruction(
+            local.shard,
+            clk.clone(),
+            local.pc,
+            local.next_pc,
+            local.num_extra_cycles,
+            local.instruction.opcode,
+            local.op_res_val(),
+            local.op_res_hi_val(),
+            Word::zero::<AB>(),
+            *local.op_arg2_access.value(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.instruction.is_consume_fuel_stack,
+        );
+        builder.eval_memory_access(
+            local.shard,
+            clk.clone(),
+            local.op_arg2_addr.value::<AB>(),
+            &local.op_arg2_access,
+            local.instruction.is_consume_fuel_stack,
         );
     }
 

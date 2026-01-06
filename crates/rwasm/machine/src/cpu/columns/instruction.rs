@@ -72,6 +72,8 @@ pub struct InstructionCols<T> {
     pub is_64b_op: T,
 
     pub is_sig_check: T,
+    pub is_consume_fuel: T,
+    pub is_consume_fuel_stack: T,
 }
 
 impl<F: PrimeField> InstructionCols<F> {
@@ -153,8 +155,9 @@ impl<F: PrimeField> InstructionCols<F> {
             Opcode::CallIndirect(_) => self.is_callindirect = F::one(),
             Opcode::Call(_) => self.is_call = F::one(),
             Opcode::Return => self.is_return = F::one(),
-            Opcode::ConsumeFuel(_) => self.is_skipped = F::one(),
             Opcode::SignatureCheck(_) => self.is_sig_check = F::one(),
+            Opcode::ConsumeFuel(_) => self.is_consume_fuel = F::one(),
+            Opcode::ConsumeFuelStack => self.is_consume_fuel_stack = F::one(),
             Opcode::Drop => self.is_skipped = F::one(),
             Opcode::TableGrow(_) => self.is_table_grow = F::one(),
 

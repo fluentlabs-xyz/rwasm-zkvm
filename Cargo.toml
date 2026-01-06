@@ -133,10 +133,4 @@ default.extend-ignore-words-re = ["(?i)groth", "TRE"]
 
 [patch.crates-io]
 sp1-lib = { path = "crates/zkvm/lib" }
-rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "feat/add-call", features = [
-    "std",
-    "tracing",
-] }
-
-
 [workspace.lints]

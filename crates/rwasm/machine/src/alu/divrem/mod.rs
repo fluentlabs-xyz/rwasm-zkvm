@@ -22,11 +22,58 @@
 //!   strictly < p in absolute value, so "equality in the field" is
 //!   literally "equality in Z" (no mod-p wrap can hide inconsistencies).
 //!
+<<<<<<< HEAD
 //! Trap behavior:
 //!   - Divide by zero: the inequality gadget has no solution when c_abs = 0, so any such row cannot
 //!     satisfy AIR.
 //!   - I32DivS(INT_MIN, -1): an explicit degree-2 trap constraint `is_divs_intmin * is_c_neg_one =
 //!     0` forbids that combination, again leaving no satisfying assignment for that CPU state.
+=======
+//! # Use the multiplication ALU table. result is 64 bits.
+//! result = quotient * c.
+//!
+//! # Add sign-extended remainder to result. Propagate carry to handle overflow within bytes.
+//! base = pow(2, 8)
+//! carry = 0
+//! for i in range(8):
+//!     x = result\[i\] + remainder\[i\] + carry
+//!     result\[i\] = x % base
+//!     carry = x // base
+//!
+//! # The number represented by c * quotient + remainder in 64 bits must equal b in 32 bits.
+//!
+//! # Assert the lower 32 bits of result match b.
+//! assert result[0..4] == b[0..4]
+//!
+//! # Assert the upper 32 bits of result match the sign of b.
+//! if (b == -2^{31}) and (c == -1):
+//!     # This is the only exception as this is the only case where it overflows.
+//!     assert result[4..8] == [0, 0, 0, 0]
+//! elif b < 0:
+//!     assert result[4..8] == [0xff, 0xff, 0xff, 0xff]
+//! else:
+//!     assert result[4..8] == [0, 0, 0, 0]
+//!
+//! # Check a = quotient or remainder.
+//! assert a == (quotient if opcode == division else remainder)
+//!
+//! # remainder and b must have the same sign.
+//! if remainder < 0:
+//!     assert b <= 0
+//! if remainder > 0:
+//!     assert b >= 0
+//!
+//! # abs(remainder) < abs(c)
+//! if c < 0:
+//!    assert c < remainder <= 0
+//! elif c > 0:
+//!    assert 0 <= remainder < c
+//!
+//! if is_c_0:
+//!    # if division by 0, then quotient = 0xffffffff per Rwasm spec. This needs special care since
+//!    # b = 0 * quotient + b is satisfied by any quotient.
+//!    assert quotient = 0xffffffff
+>>>>>>> 69d5a366a (rebase dev)
 
 use crate::{air::SP1CoreAirBuilder, utils::pad_rows_fixed};
 use core::{
@@ -1097,6 +1144,7 @@ where
                 .assert_eq(local.a[i].into(), local.r_abs[i].into());
         }
 
+<<<<<<< HEAD
         // Signed remainder: if r_sign == 1, a + r_abs = 2^32 via a_tc_carry.
         let mut lhs_ar = local.a[0].into() + local.r_abs[0].into();
         let mut rhs_ar = local.a_tc_carry[0].into() * base;
@@ -1105,6 +1153,25 @@ where
             lhs_ar = local.a[i].into() + local.r_abs[i].into() + local.a_tc_carry[i - 1].into();
             rhs_ar = local.a_tc_carry[i].into() * base;
             builder.when(local.is_rem_s).when(local.r_sign).assert_eq(lhs_ar, rhs_ar);
+=======
+        // When division by 0, quotient must be 0xffffffff per Rwasm spec.
+        {
+            // Calculate whether c is 0.
+            IsZeroWordOperation::<AB::F>::eval(
+                builder,
+                local.c.map(|x| x.into()),
+                local.is_c_0,
+                local.is_real.into(),
+            );
+
+            // If is_c_0 is true, then quotient must be 0xffffffff = u32::MAX.
+            for i in 0..WORD_SIZE {
+                builder
+                    .when(local.is_c_0.result)
+                    .when(local.is_divu + local.is_div)
+                    .assert_eq(local.quotient[i], AB::F::from_canonical_u8(u8::MAX));
+            }
+>>>>>>> 69d5a366a (rebase dev)
         }
         builder.when(local.is_rem_s).when(local.r_sign).assert_one(local.a_tc_carry[WORD_SIZE - 1]);
 

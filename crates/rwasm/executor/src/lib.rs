@@ -1,4 +1,4 @@
-//! An implementation of an exucutor for the SP1 RISC-V zkVM.
+//! An implementation of an exucutor for the SP1 Rwasm zkVM.
 
 #![allow(clippy::similar_names)]
 #![allow(clippy::cast_possible_wrap)]

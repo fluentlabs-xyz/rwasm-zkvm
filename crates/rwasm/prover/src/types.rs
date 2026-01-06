@@ -24,7 +24,7 @@ use crate::{
     CoreSC, InnerSC,
 };
 
-/// The information necessary to generate a proof for a given RISC-V program.
+/// The information necessary to generate a proof for a given Rwasm program.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SP1ProvingKey {
     pub pk: StarkProvingKey<CoreSC>,
@@ -33,7 +33,7 @@ pub struct SP1ProvingKey {
     pub vk: SP1VerifyingKey,
 }
 
-/// The information necessary to verify a proof for a given RISC-V program.
+/// The information necessary to verify a proof for a given Rwasm program.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct SP1VerifyingKey {
     pub vk: StarkVerifyingKey<CoreSC>,

@@ -14,8 +14,9 @@ use std::{mem::take, str::FromStr, sync::Arc};
 use crate::{
     events::{
         AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, CallEvent, ConstEvent, CpuEvent,
-        GlobalInteractionEvent, I64AluEvent, MemInstrEvent, MemoryInitializeFinalizeEvent,
-        MemoryLocalEvent, PrecompileEvent, PrecompileEvents, SysStateEvent, SyscallEvent,
+        FuelEvent, GlobalInteractionEvent, I64AluEvent, MemInstrEvent,
+        MemoryInitializeFinalizeEvent, MemoryLocalEvent, PrecompileEvent, PrecompileEvents,
+        SysStateEvent, SyscallEvent,
     },
     program::Program,
     syscalls::SyscallCode,
@@ -70,6 +71,8 @@ pub struct ExecutionRecord {
     pub add64_events: Vec<I64AluEvent>,
     /// A trace of the constant events.
     pub sys_state_events: Vec<SysStateEvent>,
+    /// A trace of the fuel events.
+    pub fuel_events: Vec<FuelEvent>,
 
     /// A trace of the byte lookups that are needed.
     pub byte_lookups: HashMap<ByteLookupEvent, usize>,

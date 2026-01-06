@@ -5,7 +5,7 @@ use super::MemoryRecordEnum;
 
 /// Alu Opcode Event.
 ///
-/// This object encapsulated the information needed to prove a RISC-V ALU operation.
+/// This object encapsulated the information needed to prove a Rwasm ALU operation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct AluEvent {
@@ -33,7 +33,7 @@ impl AluEvent {
 
 /// Memory Opcode Event.
 ///
-/// This object encapsulated the information needed to prove a RISC-V memory operation.
+/// This object encapsulated the information needed to prove a Rwasm memory operation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct MemInstrEvent {
@@ -81,7 +81,7 @@ impl MemInstrEvent {
 
 /// Branch Opcode Event.
 ///
-/// This object encapsulated the information needed to prove a RISC-V branch operation.
+/// This object encapsulated the information needed to prove a Rwasm branch operation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct BranchEvent {
@@ -111,7 +111,7 @@ impl BranchEvent {
 
 /// Const Opcode Event.
 ///
-/// This object encapsulated the information needed to prove a RISC-V branch operation.
+/// This object encapsulated the information needed to prove a Rwasm branch operation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct ConstEvent {
@@ -163,7 +163,7 @@ impl SysStateEvent {
 }
 /// Call opcode Event.
 ///
-/// This object encapsulated the information needed to prove a RISC-V branch operation.
+/// This object encapsulated the information needed to prove a Rwasm branch operation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct CallEvent {
@@ -229,7 +229,7 @@ impl CallEvent {
 
 /// Alu Opcode Event.
 ///
-/// This object encapsulated the information needed to prove a RISC-V ALU operation.
+/// This object encapsulated the information needed to prove a Rwasm ALU operation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct I64AluEvent {
@@ -270,4 +270,33 @@ impl I64AluEvent {
     ) -> Self {
         Self { pc, opcode, a_lo: a, a_hi, b, c, code, res_hi_addr, res_hi_access }
     }
+}
+
+///Fuel Opcode Event.
+///
+/// This object encapsulated the information needed to prove fuel consumption instructions.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[repr(C)]
+pub struct FuelEvent {
+    /// The shard.
+    pub shard: u32,
+    /// The clk.
+    pub clk: u32,
+    /// The program counter.
+    pub pc: u32,
+    /// The next program counter.
+    pub next_pc: u32,
+    /// rwasm opcode
+    pub opcode: Opcode,
+    /// The fuel before op
+    pub fuel: u64,
+    /// The fuel after op
+    pub next_fuel: u64,
+    /// The amount of fuel to consume
+    pub to_consume_fuel: u32,
+
+    pub fuel_consumed_low_record: MemoryRecordEnum,
+    pub fuel_consumed_high_record: MemoryRecordEnum,
+    pub next_consumed_fuel_low_record: MemoryRecordEnum,
+    pub next_consumed_fuel_high_record: MemoryRecordEnum,
 }

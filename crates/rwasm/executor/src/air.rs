@@ -161,6 +161,9 @@ pub enum RwasmAirId {
 
     #[subenum(CoreAirId)]
     AddMul64 = 51,
+
+    #[subenum(CoreAirId)]
+    Fuel = 52,
 }
 
 impl RwasmAirId {
@@ -184,6 +187,7 @@ impl RwasmAirId {
             RwasmAirId::MemoryLocal,
             RwasmAirId::MemoryInstrs,
             RwasmAirId::Branch,
+            RwasmAirId::Fuel,
             RwasmAirId::Call,
             RwasmAirId::SyscallCore,
             RwasmAirId::SyscallInstrs,
