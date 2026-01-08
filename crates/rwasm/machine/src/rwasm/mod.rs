@@ -19,6 +19,7 @@ use crate::{
     fuel::FuelChip,
     global::GlobalChip,
     memory::{MemoryChipType, MemoryInstructionsChip, MemoryLocalChip},
+    non_alu_instructions::{ConstChip, ExtendChip, LocalChip},
     shape::Shapeable,
     syscall::{
         fat_op::{table_grow::TableGrowChip, TableInitChip},
@@ -31,8 +32,8 @@ use crate::{
 pub(crate) mod rwasm_chips {
     pub use crate::{
         alu::{
-            AddSubChip, BitwiseChip, DivRemChip, ExtendChip, LtChip, MulChip, RotateChip,
-            ShiftLeft, ShiftRightChip,
+            AddSubChip, BitwiseChip, DivRemChip, LtChip, MulChip, RotateChip, ShiftLeft,
+            ShiftRightChip,
         },
         bytes::ByteChip,
         cpu::CpuChip,
@@ -178,6 +179,9 @@ pub enum RwasmAir<F: PrimeField32> {
     TableInit(TableInitChip),
 
     TableGrow(TableGrowChip),
+
+    Const(ConstChip),
+    Local(LocalChip),
 }
 
 impl<F: PrimeField32> RwasmAir<F> {
@@ -452,6 +456,14 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(table_grow.name(), table_grow.cost());
         chips.push(table_grow);
 
+        let const_chip = Chip::new(RwasmAir::Const(ConstChip::default()));
+        costs.insert(const_chip.name(), const_chip.cost());
+        chips.push(const_chip);
+
+        let local_chip = Chip::new(RwasmAir::Local(LocalChip::default()));
+        costs.insert(local_chip.name(), local_chip.cost());
+        chips.push(local_chip);
+
         assert_eq!(chips.len(), costs.len(), "chips and costs must have the same length",);
 
         (chips, costs)
@@ -492,6 +504,8 @@ impl<F: PrimeField32> RwasmAir<F> {
             RwasmAir::MemoryLocal(MemoryLocalChip::new()),
             RwasmAir::Global(GlobalChip),
             RwasmAir::SyscallCore(SyscallChip::core()),
+            RwasmAir::Const(ConstChip::default()),
+            RwasmAir::Local(LocalChip::default()),
         ]
     }
 
@@ -615,6 +629,8 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Rotate => RwasmAirId::Rotate,
             RwasmAirDiscriminants::Trailing => RwasmAirId::Trailing,
             RwasmAirDiscriminants::Extend => RwasmAirId::Extend,
+            RwasmAirDiscriminants::Const => RwasmAirId::Const,
+            RwasmAirDiscriminants::Local => RwasmAirId::Local,
         }
     }
 }

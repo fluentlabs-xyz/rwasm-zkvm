@@ -48,7 +48,10 @@ enum-map = { version = "2.7.3" }
 
 
 # rwasm
-rwasm = { workspace = true}
+rwasm = { path = "/home/djadjka/Work/rwasm", features = [
+    "std",
+    "tracing",
+] }
 
 
 
@@ -98,7 +101,7 @@ hex = "0.4"
 # path = "scripts/post_trusted_setup.rs"
 
 [features]
-native-gnark = ["sp1-recursion-gnark-ffi/native"]
+native-gnark = ["sp1-recursion-gnark-ffi/native", "debug"]
 debug = ["rwasm-machine/debug"]
 
 [lints]

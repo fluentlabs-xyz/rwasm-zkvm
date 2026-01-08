@@ -5,11 +5,13 @@ use core::{
 
 use hashbrown::HashMap;
 use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::{AbstractField, PrimeField, PrimeField32};
+use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
-use rayon::prelude::IntoParallelIterator;
-use rwasm::Opcode::{I32Add64, I32Mul64};
+use rwasm::{
+    mem_index::UNIT,
+    Opcode::{self, I32Add64, I32Mul64},
+};
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, I64AluEvent},
     ExecutionRecord, DEFAULT_PC_INC,
@@ -20,6 +22,7 @@ use sp1_stark::{air::MachineAir, Word};
 
 use crate::{
     air::SP1CoreAirBuilder,
+    memory::{MemoryCols, MemoryWriteCols},
     utils::{next_power_of_two, zeroed_f_vec},
 };
 
@@ -36,8 +39,12 @@ pub struct AddMul64Chip;
 #[repr(C)]
 pub struct AddMul64Cols<T> {
     pub pc: T,
-    pub a_lo: Word<T>,
-    pub a_hi: Word<T>,
+    pub shard: T,
+    pub clk: T,
+    pub sp: T,
+    // a_lo will be write in cpu chip
+    pub res_hi: Word<T>,
+    pub res_lo_write_record: MemoryWriteCols<T>,
     pub b: Word<T>,
     pub c: Word<T>,
     // Must be size 8 to support Mul64. Add64 uses only the first 4.
@@ -66,33 +73,20 @@ impl<F: PrimeField32> MachineAir<F> for AddMul64Chip {
         _: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
         // Calculate total rows needed for both event types
-        let nb_rows = input.add64_events.len() + input.mul64_events.len();
+        let nb_rows = input.i64_events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
         let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
 
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_ADDMUL64_COLS);
         let chunk_size = std::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
 
-        // Parallel generation of trace rows
         values.chunks_mut(chunk_size * NUM_ADDMUL64_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
                 rows.chunks_mut(NUM_ADDMUL64_COLS).enumerate().for_each(|(j, row)| {
                     let idx = i * chunk_size + j;
                     let cols: &mut AddMul64Cols<F> = row.borrow_mut();
 
-                    if idx < nb_rows {
-                        let mut byte_lookup_events = Vec::new();
-
-                        // Determine if we are processing an Add or Mul event based on index
-                        if idx < input.add64_events.len() {
-                            let event = &input.add64_events[idx];
-                            self.event_to_row(event, true, cols, &mut byte_lookup_events);
-                        } else {
-                            let mul_idx = idx - input.add64_events.len();
-                            let event = &input.mul64_events[mul_idx];
-                            self.event_to_row(event, false, cols, &mut byte_lookup_events);
-                        }
-                    }
+                    self.event_to_row(&input.i64_events[idx], cols, &mut Vec::new());
                 });
             },
         );
@@ -101,7 +95,8 @@ impl<F: PrimeField32> MachineAir<F> for AddMul64Chip {
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
-        let nb_rows = input.add64_events.len() + input.mul64_events.len();
+        let nb_rows = input.i64_events.len();
+
         if nb_rows == 0 {
             return;
         }
@@ -109,30 +104,17 @@ impl<F: PrimeField32> MachineAir<F> for AddMul64Chip {
         let chunk_size = std::cmp::max(nb_rows / num_cpus::get(), 1);
         let num_chunks = nb_rows.div_ceil(chunk_size);
 
-        // Process both event lists in a single parallel loop, indexed by 0..nb_rows
-        let blu_batches = (0..num_chunks)
-            .into_par_iter()
-            .map(|i| {
-                let start = i * chunk_size;
-                let end = std::cmp::min(start + chunk_size, nb_rows);
+        let blu_batches = input
+            .i64_events
+            .chunks(chunk_size)
+            .par_bridge()
+            .map(|events| {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-
-                for idx in start..end {
-                    // We must provide a temp row buffer because event_to_row requires it,
-                    // even though we only care about 'blu' here.
+                events.iter().for_each(|event| {
                     let mut row = [F::zero(); NUM_ADDMUL64_COLS];
                     let cols: &mut AddMul64Cols<F> = row.as_mut_slice().borrow_mut();
-
-                    // Determine if we are processing an Add or Mul event based on index
-                    if idx < input.add64_events.len() {
-                        let event = &input.add64_events[idx];
-                        self.event_to_row(event, true, cols, &mut blu);
-                    } else {
-                        let mul_idx = idx - input.add64_events.len();
-                        let event = &input.mul64_events[mul_idx];
-                        self.event_to_row(event, false, cols, &mut blu);
-                    }
-                }
+                    self.event_to_row(event, cols, &mut blu);
+                });
                 blu
             })
             .collect::<Vec<_>>();
@@ -144,7 +126,7 @@ impl<F: PrimeField32> MachineAir<F> for AddMul64Chip {
         if let Some(shape) = shard.shape.as_ref() {
             shape.included::<F, _>(self)
         } else {
-            !shard.add64_events.is_empty() || !shard.mul64_events.is_empty()
+            !shard.i64_events.is_empty()
         }
     }
 
@@ -154,25 +136,33 @@ impl<F: PrimeField32> MachineAir<F> for AddMul64Chip {
 }
 
 impl AddMul64Chip {
-    fn event_to_row<F: PrimeField>(
+    fn event_to_row<F: PrimeField32>(
         &self,
         event: &I64AluEvent,
-        is_add_op: bool,
         cols: &mut AddMul64Cols<F>,
         blu: &mut impl ByteRecord,
     ) {
+        let is_add_op = matches!(event.opcode, Opcode::I32Add64);
+
         cols.pc = F::from_canonical_u32(event.pc);
+
+        cols.sp = F::from_canonical_u32(event.sp);
+
+        cols.clk = F::from_canonical_u32(event.clk);
+
+        cols.shard = F::from_canonical_u32(event.shard);
+
         cols.b = event.b.into();
         cols.c = event.c.into();
-        cols.a_lo = event.a_lo.into();
-        cols.a_hi = event.a_hi.into();
+        cols.res_hi = event.res_hi.into();
+        cols.res_lo_write_record.populate(event.res_lo_write_record, blu);
 
         let b_word = event.b.to_le_bytes();
         let c_word = event.c.to_le_bytes();
 
         // Range checks for inputs and outputs (always active)
-        let a_lo_word = event.a_lo.to_le_bytes();
-        let a_hi_word = event.a_hi.to_le_bytes();
+        let a_lo_word = event.res_hi.to_le_bytes();
+        let a_hi_word = event.res_lo_write_record.value.to_le_bytes();
         blu.add_u8_range_checks(&b_word);
         blu.add_u8_range_checks(&c_word);
         blu.add_u8_range_checks(&a_lo_word);
@@ -245,8 +235,8 @@ where
         // Shared Range Checks (Bytes)
         builder.slice_range_check_u8(&local.b.0, is_real.clone());
         builder.slice_range_check_u8(&local.c.0, is_real.clone());
-        builder.slice_range_check_u8(&local.a_lo.0, is_real.clone());
-        builder.slice_range_check_u8(&local.a_hi.0, is_real.clone());
+        builder.slice_range_check_u8(&local.res_hi.0, is_real.clone());
+        builder.slice_range_check_u8(&local.res_lo_write_record.value().0, is_real.clone());
 
         // --- ADD Operation Constraints ---
         {
@@ -264,7 +254,7 @@ where
             let mut prev_carry = zero.clone();
             for i in 0..WORD_SIZE {
                 let lhs = local.b[i].into() + local.c[i].into() + prev_carry.clone();
-                let rhs = local.a_lo[i].into() + local.carry[i].into() * base;
+                let rhs = local.res_hi[i].into() + local.carry[i].into() * base;
 
                 builder_add.assert_zero(lhs - rhs);
                 prev_carry = local.carry[i].into();
@@ -272,11 +262,11 @@ where
 
             // 4. Upper 32 bits logic (Implicit zero-extension of inputs)
             // Result a_hi[0] must equal the carry out from the lower 32 bits.
-            builder_add.assert_eq(local.a_hi[0], prev_carry);
+            builder_add.assert_eq(local.res_lo_write_record.value()[0], prev_carry);
 
             // The rest of a_hi must be zero.
             for i in 1..WORD_SIZE {
-                builder_add.assert_zero(local.a_hi[i]);
+                builder_add.assert_zero(local.res_lo_write_record.value()[i]);
             }
         }
 
@@ -304,9 +294,9 @@ where
 
                 // result = output_byte + 256 * new_carry
                 let out_byte = if i < WORD_SIZE {
-                    local.a_lo[i].into()
+                    local.res_hi[i].into()
                 } else {
-                    local.a_hi[i - WORD_SIZE].into()
+                    local.res_lo_write_record.value()[i - WORD_SIZE].into()
                 };
 
                 let rhs = out_byte + local.carry[i] * base;
@@ -320,20 +310,31 @@ where
         let opcode = local.is_add * AB::F::from_canonical_u32(I32Add64.code()) +
             local.is_mul * AB::F::from_canonical_u32(I32Mul64.code());
 
-        builder.receive_64_instruction(
-            AB::Expr::zero(),
-            AB::Expr::zero(),
+        builder.eval_memory_access(
+            local.shard,
+            local.clk + AB::Expr::one(),
+            local.sp + AB::Expr::from_canonical_u32(UNIT),
+            &local.res_lo_write_record,
+            is_real.clone(),
+        );
+
+        builder.receive_rwasm_instruction(
+            local.shard,
+            local.clk,
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp,
             AB::Expr::zero(),
             opcode,
-            local.a_lo,
-            local.a_hi,
+            local.res_hi,
+            *local.res_lo_write_record.value(),
             local.b,
             local.c,
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
+            AB::Expr::one(),
             is_real,
         );
     }
@@ -348,7 +349,10 @@ mod tests {
         utils::{run_malicious_test, uni_stark_prove as prove, uni_stark_verify as verify},
     };
     use p3_baby_bear::BabyBear;
-    use rwasm_executor::{ExecutionRecord, Opcode};
+    use rwasm_executor::{
+        events::{MemoryRecordEnum, MemoryWriteRecord},
+        ExecutionRecord, Opcode,
+    };
     use sp1_stark::{
         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
         MachineProver, StarkGenericConfig,
@@ -371,16 +375,20 @@ mod tests {
 
         for (b, c) in add_cases {
             let result = (b as u64) + (c as u64);
-            shard.add64_events.push(I64AluEvent {
+
+            let res_lo_write_record = MemoryWriteRecord::new(result as u32, 0, 1, 0, 0, 0);
+
+            shard.i64_events.push(I64AluEvent {
+                clk: 0,
+                shard: 0,
                 pc: 0,
+                sp: 0,
                 opcode: Opcode::I32Add64,
-                a_lo: result as u32,
-                a_hi: (result >> 32) as u32,
+                res_hi: (result >> 32) as u32,
+                res_lo_write_record,
                 b,
                 c,
                 code: Opcode::I32Add64.code(),
-                res_hi_addr: 0,
-                res_hi_access: None,
             });
         }
 
@@ -394,16 +402,20 @@ mod tests {
 
         for (b, c) in mul_cases {
             let result = (b as i64).wrapping_mul(c as i64);
-            shard.mul64_events.push(I64AluEvent {
+
+            let res_lo_write_record = MemoryWriteRecord::new(result as u32, 0, 1, 0, 0, 0);
+
+            shard.i64_events.push(I64AluEvent {
                 pc: 4,
+                shard: 0,
+                clk: 0,
+                sp: 0,
                 opcode: Opcode::I32Mul64,
-                a_lo: result as u32,
-                a_hi: (result >> 32) as u32,
+                res_hi: (result >> 32) as u32,
+                res_lo_write_record,
                 b,
                 c,
                 code: Opcode::I32Mul64.code(),
-                res_hi_addr: 0,
-                res_hi_access: None,
             });
         }
 
@@ -442,10 +454,10 @@ mod tests {
             let mut malicious_record = record.clone();
             // Find the mul event and break it
             if let Some(event) =
-                malicious_record.mul64_events.iter_mut().find(|e| e.opcode == Opcode::I32Mul64)
+                malicious_record.i64_events.iter_mut().find(|e| e.opcode == Opcode::I32Mul64)
             {
-                event.a_lo = wrong_res as u32;
-                event.a_hi = (wrong_res >> 32) as u32;
+                event.res_hi = (wrong_res >> 32) as u32;
+                event.res_lo_write_record = MemoryWriteRecord::new(wrong_res as u32, 0, 1, 0, 0, 0);
             }
             prover.generate_traces(&malicious_record)
         };
@@ -480,10 +492,10 @@ mod tests {
             let mut malicious_record = record.clone();
             // Find the mul event and break it
             if let Some(event) =
-                malicious_record.add64_events.iter_mut().find(|e| e.opcode == Opcode::I32Add64)
+                malicious_record.i64_events.iter_mut().find(|e| e.opcode == Opcode::I32Add64)
             {
-                event.a_lo = wrong_res as u32;
-                event.a_hi = (wrong_res >> 32) as u32;
+                event.res_hi = (wrong_res >> 32) as u32;
+                event.res_lo_write_record = MemoryWriteRecord::new(wrong_res as u32, 0, 1, 0, 0, 0);
             }
             prover.generate_traces(&malicious_record)
         };

@@ -197,8 +197,10 @@ mod tests {
             Opcode::I32Const(addr_2.into()),
             Opcode::I32Const(addr.into()),
             Opcode::I32Load(0),
-            // Opcode::I32Load16U(0),
-            // Opcode::I32Load8U(0),
+            Opcode::I32Const(addr_2.into()),
+            Opcode::I32Load16U(0),
+            Opcode::I32Const(addr_3.into()),
+            Opcode::I32Load8U(0),
         ];
 
         let program = Program::from_instrs(instructions);

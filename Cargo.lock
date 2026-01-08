@@ -3446,7 +3446,7 @@ dependencies = [
  "k256",
  "num",
  "p256",
- "rwasm",
+ "rwasm 0.0.0",
  "schnellru",
  "sha2 0.10.9",
  "smallvec",
@@ -3469,9 +3469,9 @@ dependencies = [
  "fluentbase-codec-derive",
  "hashbrown 0.16.1",
  "paste",
- "revm-precompile",
- "revm-primitives",
- "rwasm",
+ "revm-rwasm-precompile",
+ "revm-rwasm-primitives",
+ "rwasm 0.0.0",
  "serde",
  "strum_macros 0.27.2",
 ]
@@ -6944,6 +6944,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "rwasm"
+version = "0.3.2"
+dependencies = [
+ "anyhow",
+ "bincode 2.0.1",
+ "bitvec",
+ "bytes 1.11.0",
+ "downcast-rs 2.0.2",
+ "futures",
+ "hashbrown 0.15.5",
+ "libm",
+ "num-derive",
+ "num-traits",
+ "paste",
+ "serde",
+ "smallvec",
+ "spin 0.10.0",
+ "tiny-keccak",
+ "wasmi",
+ "wasmparser-nostd",
+ "wasmtime-rwasm",
+]
+
+[[package]]
 name = "rwasm-executor"
 version = "5.2.3"
 dependencies = [
@@ -6971,7 +6995,7 @@ dependencies = [
  "range-set-blaze",
  "rrs-succinct",
  "rustc-demangle",
- "rwasm",
+ "rwasm 0.3.2",
  "serde",
  "serde_json",
  "sp1-curves 5.2.3",
@@ -7023,7 +7047,7 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "rayon-scan",
- "rwasm",
+ "rwasm 0.3.2",
  "rwasm-executor",
  "serde",
  "serde_json",
@@ -7080,7 +7104,7 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "rayon-scan",
- "rwasm",
+ "rwasm 0.3.2",
  "rwasm-executor",
  "rwasm-machine",
  "serde",
@@ -7129,7 +7153,7 @@ dependencies = [
  "p3-symmetric",
  "p3-util",
  "rayon",
- "rwasm",
+ "rwasm 0.3.2",
  "rwasm-executor",
  "rwasm-machine",
  "serde",

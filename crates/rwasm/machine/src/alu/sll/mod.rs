@@ -96,8 +96,8 @@ use itertools::Itertools;
 use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
-use rwasm::Opcode;
+use p3_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
+use rwasm::mem_index::UNIT;
 use rwasm_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord, EmptyByteRecord},
     ByteOpcode, ExecutionRecord, Program, DEFAULT_PC_INC,
@@ -134,7 +134,9 @@ pub struct ShiftLeftCols<T> {
     /// Program counter.
     pub pc: T,
 
-    /// Output operand: `a = b << c` (32-bit).
+    pub sp: T,
+
+    /// The output operand.
     pub a: Word<T>,
 
     /// First input operand (shifted value).
@@ -256,9 +258,15 @@ impl ShiftLeft {
         // 1. Basic wiring.
         //
         cols.pc = F::from_canonical_u32(event.pc);
-        cols.a = Word::from(event.a);
-        cols.b = Word::from(event.b);
-        cols.c = Word::from(event.c);
+        cols.sp = F::from_canonical_u32(event.sp);
+
+        let a = event.a.to_le_bytes();
+        let b = event.b.to_le_bytes();
+        let c = event.c.to_le_bytes();
+        cols.a = Word(a.map(F::from_canonical_u8));
+        cols.b = Word(b.map(F::from_canonical_u8));
+        cols.c = Word(c.map(F::from_canonical_u8));
+        cols.op_a_not_0 = F::from_bool(true);
         cols.is_real = F::one();
 
         //
@@ -461,19 +469,59 @@ where
         builder.slice_range_check_u8(&local.bit_shift_result, is_real);
         builder.slice_range_check_u8(&local.bit_shift_result_carry, is_real);
 
-        //
-        // 7. CPU wiring (receive_instruction_old).
-        //
-        builder.receive_instruction_old(
+        for shift in local.shift_by_n_bits.iter() {
+            builder.assert_bool(*shift);
+        }
+        builder.assert_eq(
+            local.shift_by_n_bits.iter().fold(zero.clone(), |acc, &x| acc + x),
+            one.clone(),
+        );
+
+        // Range check.
+        {
+            builder.slice_range_check_u8(&local.bit_shift_result, local.is_real);
+            builder.slice_range_check_u8(&local.bit_shift_result_carry, local.is_real);
+        }
+
+        for shift in local.shift_by_n_bytes.iter() {
+            builder.assert_bool(*shift);
+        }
+
+        builder.assert_eq(
+            local.shift_by_n_bytes.iter().fold(zero.clone(), |acc, &x| acc + x),
+            one.clone(),
+        );
+
+        // SAFETY: `is_real` is checked to be boolean.
+        // All interactions are done with multiplicity `is_real`, so padding rows lead to no
+        // interactions. This chip only deals with the `SLL` opcode, so the opcode matches
+        // the instruction.
+        builder.assert_bool(local.is_real);
+
+        // Receive the arguments.
+        // SAFETY: This checks the following.
+        // - `next_pc = pc + 4`
+        // - `num_extra_cycles = 0`
+        // - `op_a_val` is constrained by the chip when `op_a_not_0 == 1`
+        // - `op_a_not_0` is correct, due to the sent `op_a_0` being equal to `1 - op_a_not_0`
+        // - `op_a_immutable = 0`
+        // - `is_memory = 0`
+        // - `is_syscall = 0`
+        // - `is_halt = 0`
+        builder.receive_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp + AB::Expr::from_canonical_u32(UNIT),
             AB::Expr::zero(),
             AB::F::from_canonical_u32(Opcode::I32Shl.code()),
             local.a,
             local.b,
             local.c,
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -511,10 +559,8 @@ mod tests {
     #[test]
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
-        shard.shift_left_events = vec![
-            AluEvent::new(0, Opcode::I32Shl, 24, 12, 1, Opcode::I32Shl.code()),
-            AluEvent::new(0, Opcode::I32Shl, 1536, 12, 7, Opcode::I32Shl.code()),
-        ];
+        shard.shift_left_events =
+            vec![AluEvent::new(0, 0, Opcode::I32Shl, 16, 8, 1, Opcode::I32Shl.code())];
         let chip = ShiftLeft::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
@@ -541,10 +587,21 @@ mod tests {
             (Opcode::I32Shl, 0x42424242, 0x21212121, 0x00000021),
             (Opcode::I32Shl, 0x90909080, 0x12121210, 0x00000023),
         ];
+        for t in shift_instructions.iter() {
+            shift_events.push(AluEvent::new(0, 0, t.0, t.1, t.2, t.3, t.0.code()));
+        }
 
-        let mut shift_events: Vec<AluEvent> = Vec::new();
-        for t in shifts.iter() {
-            shift_events.push(AluEvent::new(0, t.0, t.1, t.2, t.3, t.0.code()));
+        // Append more events until we have 1000 tests.
+        for _ in 0..(1000 - shift_instructions.len()) {
+            shift_events.push(AluEvent::new(
+                0,
+                0,
+                Opcode::I32Shl,
+                256,
+                1,
+                8,
+                Opcode::I32Shl.code(),
+            ));
         }
 
         let mut shard = ExecutionRecord::default();
@@ -557,6 +614,78 @@ mod tests {
 
         let mut challenger = config.challenger();
         verify(&config, &chip, &mut challenger, &proof).unwrap();
+    }
+
+    #[test]
+    fn sll_splits_bit_and_byte_shift() {
+        use core::borrow::Borrow;
+        use p3_baby_bear::BabyBear;
+        use sp1_primitives::consts::WORD_SIZE;
+
+        let mut shard = ExecutionRecord::default();
+        // b = 1, c = 9 -> a = 1 << 9 = 0x0000_0200 (1 byte + 1 bit)
+        shard.shift_left_events = vec![AluEvent::new(
+            0,
+            0,
+            Opcode::I32Shl,
+            0x0000_0200,
+            0x0000_0001,
+            9,
+            Opcode::I32Shl.code(),
+        )];
+
+        let chip = ShiftLeft::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        let row = trace.row_slice(0);
+        let cols: &ShiftLeftCols<BabyBear> = (*row).borrow();
+
+        // 9 % 8 = 1 -> multiplier 2, `shift_by_n_bits[1] = 1`; 9 / 8 = 1 -> `shift_by_n_bytes[1] =
+        // 1`.
+        assert_eq!(cols.bit_shift_multiplier, BabyBear::from_canonical_u32(2));
+        assert_eq!(cols.shift_by_n_bits[1], BabyBear::one());
+        assert_eq!(cols.shift_by_n_bytes[1], BabyBear::one());
+
+        let expected = 0x0000_0200u32.to_le_bytes();
+        for i in 0..WORD_SIZE {
+            assert_eq!(cols.a[i], BabyBear::from_canonical_u8(expected[i]));
+        }
+    }
+
+    #[test]
+    fn sll_masks_to_low_five_bits() {
+        use core::borrow::Borrow;
+        use p3_baby_bear::BabyBear;
+        use sp1_primitives::consts::WORD_SIZE;
+
+        let mut shard = ExecutionRecord::default();
+        // Use a value of `c` with high bits set. Low 5 bits are 16, so shift is by 16.
+        let c = 0xffff_fff0u32; // 240 -> 240 & 31 = 16
+        let b = 0x0000_0001u32;
+        let a = b.wrapping_shl((c & 0x1f) as u32);
+        debug_assert_eq!(a, 0x0001_0000);
+
+        shard.shift_left_events =
+            vec![AluEvent::new(0, 0, Opcode::I32Shl, a, b, c, Opcode::I32Shl.code())];
+
+        let chip = ShiftLeft::default();
+        let trace: RowMajorMatrix<BabyBear> =
+            chip.generate_trace(&shard, &mut ExecutionRecord::default());
+
+        let row = trace.row_slice(0);
+        let cols: &ShiftLeftCols<BabyBear> = (*row).borrow();
+
+        // 16 % 8 = 0 -> multiplier 1 and `shift_by_n_bits[0] = 1`; 16 / 8 = 2 ->
+        // `shift_by_n_bytes[2] = 1`.
+        assert_eq!(cols.bit_shift_multiplier, BabyBear::from_canonical_u32(1));
+        assert_eq!(cols.shift_by_n_bits[0], BabyBear::one());
+        assert_eq!(cols.shift_by_n_bytes[2], BabyBear::one());
+
+        let expected = a.to_le_bytes();
+        for i in 0..WORD_SIZE {
+            assert_eq!(cols.a[i], BabyBear::from_canonical_u8(expected[i]));
+        }
     }
 
     #[test]
@@ -592,7 +721,6 @@ mod tests {
 
                     // Corrupt CPU result for the I32Shl instruction.
                     if malicious_record.cpu_events.len() > 4 {
-                        malicious_record.cpu_events[4].res = op_a as u32;
                         if let Some(MemoryRecordEnum::Write(mut write_record)) =
                             malicious_record.cpu_events[4].res_record
                         {

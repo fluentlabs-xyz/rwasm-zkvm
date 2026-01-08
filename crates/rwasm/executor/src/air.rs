@@ -163,7 +163,10 @@ pub enum RwasmAirId {
     AddMul64 = 51,
 
     #[subenum(CoreAirId)]
-    Fuel = 52,
+    Local = 52,
+
+    #[subenum(CoreAirId)]
+    Const = 53,
 }
 
 impl RwasmAirId {
@@ -192,6 +195,8 @@ impl RwasmAirId {
             RwasmAirId::SyscallCore,
             RwasmAirId::SyscallInstrs,
             RwasmAirId::Global,
+            RwasmAirId::Local,
+            RwasmAirId::Const,
         ]
     }
 

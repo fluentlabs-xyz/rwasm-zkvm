@@ -338,6 +338,98 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
             InteractionScope::Local,
         );
     }
+
+    /// Sends a RWASM instruction to be processed.
+    fn send_rwasm_instruction(
+        &mut self,
+        shard: impl Into<Self::Expr> + Clone,
+        clk: impl Into<Self::Expr> + Clone,
+        pc: impl Into<Self::Expr>,
+        next_pc: impl Into<Self::Expr>,
+        sp: impl Into<Self::Expr>,
+        next_sp: impl Into<Self::Expr>,
+        num_extra_cycles: impl Into<Self::Expr>,
+        opcode: impl Into<Self::Expr>,
+        res: Word<impl Into<Self::Expr>>,
+        arg_1: Word<impl Into<Self::Expr>>,
+        arg_2: Word<impl Into<Self::Expr>>,
+        aux_value: Word<impl Into<Self::Expr>>,
+        is_memory: impl Into<Self::Expr>,
+        is_syscall: impl Into<Self::Expr>,
+        is_halt: impl Into<Self::Expr>,
+        is_complex_opcode: impl Into<Self::Expr>,
+        multiplicity: impl Into<Self::Expr>,
+    ) {
+        let values = once(shard.into())
+            .chain(once(clk.into()))
+            .chain(once(pc.into()))
+            .chain(once(next_pc.into()))
+            .chain(once(sp.into()))
+            .chain(once(next_sp.into()))
+            .chain(once(num_extra_cycles.into()))
+            .chain(once(opcode.into()))
+            .chain(res.0.into_iter().map(Into::into))
+            .chain(arg_1.0.into_iter().map(Into::into))
+            .chain(arg_2.0.into_iter().map(Into::into))
+            .chain(aux_value.0.into_iter().map(Into::into))
+            .chain(once(is_memory.into()))
+            .chain(once(is_syscall.into()))
+            .chain(once(is_halt.into()))
+            .chain(once(is_complex_opcode.into()))
+            .collect();
+
+        self.send(
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Instruction),
+            InteractionScope::Local,
+        );
+    }
+
+    /// Receives an ALU operation to be processed.
+    #[allow(clippy::too_many_arguments)]
+    fn receive_rwasm_instruction(
+        &mut self,
+        shard: impl Into<Self::Expr> + Clone,
+        clk: impl Into<Self::Expr> + Clone,
+        pc: impl Into<Self::Expr>,
+        next_pc: impl Into<Self::Expr>,
+        sp: impl Into<Self::Expr>,
+        next_sp: impl Into<Self::Expr>,
+        num_extra_cycles: impl Into<Self::Expr>,
+        opcode: impl Into<Self::Expr>,
+        res: Word<impl Into<Self::Expr>>,
+        arg_1: Word<impl Into<Self::Expr>>,
+        arg_2: Word<impl Into<Self::Expr>>,
+        aux_value: Word<impl Into<Self::Expr>>,
+        is_memory: impl Into<Self::Expr>,
+        is_syscall: impl Into<Self::Expr>,
+        is_halt: impl Into<Self::Expr>,
+        is_complex_opcode: impl Into<Self::Expr>,
+        multiplicity: impl Into<Self::Expr>,
+    ) {
+        let values = once(shard.into())
+            .chain(once(clk.into()))
+            .chain(once(pc.into()))
+            .chain(once(next_pc.into()))
+            .chain(once(sp.into()))
+            .chain(once(next_sp.into()))
+            .chain(once(num_extra_cycles.into()))
+            .chain(once(opcode.into()))
+            .chain(res.0.into_iter().map(Into::into))
+            .chain(arg_1.0.into_iter().map(Into::into))
+            .chain(arg_2.0.into_iter().map(Into::into))
+            .chain(aux_value.0.into_iter().map(Into::into))
+            .chain(once(is_memory.into()))
+            .chain(once(is_syscall.into()))
+            .chain(once(is_halt.into()))
+            .chain(once(is_complex_opcode.into()))
+            .collect();
+
+        self.receive(
+            AirInteraction::new(values, multiplicity.into(), InteractionKind::Instruction),
+            InteractionScope::Local,
+        );
+    }
+
     /// Sends a 64-bit instruction to be processed.
     #[allow(clippy::too_many_arguments)]
     fn send_64_instruction(

@@ -63,8 +63,13 @@ sp1-curves = { workspace = true }
 p3-poseidon2 = { workspace = true }
 
 
-# rwasm
-rwasm = { workspace = true}
+#rwasm
+
+rwasm = { path  = "/home/djadjka/Work/rwasm", features = [
+    "std",
+    "tracing",
+] }
+
 
 [dev-dependencies]
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
@@ -83,7 +88,7 @@ pathdiff = "0.2.1"
 glob = "0.3.1"
 
 [features]
-default = []
+default = ["debug"]
 debug = []
 bigint-rug = ["sp1-curves/bigint-rug"]
 sys = []

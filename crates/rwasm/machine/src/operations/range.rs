@@ -5,7 +5,7 @@ use rwasm_executor::events::{ByteLookupEvent, ByteRecord};
 use sp1_derive::AlignedBorrow;
 
 use rwasm_executor::ByteOpcode;
-use sp1_stark::air::SP1AirBuilder;
+use sp1_stark::{air::SP1AirBuilder, Word};
 
 #[derive(AlignedBorrow, Default, Debug, Clone, Copy)]
 #[repr(C)]
@@ -22,9 +22,12 @@ impl<F: PrimeField32, const START: u32, const END: u32> Range16bCols<F, START, E
         // We subtract the START to work with the value that is in the range [0..END -
         // START]
         let (shifted_value, overflow) = value.overflowing_sub(START);
-        assert!(!overflow);
+        println!("START: {}, END: {}, value: {}", START, END, value);
+        assert!(!overflow, "START: {}, END: {}, value: {}", START, END, value);
 
-        let shifted_value: u16 = shifted_value.try_into().unwrap();
+        let shifted_value: u16 = shifted_value
+            .try_into()
+            .expect(&format!("START: {}, END: {}, value: {}", START, END, value));
 
         let hi_8bits: u8 = (shifted_value >> 8) as u8;
         let low_8bits: u8 = shifted_value as u8;
@@ -76,6 +79,15 @@ impl<T: Copy, const START: u32, const END: u32> Range16bCols<T, START, END> {
         let hi = self.hi_8bits.into();
         let low = self.low_8bits.into();
         hi * AB::Expr::from_canonical_u32(1 << 8) + low + AB::Expr::from_canonical_u32(START)
+    }
+
+    pub fn word<AB: SP1AirBuilder<Var = T>>(&self) -> Word<AB::Expr>
+    where
+        T: Into<AB::Expr>,
+    {
+        // TODO: implement 16b LT
+        assert!(START == 0);
+        Word([self.low_8bits.into(), self.hi_8bits.into(), AB::Expr::zero(), AB::Expr::zero()])
     }
 
     pub fn is_real<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
@@ -236,6 +248,20 @@ impl<
         hi * AB::Expr::from_canonical_u32(1 << 16) + low + AB::Expr::from_canonical_u32(START)
     }
 
+    pub fn word<AB: SP1AirBuilder<Var = T>>(&self) -> Word<T>
+    where
+        T: Into<AB::Expr>,
+    {
+        // TODO: implement 32b LT
+        assert!(START == 0);
+        Word([
+            self.low_16bits.low_8bits,
+            self.low_16bits.hi_8bits,
+            self.hi_16bits.low_8bits,
+            self.hi_16bits.hi_8bits,
+        ])
+    }
+
     pub fn is_real<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
     where
         T: Into<AB::Expr>,
@@ -345,6 +371,13 @@ impl<T: Copy, const START: u32, const END: u32> Range8bCols<T, START, END> {
         byte + AB::Expr::from_canonical_u32(START)
     }
 
+    pub fn word<AB: SP1AirBuilder<Var = T>>(&self) -> Word<AB::Expr>
+    where
+        T: Into<AB::Expr>,
+    {
+        Word::extend_expr::<AB>(self.value::<AB>())
+    }
+
     pub fn is_real<AB: SP1AirBuilder<Var = T>>(&self) -> AB::Expr
     where
         T: Into<AB::Expr>,
@@ -372,5 +405,15 @@ impl<T: Copy, const START: u32, const END: u32> Range8bCols<T, START, END> {
             AB::Expr::from_canonical_u8((END - START) as u8),
             cols.is_not_zero,
         );
+    }
+
+    pub fn do_range_check<AB: SP1AirBuilder>(
+        builder: &mut AB,
+        cols: Range8bCols<AB::Var, START, END>,
+        do_check: impl Into<AB::Expr>,
+    ) {
+        let is_real = cols.is_real::<AB>();
+        builder.assert_eq(do_check, is_real);
+        Range8bCols::<AB::Var, START, END>::range_check(builder, cols);
     }
 }

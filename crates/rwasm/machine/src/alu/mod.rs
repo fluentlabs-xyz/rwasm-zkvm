@@ -2,7 +2,6 @@ pub mod add_mul64;
 pub mod add_sub;
 pub mod bitwise;
 pub mod divrem;
-pub mod extend;
 pub mod lt;
 pub mod mul;
 pub mod rotate;
@@ -14,7 +13,7 @@ pub use add_mul64::*;
 pub use add_sub::*;
 pub use bitwise::*;
 pub use divrem::*;
-pub use extend::*;
+
 pub use lt::*;
 pub use mul::*;
 pub use rotate::*;

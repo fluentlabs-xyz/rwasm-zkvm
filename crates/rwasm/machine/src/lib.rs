@@ -25,6 +25,7 @@ pub mod fuel;
 pub mod global;
 pub mod io;
 pub mod memory;
+pub mod non_alu_instructions;
 pub mod operations;
 pub mod program;
 pub mod rwasm;

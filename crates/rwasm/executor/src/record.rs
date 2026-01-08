@@ -14,7 +14,7 @@ use std::{mem::take, str::FromStr, sync::Arc};
 use crate::{
     events::{
         AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, CallEvent, ConstEvent, CpuEvent,
-        FuelEvent, GlobalInteractionEvent, I64AluEvent, MemInstrEvent,
+        GlobalInteractionEvent, I64AluEvent, LocalEvent, MemInstrEvent,
         MemoryInitializeFinalizeEvent, MemoryLocalEvent, PrecompileEvent, PrecompileEvents,
         SysStateEvent, SyscallEvent,
     },
@@ -61,14 +61,14 @@ pub struct ExecutionRecord {
     pub memory_instr_events: Vec<MemInstrEvent>,
     /// A trace of the branch events.
     pub branch_events: Vec<BranchEvent>,
+    /// A trace of the local events.
+    pub local_events: Vec<LocalEvent>,
     /// A trace of the constant events.
     pub const_events: Vec<ConstEvent>,
     /// A trace of the constant events.
     pub call_events: Vec<CallEvent>,
     /// A trace of the Mul64 events.
-    pub mul64_events: Vec<I64AluEvent>,
-    /// A trace of the Add64 events.
-    pub add64_events: Vec<I64AluEvent>,
+    pub i64_events: Vec<I64AluEvent>,
     /// A trace of the constant events.
     pub sys_state_events: Vec<SysStateEvent>,
     /// A trace of the fuel events.
@@ -293,7 +293,8 @@ impl MachineRecord for ExecutionRecord {
         stats.insert("branch_events".to_string(), self.branch_events.len());
         stats.insert("const_events".to_string(), self.const_events.len());
         stats.insert("call_events".to_string(), self.call_events.len());
-        stats.insert("i64_events".to_string(), self.mul64_events.len());
+        stats.insert("i64_events".to_string(), self.i64_events.len());
+        stats.insert("local_events".to_string(), self.local_events.len());
 
         for (syscall_code, events) in self.precompile_events.iter() {
             stats.insert(format!("syscall {syscall_code:?}"), events.len());
@@ -336,6 +337,7 @@ impl MachineRecord for ExecutionRecord {
         self.call_events.append(&mut other.call_events);
         self.syscall_events.append(&mut other.syscall_events);
         self.precompile_events.append(&mut other.precompile_events);
+        self.local_events.append(&mut other.local_events);
 
         if self.byte_lookups.is_empty() {
             self.byte_lookups = std::mem::take(&mut other.byte_lookups);

@@ -95,18 +95,18 @@ impl MemoryInstructionsChip {
         assert!(cols.shard != F::zero());
         cols.clk = F::from_canonical_u32(event.clk);
         cols.pc = F::from_canonical_u32(event.pc);
-        cols.res = event.res.into();
-        println!("res:{}", event.res);
-        cols.raw_addr = event.raw_addr.into();
+
+        cols.sp = F::from_canonical_u32(event.sp);
+
+        cols.raw_addr.populate(event.arg1, blu, true);
         let offset: u32 = event.opcode.aux_value();
-        cols.instr_offset = offset.into();
-        println!("offset: {}", offset);
+        cols.instr_offset.populate(offset, blu, true);
 
         // Populate memory accesses for reading from memory.
         cols.memory_access.populate(event.mem_access, blu);
 
         // Populate addr_word and addr_aligned columns.
-        let memory_addr = event.raw_addr.wrapping_add(offset);
+        let memory_addr = event.arg1.wrapping_add(offset);
         let typed_addr = TypedAddress::GlobalMemory(memory_addr - memory_addr % WORD_SIZE as u32);
 
         let aligned_addr = typed_addr.to_virtual_addr();
@@ -122,30 +122,34 @@ impl MemoryInstructionsChip {
             }
         }
         cols.addr_word = virtual_addr.into();
-        cols.memory_addr = memory_addr.into();
-        cols.addr_word_range_checker.populate(cols.addr_word, blu);
+        cols.memory_addr.populate(memory_addr, blu, true);
 
         cols.addr_aligned = F::from_canonical_u32(aligned_addr);
-        cols.addr_aligned_hi = F::from_canonical_u32(aligned_addr_hi);
         // Populate the aa_least_sig_byte_decomp columns.
         assert!(aligned_addr.is_multiple_of(4));
         // Populate the aa_least_sig_byte_decomp columns.
         assert!(aligned_addr_hi.is_multiple_of(4));
         // Populate memory offsets.
         let addr_ls_two_bits = (memory_addr % WORD_SIZE as u32) as u8;
+
+        // for store only
+        cols.value = event.arg2.into();
+
         cols.addr_ls_two_bits = F::from_canonical_u8(addr_ls_two_bits);
         cols.ls_bits_is_one = F::from_bool(addr_ls_two_bits == 1);
         cols.ls_bits_is_two = F::from_bool(addr_ls_two_bits == 2);
         cols.ls_bits_is_three = F::from_bool(addr_ls_two_bits == 3);
 
         // Add byte lookup event to verify correct calculation of addr_ls_two_bits.
-        blu.add_byte_lookup_event(ByteLookupEvent {
-            opcode: ByteOpcode::AND,
-            a1: addr_ls_two_bits as u16,
-            a2: 0,
-            b: cols.addr_word[0].as_canonical_u32() as u8,
-            c: 0b11,
-        });
+        // blu.add_byte_lookup_event(ByteLookupEvent {
+        //     opcode: ByteOpcode::AND,
+        //     a1: addr_ls_two_bits as u16,
+        //     a2: 0,
+        //     b: cols.addr_word[0].as_canonical_u32() as u8,
+        //     c: 0b11,
+        // });
+
+        println!("%%%%%%%%%%%%%% {} {:?} {:?} {} {}", addr_ls_two_bits, memory_addr, event.opcode, event.arg1, event.arg2);
 
         // If it is a load instruction, set the unsigned_mem_val column.
         let mem_value = event.mem_access.value();
@@ -157,6 +161,9 @@ impl MemoryInstructionsChip {
                 Opcode::I32Load8U(_) |
                 Opcode::I32Load8S(_)
         ) {
+
+            cols.value = event.res.into();
+
             match event.opcode {
                 Opcode::I32Load8U(_) | Opcode::I32Load8S(_) => {
                     cols.unsigned_mem_val =
@@ -190,13 +197,13 @@ impl MemoryInstructionsChip {
                 cols.most_sig_byte = F::from_canonical_u8(most_sig_mem_value_byte);
                 cols.most_sig_bit = F::from_canonical_u8(most_sig_mem_value_bit);
 
-                blu.add_byte_lookup_event(ByteLookupEvent {
-                    opcode: ByteOpcode::MSB,
-                    a1: most_sig_mem_value_bit as u16,
-                    a2: 0,
-                    b: most_sig_mem_value_byte,
-                    c: 0,
-                });
+                // blu.add_byte_lookup_event(ByteLookupEvent {
+                //     opcode: ByteOpcode::MSB,
+                //     a1: most_sig_mem_value_bit as u16,
+                //     a2: 0,
+                //     b: most_sig_mem_value_byte,
+                //     c: 0,
+                // });
             }
         }
 
@@ -209,27 +216,17 @@ impl MemoryInstructionsChip {
         cols.is_i32store16 = F::from_bool(matches!(event.opcode, Opcode::I32Store16(_)));
         cols.is_i32store = F::from_bool(matches!(event.opcode, Opcode::I32Store(_)));
 
-        // Add event to byte lookup for byte range checking each byte in the memory addr
-        let addr_bytes = virtual_addr.to_le_bytes();
-        blu.add_byte_lookup_event(ByteLookupEvent {
-            opcode: ByteOpcode::U8Range,
-            a1: 0,
-            a2: 0,
-            b: addr_bytes[1],
-            c: addr_bytes[2],
-        });
-
         cols.most_sig_bytes_zero
             .populate_from_field_element(cols.addr_word[1] + cols.addr_word[2] + cols.addr_word[3]);
 
-        if cols.most_sig_bytes_zero.result == F::one() {
-            blu.add_byte_lookup_event(ByteLookupEvent {
-                opcode: ByteOpcode::LTU,
-                a1: 1,
-                a2: 0,
-                b: 31,
-                c: cols.addr_word[0].as_canonical_u32() as u8,
-            });
-        }
+        // if cols.most_sig_bytes_zero.result == F::one() {
+        //     blu.add_byte_lookup_event(ByteLookupEvent {
+        //         opcode: ByteOpcode::LTU,
+        //         a1: 1,
+        //         a2: 0,
+        //         b: 31,
+        //         c: cols.addr_word[0].as_canonical_u32() as u8,
+        //     });
+        // }
     }
 }

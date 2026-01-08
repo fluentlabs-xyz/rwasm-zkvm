@@ -3,8 +3,9 @@ use crate::profiler::Profiler;
 use crate::{
     dependencies::{emit_branch_dependencies, emit_fuel_dependencies, emit_memory_dependencies},
     estimator::RecordEstimator,
-    events::{CallEvent, ConstEvent, FuelEvent, I64AluEvent, PrecompileEvent, SyscallEvent},
-    syscalls::func_id_to_syscall_code,
+    events::{
+        CallEvent, ConstEvent, ExtendEvent, I64AluEvent, LocalEvent, PrecompileEvent, SyscallEvent,
+    },
 };
 #[cfg(feature = "profiling")]
 use std::{fs::File, io::BufWriter};
@@ -19,8 +20,9 @@ use hashbrown::HashMap;
 use rwasm::{
     event::FatOpEvent,
     mem::{MemoryLocalEvent, MemoryRecordEnum},
-    CallStack, DataOpEvent, FuelConfig, InstructionPtr, Opcode, RwasmExecutor, RwasmStore,
-    TraceCallData, TrapCode, ValueStack, ValueStackPtr,
+    CallStack, CallStateExtension, DataOpEvent, I64AluStateExtension, InstrStateExtension,
+    InstructionPtr, MemExtension, Opcode, RwasmExecutor, RwasmStore, TrapCode, ValueStack,
+    ValueStackPtr,
 };
 
 use fluentbase_runtime::syscall_handler::runtime_syscall_handler;
@@ -715,123 +717,42 @@ impl<'a> Executor<'a> {
         next_pc: u32,
         sp: u32,
         next_sp: u32,
-        call_sp: u32,
-        next_call_sp: u32,
         opcode: Opcode,
-        syscall_code: SyscallCode,
-        arg1: u32,
-        arg2: u32,
-        res: u32,
-        res_hi: u32,
         record: MemoryAccessRecord,
-        call_data: Option<TraceCallData>,
-        fat_op: Option<FatOpEvent>,
+        state_extension: Option<InstrStateExtension>,
         dataop_event: Option<DataOpEvent>,
     ) {
-        if opcode.is_memory_instruction() {
-            self.emit_cpu(
-                clk,
-                pc,
-                next_pc,
-                sp,
-                next_sp,
-                call_sp,
-                next_call_sp,
-                arg1,
-                opcode.aux_value(),
-                arg2,
-                res_hi,
-                record,
-                0u32,
-                call_data.clone(),
-            );
-        } else {
-            self.emit_cpu(
-                clk,
-                pc,
-                next_pc,
-                sp,
-                next_sp,
-                call_sp,
-                next_call_sp,
-                arg1,
-                arg2,
-                res,
-                res_hi,
-                record,
-                0u32,
-                call_data.clone(),
-            );
-        }
+        let arg1 = record.arg1_record.map(|arg1| arg1.value()).unwrap_or(0);
+        let arg2 = record.arg2_record.map(|arg2| arg2.value()).unwrap_or(0);
+        let res = record.res_record.map(|res| res.value()).unwrap_or(0);
+
+        self.emit_cpu(clk, pc, next_pc, sp, next_sp, arg1, arg2, res, record, 0u32);
 
         if opcode.is_alu_instruction() {
-            self.emit_alu_event(pc, opcode, arg1, arg2, res);
+            self.emit_alu_event(pc, sp, opcode, arg1, arg2, res);
         } else if opcode.is_memory_load_instruction() || opcode.is_memory_store_instruction() {
-            self.emit_mem_instr_event(opcode, arg1, arg2, res, record);
+            self.emit_mem_instr_event(opcode, sp, arg1, arg2, res, record, state_extension);
         } else if opcode.is_branch_instruction() {
-            self.emit_branch_event(opcode, arg1, arg2, res, next_pc);
-        } else if opcode.is_ecall_instruction() {
-            let syscall_code = match opcode {
-                Opcode::TableInit(_) => SyscallCode::TABLE_INIT,
-                Opcode::TableGrow(_) => SyscallCode::TABLE_GROW,
-                Opcode::Call(sys_funcid) => func_id_to_syscall_code(sys_funcid),
-                _ => syscall_code,
-            };
-            self.emit_syscall_event(
-                clk,
-                record.arg1_record,
-                syscall_code,
-                arg1,
-                arg2,
-                next_pc,
-                fat_op,
-            );
-        } else if opcode.is_const_instruction() {
-            self.emit_const_event(opcode);
+            self.emit_branch_event(opcode, sp, arg1, arg2, res, next_pc);
+        } else if opcode.is_const_instruction() || matches!(opcode, Opcode::Drop) {
+            self.emit_const_event(sp, opcode);
         } else if opcode.is_state_instrucition() {
         } else if opcode.is_call_instruction() {
-            let call_sp_record = record.call_sp_access;
-            match call_data {
-                Some(call_data) => {
-                    self.emit_call_event(
-                        clk,
-                        pc,
-                        next_pc,
-                        opcode,
-                        call_sp,
-                        next_call_sp,
-                        call_data.signature_id,
-                        call_data.func_ref,
-                        call_data.table_id,
-                        call_data.table_idx,
-                        call_sp_record,
-                        call_data.table_access.map(MemoryRecordEnum::Read),
-                        dataop_event,
-                    );
-                }
-                None => {
-                    self.emit_call_event(
-                        clk,
-                        pc,
-                        next_pc,
-                        opcode,
-                        call_sp,
-                        next_call_sp,
-                        0,
-                        opcode.aux_value(),
-                        0,
-                        0,
-                        call_sp_record,
-                        None,
-                        None,
-                    );
-                }
-            }
+            let func_index = match opcode {
+                Opcode::CallIndirect(_) => Some(
+                    record.arg1_record.expect("CallIndirect takes func_index from stack").value(),
+                ),
+                Opcode::CallInternal(func_index) => Some(func_index),
+                _ => None,
+            };
+
+            self.emit_call_event(clk, pc, next_pc, opcode, sp, func_index, state_extension);
         } else if opcode.is_64b_op() {
-            self.emit_i64_event(clk, pc, next_pc, opcode, res, res_hi, arg1, arg2, record);
-        } else if matches!(opcode, Opcode::ConsumeFuel(_) | Opcode::ConsumeFuelStack) {
-            // Fuel consumption opcodes do not emit any events.
-            self.emit_fuel_event(clk, pc, next_pc, opcode, record);
+            self.emit_i64_event(clk, pc, sp, next_pc, opcode, res, arg1, arg2, state_extension);
+        } else if opcode.is_extend_instruction() {
+            self.emit_extend_event(pc, sp, opcode, arg1, arg2, res);
+        } else if opcode.is_local_instruction() {
+            self.emit_local_event(sp, clk, opcode, state_extension);
         } else {
             println!("Unimplemented opcode in emit_events: {:?}", opcode);
         }
@@ -847,15 +768,11 @@ impl<'a> Executor<'a> {
         next_pc: u32,
         sp: u32,
         next_sp: u32,
-        call_sp: u32,
-        next_call_sp: u32,
         arg1: u32,
         arg2: u32,
         res: u32,
-        res_hi: u32,
         record: MemoryAccessRecord,
         exit_code: u32,
-        call_data: Option<TraceCallData>,
     ) {
         self.record.cpu_events.push(CpuEvent {
             clk,
@@ -863,29 +780,17 @@ impl<'a> Executor<'a> {
             next_pc,
             sp,
             next_sp,
-            call_sp,
-            next_call_sp,
-            res,
             res_record: record.res_record,
-            res_addr: record.res_addr,
-            res_hi,
-            res_hi_record: record.res_hi_record,
-            res_hi_addr: record.res_hi_addr,
-            arg1,
             arg1_record: record.arg1_record,
-            arg1_addr: record.arg1_addr,
-            arg2,
             arg2_record: record.arg2_record,
-            arg2_addr: record.arg2_addr,
             exit_code,
-            call_data,
         });
     }
 
     /// Emit an ALU event.
     #[allow(clippy::too_many_lines)]
-    fn emit_alu_event(&mut self, pc: u32, opcode: Opcode, arg1: u32, arg2: u32, res: u32) {
-        let event = AluEvent { pc, opcode, a: res, b: arg1, c: arg2, code: opcode.code() };
+    fn emit_alu_event(&mut self, pc: u32, sp: u32, opcode: Opcode, arg1: u32, arg2: u32, res: u32) {
+        let event = AluEvent { pc, sp, opcode, a: res, b: arg1, c: arg2, code: opcode.code() };
         match opcode {
             Opcode::I32Add => {
                 self.record.add_events.push(event);
@@ -913,92 +818,7 @@ impl<'a> Executor<'a> {
             Opcode::I32Eq |
             Opcode::I32Eqz |
             Opcode::I32Ne => {
-                let use_signed_comparison = matches!(
-                    opcode,
-                    Opcode::I32GeS | Opcode::I32GtS | Opcode::I32LeS | Opcode::I32LtS
-                );
-
-                let (lt_res, gt_res, cmp_opcode) = {
-                    if use_signed_comparison {
-                        (
-                            ((event.b as i32) < (event.c as i32)) as u32,
-                            ((event.b as i32) > (event.c as i32)) as u32,
-                            Opcode::I32LtS,
-                        )
-                    } else {
-                        ((event.b < event.c) as u32, (event.b > event.c) as u32, Opcode::I32LtU)
-                    }
-                };
-
-                let make_lt = |a, b, c| AluEvent {
-                    pc: UNUSED_PC,
-                    opcode: cmp_opcode,
-                    a,
-                    b,
-                    c,
-                    code: cmp_opcode.code(),
-                };
-
-                let lt_comp_event = make_lt(lt_res, event.b, event.c);
-                let gt_comp_event = make_lt(gt_res, event.c, event.b);
-
-                let ev_eqz = AluEvent {
-                    pc: UNUSED_PC,
-                    opcode: Opcode::I32LtU,
-                    a: u32::from(event.b == 0),
-                    b: event.b,
-                    c: 1,
-                    code: Opcode::I32LtU.code(),
-                };
-
-                match opcode {
-                    // Opcodes that only need a "less than" check.
-                    Opcode::I32LtS | Opcode::I32LtU => {
-                        self.record.lt_events.push(lt_comp_event);
-                    }
-                    // b > c is equivalent to c < b
-                    Opcode::I32GtS | Opcode::I32GtU => {
-                        self.record.lt_events.push(gt_comp_event);
-                    }
-                    // b >= c is equivalent to !(b < c)
-                    Opcode::I32GeS | Opcode::I32GeU => {
-                        self.record.lt_events.push(lt_comp_event);
-                    }
-                    // b <= c is equivalent to !(c < b)
-                    Opcode::I32LeS | Opcode::I32LeU => {
-                        self.record.lt_events.push(gt_comp_event);
-                    }
-                    // EQZ(x): CPU AIR expects two LtU checks:
-                    // 1. LtU(x, 0) -> always false (0)
-                    // 2. LtU(0, x) -> true if x > 0 (i.e. x != 0)
-                    Opcode::I32Eqz => {
-                        self.record.lt_events.push(AluEvent {
-                            pc: UNUSED_PC,
-                            opcode: Opcode::I32LtU,
-                            a: 0, // x < 0 is always false for unsigned
-                            b: event.b,
-                            c: 0,
-                            code: Opcode::I32LtU.code(),
-                        });
-                        self.record.lt_events.push(AluEvent {
-                            pc: UNUSED_PC,
-                            opcode: Opcode::I32LtU,
-                            a: u32::from(event.b != 0), // 0 < x is true if x != 0
-                            b: 0,
-                            c: event.b,
-                            code: Opcode::I32LtU.code(),
-                        });
-                    }
-
-                    // EQ(b,c) / NE(b,c): CPU AIR expects two LtU checks:
-                    // 1. LtU(b, c)
-                    // 2. LtU(c, b)
-                    Opcode::I32Eq | Opcode::I32Ne => {
-                        self.record.lt_events.push(lt_comp_event);
-                        self.record.lt_events.push(gt_comp_event);
-                    }
-                    _ => unreachable!(),
-                }
+                self.record.lt_events.push(event);
             }
             Opcode::I32Ctz | Opcode::I32Clz | Opcode::I32Popcnt => {
                 self.record.trailing_events.push(event);
@@ -1013,11 +833,21 @@ impl<'a> Executor<'a> {
             Opcode::I32Rotl | Opcode::I32Rotr => {
                 self.record.rotate_events.push(event);
             }
-            Opcode::I32Extend8S | Opcode::I32Extend16S => {
-                self.record.extend_events.push(event);
-            }
             _ => unreachable!(),
         }
+    }
+
+    fn emit_extend_event(
+        &mut self,
+        pc: u32,
+        sp: u32,
+        opcode: Opcode,
+        arg1: u32,
+        arg2: u32,
+        res: u32,
+    ) {
+        let event = ExtendEvent { pc, sp, opcode, a: res, b: arg1, c: arg2, code: opcode.code() };
+        self.record.extend_events.push(event);
     }
 
     // Emit a memory opcode event.
@@ -1025,36 +855,69 @@ impl<'a> Executor<'a> {
     fn emit_mem_instr_event(
         &mut self,
         opcode: Opcode,
+        sp: u32,
         arg1: u32,
         arg2: u32,
         res: u32,
         record: MemoryAccessRecord,
+        state_extension: Option<InstrStateExtension>,
     ) {
-        println!("record in emit:{:?}", record.memory.expect("Must have memory access"));
+        let (mem_access_hi, mem_access) = match state_extension {
+            Some(InstrStateExtension::Memory(extension)) => {
+                (extension.upper_record, extension.low_record)
+            }
+            _ => unreachable!("mem operation should contain Store state extension"),
+        };
+
         let event = MemInstrEvent {
             shard: self.shard(),
             clk: self.state.clk,
             pc: self.state.pc,
+            sp,
             opcode,
-            raw_addr: arg1,
-            offset: opcode.aux_value(),
+            arg1,
+            arg2,
             res,
-            mem_access: record.memory.expect("Must have memory access"),
-            mem_access_hi: record.memory_hi,
+            mem_access,
+            mem_access_hi,
         };
-        println!("mem event:{:?}", event);
         self.record.memory_instr_events.push(event);
         emit_memory_dependencies(self, event);
     }
 
     // Emit a branch event.
     #[inline]
-    fn emit_branch_event(&mut self, opcode: Opcode, arg1: u32, arg2: u32, res: u32, next_pc: u32) {
-        let event = BranchEvent { pc: self.state.pc, next_pc, opcode, res, arg1, arg2 };
-        println!("br event:{:?}", event);
+    fn emit_branch_event(
+        &mut self,
+        opcode: Opcode,
+        sp: u32,
+        arg1: u32,
+        arg2: u32,
+        res: u32,
+        next_pc: u32,
+    ) {
+        let event = BranchEvent { pc: self.state.pc, next_pc, sp, opcode, res, arg1, arg2 };
         self.record.branch_events.push(event);
 
         emit_branch_dependencies(self, event);
+    }
+
+    #[inline]
+    fn emit_local_event(
+        &mut self,
+        sp: u32,
+        clk: u32,
+        opcode: Opcode,
+        state_extension: Option<InstrStateExtension>,
+    ) {
+        let depth_access = match state_extension {
+            Some(InstrStateExtension::Local(extension)) => extension.local_depth_access,
+            _ => unreachable!("mem operation should contain Store state extension"),
+        };
+
+        let event =
+            LocalEvent { pc: self.state.pc, sp, clk, shard: self.shard(), opcode, depth_access };
+        self.record.local_events.push(event);
     }
 
     // /// Emit an AUIPC event.
@@ -1188,82 +1051,79 @@ impl<'a> Executor<'a> {
 
     // Emit a branch event.
     #[inline]
-    fn emit_const_event(&mut self, opcode: Opcode) {
-        let event = ConstEvent { pc: self.state.pc, opcode, value: opcode.aux_value() };
+    fn emit_const_event(&mut self, sp: u32, opcode: Opcode) {
+        let event = ConstEvent { pc: self.state.pc, sp, opcode };
         self.record.const_events.push(event);
     }
     #[allow(clippy::too_many_arguments)]
     #[inline]
     fn emit_call_event(
         &mut self,
-
         clk: u32,
         pc: u32,
         next_pc: u32,
         opcode: Opcode,
-        call_sp: u32,
-        next_call_sp: u32,
-        signature_id: u32,
-        func_ref: u32,
-        table_id: u32,
-        table_idx: u32,
-        call_stack_access: Option<MemoryRecordEnum>,
-        table_access: Option<MemoryRecordEnum>,
-        dataop_event: Option<DataOpEvent>,
+        sp: u32,
+        func_index: Option<u32>,
+        state_extension: Option<InstrStateExtension>,
     ) {
-        let event = CallEvent {
-            shard: self.shard(),
-            clk,
-            pc,
-            next_pc,
-            opcode,
-            call_sp,
-            next_call_sp,
-            signature_id,
-            func_ref,
-            table_id,
-            table_idx,
-            call_stack_access,
-            table_access,
+        match state_extension {
+            Some(InstrStateExtension::Call(CallStateExtension {
+                table_idx,
+                table_size_read,
+                table_read,
+                call_stack_access,
+                call_stack_address,
+            })) => {
+                let event = CallEvent {
+                    shard: self.shard(),
+                    clk,
+                    pc,
+                    next_pc,
+                    opcode,
+                    sp,
+                    table_idx,
+                    func_index,
+                    call_stack_address,
+                    call_stack_access,
+                    table_access: table_read,
+                };
+                self.record.call_events.push(event);
+            }
+            _ => assert_eq!(opcode, Opcode::Return),
         };
-        self.record.call_events.push(event);
-        if let Some(event) = dataop_event {
-            self.record.dataop_events.push(event)
-        }
     }
 
     #[allow(clippy::too_many_arguments)]
     #[inline]
     fn emit_i64_event(
         &mut self,
-
         clk: u32,
         pc: u32,
+        sp: u32,
         next_pc: u32,
         opcode: Opcode,
-        res_lo: u32,
-        res_hi: u32,
+        res: u32,
         arg1: u32,
         arg2: u32,
-        memory_access: MemoryAccessRecord,
+        state_extension: Option<InstrStateExtension>,
     ) {
-        let event = I64AluEvent {
-            pc,
-            opcode,
-            a_lo: res_lo,
-            a_hi: res_hi,
-            b: arg1,
-            c: arg2,
-            code: opcode.code(),
-            res_hi_addr: memory_access.res_hi_addr.unwrap().to_virtual_addr(),
-            res_hi_access: memory_access.res_hi_record,
-        };
-        match opcode {
-            Opcode::I32Mul64 => self.record.mul64_events.push(event),
-            Opcode::I32Add64 => self.record.add64_events.push(event),
-            _ => {
-                unreachable!();
-            }
+        if let Some(InstrStateExtension::I64Alu(I64AluStateExtension { res_lo_write })) =
+            state_extension
+        {
+            let event = I64AluEvent {
+                clk,
+                shard: self.shard(),
+                pc,
+                sp,
+                opcode,
+                res_hi: res,
+                res_lo_write_record: res_lo_write,
+                b: arg1,
+                c: arg2,
+                code: opcode.code(),
+            };
+            self.record.i64_events.push(event);
         }
     }
 
@@ -1423,10 +1283,10 @@ impl<'a> Executor<'a> {
 
         let op_state = self.store.tracer.logs.last().unwrap();
         let syscall = SyscallCode::default();
-        let dataop_event = match op_state.opcode {
-            Opcode::CallIndirect(_) => Some(self.store.tracer.data_op_logs.last().unwrap()),
-            _ => None,
-        };
+        // let dataop_event = match op_state.opcode {
+        //     // Opcode::CallIndirect(_) => Some(self.store.tracer.data_op_logs.last().unwrap()),
+        //     _ => None,
+        // };
 
         self.state.clk = op_state.clk;
         self.state.pc = op_state.pc;
@@ -1436,18 +1296,10 @@ impl<'a> Executor<'a> {
             op_state.next_pc,
             op_state.sp,
             op_state.next_sp,
-            op_state.call_sp,
-            op_state.next_call_sp,
             op_state.opcode,
-            syscall,
-            op_state.arg1,
-            op_state.arg2,
-            op_state.res,
-            op_state.res_hi,
             op_state.memory_access,
-            op_state.call_state.clone(),
-            op_state.fat_op.clone(),
-            dataop_event.cloned(),
+            op_state.extension.clone(),
+            None,
         );
 
         // Increment the clock.
@@ -1789,7 +1641,7 @@ impl<'a> Executor<'a> {
             )
             .step();
 
-            self.postprocess_syscall();
+            // self.postprocess_syscall();
 
             let res = self.execute_cycle(res)?;
             if res {

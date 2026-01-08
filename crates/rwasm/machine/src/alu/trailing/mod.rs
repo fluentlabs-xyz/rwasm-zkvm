@@ -21,6 +21,7 @@ pub const NUM_TRAILING_COLS: usize = size_of::<TrailingCols<u8>>();
 #[repr(C)]
 pub struct TrailingCols<T> {
     pub pc: T,
+    pub sp: T,
     pub a: T,
     pub b: Word<T>,
     // Unified per-op halves:
@@ -46,6 +47,7 @@ impl TrailingChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.pc = F::from_canonical_u32(event.pc);
+        cols.sp = F::from_canonical_u32(event.sp);
         cols.a = F::from_canonical_u32(event.a);
         cols.is_ctz = F::from_bool(event.opcode == I32Ctz);
         cols.is_clz = F::from_bool(event.opcode == I32Clz);
@@ -236,11 +238,13 @@ where
         let result = a_any.clone() + local.is_popcnt * (popcnt_result - a_any);
         builder.assert_zero(local.a - result);
 
-        builder.receive_instruction_old(
+        builder.receive_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp,
             AB::Expr::zero(),
             local.is_ctz * AB::Expr::from_canonical_u32(I32Ctz.code()) +
                 local.is_clz * AB::Expr::from_canonical_u32(I32Clz.code()) +
@@ -248,6 +252,8 @@ where
             Word::extend_expr::<AB>(local.a.into()),
             local.b,
             Word::<AB::Expr>::default(),
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -347,9 +353,9 @@ mod tests {
         let mut output = ExecutionRecord::default();
         let b: u32 = 0x137_137;
         shard.trailing_events = vec![
-            AluEvent::new(0, Opcode::I32Popcnt, b.count_ones(), b, 0, Opcode::I32Popcnt.code()),
-            AluEvent::new(0, Opcode::I32Ctz, b.trailing_zeros(), b, 0, Opcode::I32Ctz.code()),
-            AluEvent::new(0, Opcode::I32Clz, b.leading_zeros(), b, 0, Opcode::I32Clz.code()),
+            AluEvent::new(0, 0, Opcode::I32Popcnt, b.count_ones(), b, 0, Opcode::I32Popcnt.code()),
+            AluEvent::new(0, 0, Opcode::I32Ctz, b.trailing_zeros(), b, 0, Opcode::I32Ctz.code()),
+            AluEvent::new(0, 0, Opcode::I32Clz, b.leading_zeros(), b, 0, Opcode::I32Clz.code()),
         ];
         let chip = TrailingChip::default();
         let trace: RowMajorMatrix<BabyBear> = chip.generate_trace(&shard, &mut output);
@@ -396,6 +402,7 @@ mod tests {
         for b in samples.into_iter() {
             shard.trailing_events.push(AluEvent::new(
                 0,
+                0,
                 Opcode::I32Popcnt,
                 b.count_ones(),
                 b,
@@ -404,6 +411,7 @@ mod tests {
             ));
             shard.trailing_events.push(AluEvent::new(
                 0,
+                0,
                 Opcode::I32Ctz,
                 b.trailing_zeros(),
                 b,
@@ -411,6 +419,7 @@ mod tests {
                 Opcode::I32Ctz.code(),
             ));
             shard.trailing_events.push(AluEvent::new(
+                0,
                 0,
                 Opcode::I32Clz,
                 b.leading_zeros(),

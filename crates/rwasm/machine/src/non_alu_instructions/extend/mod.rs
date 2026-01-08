@@ -20,6 +20,7 @@ pub const NUM_EXTEND_COLS: usize = size_of::<ExtendCols<u8>>();
 #[repr(C)]
 pub struct ExtendCols<T> {
     pub pc: T,
+    pub sp: T,
     pub a: Word<T>, // result bytes
     pub b: Word<T>, // input bytes
     pub is_extend8s: T,
@@ -39,6 +40,7 @@ impl ExtendChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.pc = F::from_canonical_u32(event.pc);
+        cols.sp = F::from_canonical_u32(event.sp);
         cols.a = event.a.into();
         cols.b = event.b.into();
         cols.is_extend8s = F::from_bool(event.opcode == Opcode::I32Extend8S);
@@ -118,17 +120,21 @@ where
         builder.when(local.is_extend16s).assert_eq(local.a[2], local.msb * ff.clone());
         builder.when(local.is_extend16s).assert_eq(local.a[3], local.msb * ff.clone());
 
-        builder.receive_instruction_old(
+        builder.receive_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp,
             AB::Expr::zero(),
             local.is_extend8s * AB::Expr::from_canonical_u32(I32Extend8S.code()) +
                 local.is_extend16s * AB::Expr::from_canonical_u32(I32Extend16S.code()),
             local.a,
             local.b,
             Word::<AB::Expr>::default(),
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -234,7 +240,7 @@ mod tests {
             (Opcode::I32Extend16S, 0x0000_8000u32, 0xFFFF_8000u32), // -32768
         ];
         for (op, b, a) in cases {
-            shard.extend_events.push(AluEvent::new(0, op, a, b, 0, op.code()));
+            shard.extend_events.push(AluEvent::new(0, 0, op, a, b, 0, op.code()));
         }
 
         let chip = ExtendChip::default();
@@ -268,6 +274,7 @@ mod tests {
             let a16 = (((b as i32) as i16) as i32) as u32;
             shard.extend_events.push(AluEvent::new(
                 0,
+                0,
                 Opcode::I32Extend8S,
                 a8,
                 b,
@@ -275,6 +282,7 @@ mod tests {
                 Opcode::I32Extend8S.code(),
             ));
             shard.extend_events.push(AluEvent::new(
+                0,
                 0,
                 Opcode::I32Extend16S,
                 a16,

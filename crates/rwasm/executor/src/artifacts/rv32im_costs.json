@@ -51,5 +51,6 @@
   "Trailing": 256,
   "Extend": 256,
   "AddMul64": 166,
-  "Fuel": 75
+  "Local": 137,
+  "Const": 137
 }

@@ -8,7 +8,7 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
-use rwasm::Opcode;
+use rwasm::{mem_index::UNIT, Opcode};
 use rwasm_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord, EmptyByteRecord},
     ExecutionRecord, Program, DEFAULT_PC_INC,
@@ -31,11 +31,52 @@ pub struct MulChip;
 #[repr(C)]
 pub struct MulCols<T> {
     pub pc: T,
-    pub a: Word<T>, // Result (Lower 32 bits)
-    pub b: Word<T>, // Input 1
-    pub c: Word<T>, // Input 2
-    // Only need 4 carries for the lower 32 bits.
-    pub carry: [T; WORD_SIZE],
+
+    pub sp: T,
+
+    /// The output operand.
+    pub a: Word<T>,
+
+    /// The first input operand.
+    pub b: Word<T>,
+
+    /// The second input operand.
+    pub c: Word<T>,
+
+    /// Flag indicating whether `a` is not register 0.
+    pub op_a_not_0: T,
+
+    /// Trace.
+    pub carry: [T; LONG_WORD_SIZE],
+
+    /// An array storing the product of `b * c` after the carry propagation.
+    pub product: [T; LONG_WORD_SIZE],
+
+    /// The most significant bit of `b`.
+    pub b_msb: T,
+
+    /// The most significant bit of `c`.
+    pub c_msb: T,
+
+    /// The sign extension of `b`.
+    pub b_sign_extend: T,
+
+    /// The sign extension of `c`.
+    pub c_sign_extend: T,
+
+    /// Flag indicating whether the opcode is `MUL`  (`u32 x u32`).
+    pub is_mul: T,
+
+    /// Flag indicating whether the opcode is `MULH` (`i32 x i32`, upper half).
+    pub is_mulh: T,
+
+    /// Flag indicating whether the opcode is `MULHU` (`u32 x u32`, upper half).
+    pub is_mulhu: T,
+
+    /// Flag indicating whether the opcode is `MULHSU` (`i32 x u32`, upper half).
+    pub is_mulhsu: T,
+
+    /// Selector to know whether this row is enabled.
     pub is_real: T,
 }
 
@@ -115,6 +156,8 @@ impl MulChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.pc = F::from_canonical_u32(event.pc);
+        cols.sp = F::from_canonical_u32(event.sp);
+
         let a_word = event.a.to_le_bytes();
         let b_word = event.b.to_le_bytes();
         let c_word = event.c.to_le_bytes();
@@ -208,18 +251,67 @@ where
         builder.slice_range_check_u8(&local.b.0, local.is_real);
         builder.slice_range_check_u8(&local.c.0, local.is_real);
 
-        let opcode: AB::Expr = AB::F::from_canonical_u32(Opcode::I32Mul.code()).into();
-        // 4. Receive Instruction
-        builder.receive_instruction_old(
+        // If signed extended, the MSB better be 1.
+        builder.when(local.b_sign_extend).assert_eq(local.b_msb, one.clone());
+        builder.when(local.c_sign_extend).assert_eq(local.c_msb, one.clone());
+
+        // SAFETY: All selectors `is_mul`, `is_mulh`, `is_mulhu`, `is_mulhsu` are checked to be
+        // boolean. Also, the multiplicity `is_real` is checked to be boolean, and `is_real
+        // = 0` leads to no interactions. Each "real" row has exactly one selector turned
+        // on, as constrained below. Therefore, in "real" rows, the `opcode` matches the
+        // corresponding opcode.
+
+        // Calculate the opcode.
+        let opcode = {
+            // Exactly one of the opcodes must be on.
+            builder
+                .when(local.is_real)
+                .assert_one(local.is_mul + local.is_mulh + local.is_mulhu + local.is_mulhsu);
+
+            let mul: AB::Expr = AB::F::from_canonical_u32(Opcode::I32Mul.code()).into();
+            let mulh: AB::Expr = AB::F::from_canonical_u32(I32MULH_CODE).into();
+            let mulhu: AB::Expr = AB::F::from_canonical_u32(I32MULHU_CODE).into();
+            let mulhsu: AB::Expr = AB::F::from_canonical_u32(I32MULHSU_CODE).into();
+            local.is_mul * mul +
+                local.is_mulh * mulh +
+                local.is_mulhu * mulhu +
+                local.is_mulhsu * mulhsu
+        };
+
+        // Range check.
+        {
+            // Ensure that the carry is at most 2^16. This ensures that
+            // product_before_carry_propagation - carry * base + last_carry never overflows or
+            // underflows enough to "wrap" around to create a second solution.
+            builder.slice_range_check_u16(&local.carry, local.is_real);
+
+            builder.slice_range_check_u8(&local.product, local.is_real);
+        }
+
+        // Receive the arguments.
+        // SAFETY: This checks the following.
+        // - `next_pc = pc + 4`
+        // - `num_extra_cycles = 0`
+        // - `op_a_val` is constrained by the chip when `op_a_not_0 == 1`
+        // - `op_a_not_0` is correct, due to the sent `op_a_0` being equal to `1 - op_a_not_0`
+        // - `op_a_immutable = 0`
+        // - `is_memory = 0`
+        // - `is_syscall = 0`
+        // - `is_halt = 0`
+        builder.receive_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp + AB::Expr::from_canonical_u32(UNIT),
             AB::Expr::zero(),
             opcode,
             local.a,
             local.b,
             local.c,
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -253,11 +345,16 @@ mod tests {
     fn generate_trace_mul() {
         let mut shard = ExecutionRecord::default();
         let mut mul_events: Vec<AluEvent> = Vec::new();
-        for _ in 0..100 {
-            let b = thread_rng().gen::<u32>();
-            let c = thread_rng().gen::<u32>();
-            let a = b.wrapping_mul(c);
-            mul_events.push(AluEvent::new(0, Opcode::I32Mul, a, b, c, Opcode::I32Mul.code()));
+        for _ in 0..10i32.pow(7) {
+            mul_events.push(AluEvent::new(
+                0,
+                0,
+                Opcode::I32Mul, //MULHSU
+                0x80004000,
+                0x80000000,
+                0xffff8000,
+                Opcode::I32Mul.code(),
+            ));
         }
         shard.mul_events = mul_events;
         let chip = MulChip::default();
@@ -272,13 +369,29 @@ mod tests {
         let mut shard = ExecutionRecord::default();
         let mut mul_events: Vec<AluEvent> = Vec::new();
 
-        // Edge cases + Random
-        let instructions: Vec<(u32, u32)> =
-            vec![(0, 0), (1, 1), (u32::MAX, 1), (u32::MAX, u32::MAX), (12345, 67890)];
+        let mul_instructions: Vec<(Opcode, u32, u32, u32)> = vec![
+            (Opcode::I32Mul, 0x00001200, 0x00007e00, 0xb6db6db7),
+            (Opcode::I32Mul, 0x00001240, 0x00007fc0, 0xb6db6db7),
+            (Opcode::I32Mul, 0x00000000, 0x00000000, 0x00000000),
+            (Opcode::I32Mul, 0x00000001, 0x00000001, 0x00000001),
+            (Opcode::I32Mul, 0x00000015, 0x00000003, 0x00000007),
+            (Opcode::I32Mul, 0x00000000, 0x00000000, 0xffff8000),
+            (Opcode::I32Mul, 0x00000000, 0x80000000, 0x00000000),
+            (Opcode::I32Mul, 0x00000000, 0x80000000, 0xffff8000),
+            (Opcode::I32Mul, 0x0000ff7f, 0xaaaaaaab, 0x0002fe7d),
+            (Opcode::I32Mul, 0x0000ff7f, 0x0002fe7d, 0xaaaaaaab),
+            (Opcode::I32Mul, 0x00000000, 0xff000000, 0xff000000),
+            (Opcode::I32Mul, 0x00000001, 0xffffffff, 0xffffffff),
+            (Opcode::I32Mul, 0xffffffff, 0xffffffff, 0x00000001),
+            (Opcode::I32Mul, 0xffffffff, 0x00000001, 0xffffffff),
+        ];
+        for t in mul_instructions.iter() {
+            mul_events.push(AluEvent::new(0, 0, t.0, t.1, t.2, t.3, t.0.code()));
+        }
 
-        for (b, c) in instructions {
-            let a = b.wrapping_mul(c);
-            mul_events.push(AluEvent::new(0, Opcode::I32Mul, a, b, c, Opcode::I32Mul.code()));
+        // Append more events until we have 1000 tests.
+        for _ in 0..(1000 - mul_instructions.len()) {
+            mul_events.push(AluEvent::new(0, 0, Opcode::I32Mul, 8, 2, 4, Opcode::I32Mul.code()));
         }
 
         shard.mul_events = mul_events;
@@ -307,18 +420,37 @@ mod tests {
             let stdin = SP1Stdin::new();
             type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
 
-            let malicious_gen = move |prover: &P, record: &mut ExecutionRecord| {
-                let mut mal_rec = record.clone();
-                if !mal_rec.mul_events.is_empty() {
-                    mal_rec.mul_events[0].a = a_malicious;
-                }
-                // Manipulate the CPU event result (instruction index 2)
-                if mal_rec.cpu_events.len() > 2 {
-                    mal_rec.cpu_events[2].res = a_malicious;
-                    if let Some(MemoryRecordEnum::Write(mut write_record)) =
-                        mal_rec.cpu_events[2].res_record
-                    {
-                        write_record.value = a_malicious;
+                let op_a = thread_rng().gen_range(0..u32::MAX);
+                assert_ne!(op_a, correct_op_a);
+
+                let instructions = vec![
+                    Opcode::I32Const(5u32.into()),
+                    Opcode::I32Const(10u32.into()),
+                    Opcode::I32Const(op_b.into()),
+                    Opcode::I32Const(op_c.into()),
+                    opcode,
+                    Opcode::I32Mul,
+                ];
+
+                let program = Program::from_instrs(instructions);
+                let stdin = SP1Stdin::new();
+
+                type P = CpuProver<BabyBearPoseidon2, RwasmAir<BabyBear>>;
+
+                let malicious_trace_pv_generator = move |prover: &P,
+                                                         record: &mut ExecutionRecord|
+                      -> Vec<(
+                    String,
+                    RowMajorMatrix<Val<BabyBearPoseidon2>>,
+                )> {
+                    let mut malicious_record = record.clone();
+                    // The ALU op of interest is the 5th instruction (index 4)
+                    if malicious_record.cpu_events.len() > 4 {
+                        if let Some(MemoryRecordEnum::Write(mut write_record)) =
+                            malicious_record.cpu_events[4].res_record
+                        {
+                            write_record.value = op_a as u32;
+                        }
                     }
                 }
                 prover.generate_traces(&mal_rec)
