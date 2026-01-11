@@ -48,7 +48,7 @@ enum-map = { version = "2.7.3" }
 
 
 # rwasm
-rwasm = { path = "/home/djadjka/Work/rwasm", features = [
+rwasm = { path = "/Users/aliakseidziadziuk/Work/rwasm", features = [
     "std",
     "tracing",
 ] }

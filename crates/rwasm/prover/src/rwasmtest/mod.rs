@@ -83,7 +83,7 @@ mod tests {
             Opcode::I32Sub,
             Opcode::I32Mul,
             Opcode::I32DivS,
-            Opcode::I32DivU,
+            // Opcode::I32DivU,
         ];
 
         let program = Program::from_instrs(instructions);

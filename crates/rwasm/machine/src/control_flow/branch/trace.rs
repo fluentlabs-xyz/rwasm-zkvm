@@ -82,9 +82,10 @@ impl BranchChip {
         cols: &mut BranchColumns<F>,
         blu: &mut HashMap<ByteLookupEvent, usize>,
     ) {
+        println!("^^^^^^^^^^^ {:?}", event);
 
         if matches!(event.opcode, Opcode::BrTable(_)) {
-            // We limited it for optimization 
+            // We limited it for optimization
             assert!(event.arg1 <= u16::MAX as u32);
         }
 
@@ -128,7 +129,7 @@ impl BranchChip {
 
         cols.sp = F::from_canonical_u32(event.sp);
 
-        cols.op_arg1_value = event.arg1.into(); 
+        cols.op_arg1_value = event.arg1.into();
 
         cols.pc_range_checker.populate(cols.pc, blu);
         cols.next_pc_range_checker.populate(cols.next_pc, blu);

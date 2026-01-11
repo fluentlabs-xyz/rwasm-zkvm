@@ -195,7 +195,7 @@ pub struct CallEvent {
     pub table_idx: u32,
     pub func_index: Option<u32>,
     pub call_stack_address: u32,
-    pub call_stack_access: MemoryRecordEnum,
+    pub call_stack_access: Option<MemoryRecordEnum>,
     pub table_access: Option<MemoryReadRecord>,
 }
 
@@ -213,7 +213,7 @@ impl CallEvent {
         table_idx: u32,
         func_index: Option<u32>,
         call_stack_address: u32,
-        call_stack_access: MemoryRecordEnum,
+        call_stack_access: Option<MemoryRecordEnum>,
         table_access: Option<MemoryReadRecord>,
     ) -> Self {
         Self {
@@ -288,5 +288,6 @@ pub struct LocalEvent {
     pub clk: u32,
     pub shard: u32,
     pub opcode: Opcode,
+    pub arg1: u32,
     pub depth_access: MemoryRecordEnum,
 }

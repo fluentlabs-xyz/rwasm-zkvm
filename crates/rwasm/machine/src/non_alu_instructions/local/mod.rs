@@ -95,8 +95,8 @@ where
             local.sp - AB::Expr::from_canonical_u32(UNIT),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(Opcode::LocalGet(0).code()),
-            *local.depth_access.value(), // op_a: result value
-            Word::zero::<AB>(),          // op_b: unused
+            *local.depth_access.value(),
+            Word::zero::<AB>(),
             Word::zero::<AB>(),
             local.local_depth,
             AB::Expr::zero(),
@@ -168,9 +168,16 @@ where
         builder.eval_memory_access(
             local.shard,
             local.clk,
-            local.sp + local.local_depth.reduce::<AB>(),
+            local.sp + local.local_depth.reduce::<AB>() * AB::Expr::from_canonical_u32(UNIT),
             &local.depth_access,
-            is_real,
+            local.is_local_get,
+        );
+        builder.eval_memory_access(
+            local.shard,
+            local.clk + AB::Expr::one(),
+            local.sp + local.local_depth.reduce::<AB>() * AB::Expr::from_canonical_u32(UNIT),
+            &local.depth_access,
+            local.is_local_set + local.is_local_tee,
         );
     }
 }

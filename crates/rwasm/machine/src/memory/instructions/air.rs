@@ -12,7 +12,7 @@ use crate::{
     operations::IsZeroOperation,
 };
 
-use rwasm_executor::{ByteOpcode, Opcode, DEFAULT_PC_INC, UNUSED_PC};
+use rwasm_executor::{Opcode, DEFAULT_PC_INC, UNUSED_PC};
 
 use super::{columns::MemoryInstructionsColumns, MemoryInstructionsChip};
 
@@ -212,8 +212,6 @@ impl MemoryInstructionsChip {
             is_real.clone(),
         );
 
-
-
         // SAFETY: Check that the above interaction is only sent if one of the opcode flags is set.
         // If `is_real = 0`, then `local.most_sig_bytes_zero.result = 0`, leading to no interaction.
         // Note that when `is_real = 1`, due to `IsZeroOperation`,
@@ -408,9 +406,6 @@ impl MemoryInstructionsChip {
             .when(local.is_i32store16)
             .assert_zero(local.ls_bits_is_one + local.ls_bits_is_three);
 
-        // When the instruction is SW, ensure that the offset is 0.
-        builder.when(local.is_i32store).assert_one(offset_is_zero.clone());
-
         // Compute the expected stored value for a SH instruction.
 
         let ls_bits_is_two = local.ls_bits_is_two;
@@ -476,9 +471,9 @@ impl MemoryInstructionsChip {
         builder
             .when(local.is_i32store)
             .assert_word_eq(mem_val.map(|x| x.into()), store_expected_stored_value_lw);
-        // builder
-        //     .when(local.is_i32store)
-        //     .assert_word_eq(mem_val_hi.map(|x| x.into()), store_expected_stored_value_hi);
+        builder
+            .when(local.is_i32store)
+            .assert_word_eq(mem_val_hi.map(|x| x.into()), store_expected_stored_value_hi);
     }
 
     /// This function is used to evaluate the unsigned memory value for the load memory

@@ -12,7 +12,7 @@ use rwasm::{
 };
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
-    ByteOpcode, ExecutionRecord, Opcode, Program,
+    ExecutionRecord, Opcode, Program,
 };
 use sp1_primitives::consts::WORD_SIZE;
 use sp1_stark::air::MachineAir;
@@ -135,6 +135,8 @@ impl MemoryInstructionsChip {
         // for store only
         cols.value = event.arg2.into();
 
+        println!("############# {} {} {}", addr_ls_two_bits, event.arg1, event.opcode.aux_value());
+
         cols.addr_ls_two_bits = F::from_canonical_u8(addr_ls_two_bits);
         cols.ls_bits_is_one = F::from_bool(addr_ls_two_bits == 1);
         cols.ls_bits_is_two = F::from_bool(addr_ls_two_bits == 2);
@@ -149,8 +151,6 @@ impl MemoryInstructionsChip {
         //     c: 0b11,
         // });
 
-        println!("%%%%%%%%%%%%%% {} {:?} {:?} {} {}", addr_ls_two_bits, memory_addr, event.opcode, event.arg1, event.arg2);
-
         // If it is a load instruction, set the unsigned_mem_val column.
         let mem_value = event.mem_access.value();
         if matches!(
@@ -161,7 +161,6 @@ impl MemoryInstructionsChip {
                 Opcode::I32Load8U(_) |
                 Opcode::I32Load8S(_)
         ) {
-
             cols.value = event.res.into();
 
             match event.opcode {

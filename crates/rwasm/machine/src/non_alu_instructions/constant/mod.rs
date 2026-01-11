@@ -109,6 +109,8 @@ impl<F: PrimeField32> MachineAir<F> for ConstChip {
             let mut row = [F::zero(); NUM_CONST_COLS];
             let cols: &mut ConstCols<F> = row.as_mut_slice().borrow_mut();
 
+            println!("$$$$$$$$$$$$$$ event.sp:{}", event.sp);
+
             cols.pc = F::from_canonical_u32(event.pc);
             cols.sp = F::from_canonical_u32(event.sp);
 

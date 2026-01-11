@@ -78,15 +78,17 @@ impl<F: PrimeField32> MachineAir<F> for AddMul64Chip {
         let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
 
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_ADDMUL64_COLS);
-        let chunk_size = std::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
+        let chunk_size = std::cmp::max(nb_rows / num_cpus::get(), 1);
 
         values.chunks_mut(chunk_size * NUM_ADDMUL64_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
                 rows.chunks_mut(NUM_ADDMUL64_COLS).enumerate().for_each(|(j, row)| {
                     let idx = i * chunk_size + j;
+                    println!("********* {} {} {}", i, chunk_size, j);
                     let cols: &mut AddMul64Cols<F> = row.borrow_mut();
-
-                    self.event_to_row(&input.i64_events[idx], cols, &mut Vec::new());
+                    if idx < nb_rows {
+                        self.event_to_row(&input.i64_events[idx], cols, &mut Vec::new());
+                    }
                 });
             },
         );
@@ -254,7 +256,8 @@ where
             let mut prev_carry = zero.clone();
             for i in 0..WORD_SIZE {
                 let lhs = local.b[i].into() + local.c[i].into() + prev_carry.clone();
-                let rhs = local.res_hi[i].into() + local.carry[i].into() * base;
+                let rhs =
+                    local.res_lo_write_record.value()[i].into() + local.carry[i].into() * base;
 
                 builder_add.assert_zero(lhs - rhs);
                 prev_carry = local.carry[i].into();
@@ -262,11 +265,11 @@ where
 
             // 4. Upper 32 bits logic (Implicit zero-extension of inputs)
             // Result a_hi[0] must equal the carry out from the lower 32 bits.
-            builder_add.assert_eq(local.res_lo_write_record.value()[0], prev_carry);
+            builder_add.assert_eq(local.res_hi[0], prev_carry);
 
             // The rest of a_hi must be zero.
             for i in 1..WORD_SIZE {
-                builder_add.assert_zero(local.res_lo_write_record.value()[i]);
+                builder_add.assert_zero(local.res_hi[i]);
             }
         }
 
@@ -294,9 +297,9 @@ where
 
                 // result = output_byte + 256 * new_carry
                 let out_byte = if i < WORD_SIZE {
-                    local.res_hi[i].into()
+                    local.res_lo_write_record.value()[i].into()
                 } else {
-                    local.res_lo_write_record.value()[i - WORD_SIZE].into()
+                    local.res_hi[i - WORD_SIZE].into()
                 };
 
                 let rhs = out_byte + local.carry[i] * base;
@@ -313,7 +316,7 @@ where
         builder.eval_memory_access(
             local.shard,
             local.clk + AB::Expr::one(),
-            local.sp + AB::Expr::from_canonical_u32(UNIT),
+            local.sp + AB::Expr::from_canonical_u32(2 * UNIT),
             &local.res_lo_write_record,
             is_real.clone(),
         );
@@ -328,9 +331,9 @@ where
             AB::Expr::zero(),
             opcode,
             local.res_hi,
-            *local.res_lo_write_record.value(),
             local.b,
             local.c,
+            Word::zero::<AB>(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),

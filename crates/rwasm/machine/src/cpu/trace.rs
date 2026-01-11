@@ -17,7 +17,7 @@ use sp1_stark::air::MachineAir;
 use tracing::instrument;
 
 use super::{columns::NUM_CPU_COLS, CpuChip};
-use crate::{cpu::columns::CpuCols, memory::MemoryCols, utils::zeroed_f_vec};
+use crate::{cpu::columns::CpuCols, utils::zeroed_f_vec};
 
 impl<F: PrimeField32> MachineAir<F> for CpuChip {
     type Record = ExecutionRecord;
@@ -127,6 +127,7 @@ impl CpuChip {
         // Populate basic fields.
         cols.pc = F::from_canonical_u32(event.pc);
         cols.next_pc = F::from_canonical_u32(event.next_pc);
+        println!("&&&&&& {}", event.sp);
         cols.sp.populate(event.sp, blu_events, true);
         cols.next_sp.populate(event.next_sp, blu_events, true);
 
@@ -143,7 +144,9 @@ impl CpuChip {
         );
         cols.is_syscall = F::from_bool(instruction.is_ecall_instruction());
 
-        let is_complex_opcode = instruction.is_64b_op();
+        let is_complex_opcode = instruction.is_64b_op() ||
+            instruction.is_local_instruction() ||
+            instruction.is_call_instruction();
 
         cols.is_complex_opcode = F::from_bool(is_complex_opcode);
 

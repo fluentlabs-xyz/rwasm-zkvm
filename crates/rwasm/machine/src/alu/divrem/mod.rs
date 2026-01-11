@@ -1216,16 +1216,56 @@ where
                 .assert_eq(local.a[i].into(), local.q_abs[i].into());
         }
 
-        // Signed division: if q_sign == 1, a + q_abs = 2^32 via a_tc_carry.
-        let mut lhs_aq = local.a[0].into() + local.q_abs[0].into();
-        let mut rhs_aq = local.a_tc_carry[0].into() * base;
-        builder.when(local.is_div_s).when(local.q_sign).assert_eq(lhs_aq, rhs_aq);
-        for i in 1..WORD_SIZE {
-            lhs_aq = local.a[i].into() + local.q_abs[i].into() + local.a_tc_carry[i - 1].into();
-            rhs_aq = local.a_tc_carry[i].into() * base;
-            builder.when(local.is_div_s).when(local.q_sign).assert_eq(lhs_aq, rhs_aq);
-        }
-        builder.when(local.is_div_s).when(local.q_sign).assert_one(local.a_tc_carry[WORD_SIZE - 1]);
+        // Range check remainder. (i.e., |remainder| < |c| when not is_c_0)
+        {
+            // For each of `c` and `rem`, assert that the absolute value is equal to the original
+            // value, if the original value is non-negative or the minimum i32.
+            for i in 0..WORD_SIZE {
+                builder.when_not(local.c_neg).assert_eq(local.c[i], local.abs_c[i]);
+                builder
+                    .when_not(local.rem_neg)
+                    .assert_eq(local.remainder[i], local.abs_remainder[i]);
+            }
+            // In the case that `c` or `rem` is negative, instead check that their sum is zero by
+            // sending an AddEvent.
+            builder.send_rwasm_instruction(
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::from_canonical_u32(UNUSED_PC),
+                AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
+                AB::Expr::zero(),
+                AB::Expr::zero() + AB::Expr::from_canonical_u32(UNIT),
+                AB::Expr::zero(),
+                AB::Expr::from_canonical_u32(Opcode::I32Add.code()),
+                Word::zero::<AB>(),
+                local.c,
+                local.abs_c,
+                Word::zero::<AB>(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                local.abs_c_alu_event,
+            );
+            builder.send_rwasm_instruction(
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::from_canonical_u32(UNUSED_PC),
+                AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
+                AB::Expr::zero(),
+                AB::Expr::zero() + AB::Expr::from_canonical_u32(UNIT),
+                AB::Expr::zero(),
+                AB::Expr::from_canonical_u32(Opcode::I32Add.code()),
+                Word([zero.clone(), zero.clone(), zero.clone(), zero.clone()]),
+                local.remainder,
+                local.abs_remainder,
+                Word::zero::<AB>(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                AB::Expr::zero(),
+                local.abs_rem_alu_event,
+            );
 
         // Signed remainder: if r_sign == 0, a == r_abs.
         for i in 0..WORD_SIZE {
@@ -1291,16 +1331,20 @@ where
 
             // Dispatch abs(remainder) < max(abs(c), 1), this is equivalent to abs(remainder) <
             // abs(c) if not division by 0.
-            builder.send_instruction_old(
+            builder.send_rwasm_instruction(
                 AB::Expr::zero(),
                 AB::Expr::zero(),
                 AB::Expr::from_canonical_u32(UNUSED_PC),
                 AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
                 AB::Expr::zero(),
+                AB::Expr::zero() + AB::Expr::from_canonical_u32(UNIT),
+                AB::Expr::zero(),
                 AB::Expr::from_canonical_u32(Opcode::I32LtU.code()),
-                Word([one.clone(), zero.clone(), zero.clone(), zero.clone()]),
+                Word::extend_expr::<AB>(AB::Expr::one()),
                 local.abs_remainder,
                 local.max_abs_c_or_1,
+                Word::zero::<AB>(),
+                AB::Expr::zero(),
                 AB::Expr::zero(),
                 AB::Expr::zero(),
                 AB::Expr::zero(),

@@ -5,7 +5,6 @@ use itertools::Itertools;
 use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
-use rwasm::mem_index::TypedAddress;
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, CallEvent},
     ExecutionRecord, Opcode, Program,
@@ -100,13 +99,14 @@ impl CallChip {
         // --- 2. Populate Range-Check and Memory-Related Columns ---
 
         // Populate range checkers for pc and next_pc to ensure they are valid addresses.
-        cols.pc_range_checker.populate(cols.pc, blu);
-        cols.next_pc_range_checker.populate(cols.next_pc, blu);
 
-        println!("!!!call_stack_address: {}", event.call_stack_address);
-
-        // Populate the call stack address. This is the pointer to the call stack frame.
-        cols.call_stack_address.populate(event.call_stack_address, blu, true);
+        match event.opcode {
+            Opcode::Call(_) | Opcode::CallIndirect(_) | Opcode::CallInternal(_) => {
+                cols.pc_range_checker.populate(cols.pc, blu);
+                cols.next_pc_range_checker.populate(cols.next_pc, blu);
+            }
+            _ => {}
+        };
 
         // --- 3. Populate Columns for Indirect Calls ---
 
@@ -131,6 +131,14 @@ impl CallChip {
         // A "real" return is any return that is not the final exit from the main function (where
         // sp=0). Real returns MUST have an associated stack access to read the return
         // address.
-        cols.call_stack_access.populate(event.call_stack_access, blu);
+
+        if let Some(call_stack_access) = event.call_stack_access {
+            cols.call_stack_access.populate(call_stack_access, blu);
+            // Populate the call stack address. This is the pointer to the call stack frame.
+            cols.call_stack_address.populate(event.call_stack_address, blu, true);
+        } else {
+            println!("******* is_main_return");
+            cols.is_main_return = F::one();
+        }
     }
 }

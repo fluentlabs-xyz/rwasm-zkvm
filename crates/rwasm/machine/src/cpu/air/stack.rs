@@ -6,7 +6,7 @@ use sp1_stark::air::SP1AirBuilder;
 use crate::{
     air::{MemoryAirBuilder, WordAirBuilder},
     cpu::{columns::CpuCols, CpuChip},
-    memory::{MemoryCols, StackAddressCols},
+    memory::StackAddressCols,
 };
 
 impl CpuChip {
@@ -36,7 +36,7 @@ impl CpuChip {
         builder.eval_memory_access(
             local.shard,
             clk.clone(),
-            local.sp.value::<AB>(),
+            local.sp.value::<AB>() + AB::Expr::from_canonical_u32(UNIT),
             &local.op_arg1_access,
             local.instruction.is_with_one_param,
         );
@@ -44,7 +44,7 @@ impl CpuChip {
         builder.eval_memory_access(
             local.shard,
             clk.clone(),
-            local.sp.value::<AB>() + AB::Expr::from_canonical_u32(UNIT),
+            local.sp.value::<AB>() + AB::Expr::from_canonical_u32(2 * UNIT),
             &local.op_arg1_access,
             local.instruction.is_with_two_three_params,
         );
@@ -54,7 +54,7 @@ impl CpuChip {
         builder.eval_memory_access(
             local.shard,
             clk.clone(),
-            local.sp.value::<AB>(),
+            local.sp.value::<AB>() + AB::Expr::from_canonical_u32(UNIT),
             &local.op_arg2_access,
             local.instruction.is_with_two_three_params,
         );
@@ -72,7 +72,7 @@ impl CpuChip {
         builder.eval_memory_access(
             local.shard,
             clk.clone() + AB::Expr::one(),
-            local.next_sp.value::<AB>(),
+            local.next_sp.value::<AB>() + AB::Expr::from_canonical_u32(UNIT),
             &local.op_res_access,
             local.instruction.has_result,
         );

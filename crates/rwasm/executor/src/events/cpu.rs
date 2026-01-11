@@ -1,4 +1,3 @@
-use rwasm::mem_index::TypedAddress;
 use serde::{Deserialize, Serialize};
 
 use super::memory::MemoryRecordEnum;

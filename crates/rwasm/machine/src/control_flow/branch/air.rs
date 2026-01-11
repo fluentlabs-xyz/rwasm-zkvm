@@ -41,14 +41,14 @@ where
         // checked to be boolean. Each "real" row has exactly one selector turned on, as
         // `is_real`, the sum of the six selectors, is boolean. Therefore, the `opcode`
         // // matches the corresponding opcode.
-        // builder.assert_bool(local.is_br);
-        // builder.assert_bool(local.is_brifeqz);
-        // builder.assert_bool(local.is_brifnez);
-        // builder.assert_bool(local.is_brtable);
+        builder.assert_bool(local.is_br);
+        builder.assert_bool(local.is_brifeqz);
+        builder.assert_bool(local.is_brifnez);
+        builder.assert_bool(local.is_brtable);
 
         let is_real = local.is_br + local.is_brifeqz + local.is_brifnez + local.is_brtable;
 
-        // builder.assert_bool(is_real.clone());
+        builder.assert_bool(is_real.clone());
 
         let opcode = local.is_br * AB::Expr::from_canonical_u32(Opcode::Br(0i32.into()).code()) +
             local.is_brifeqz * AB::Expr::from_canonical_u32(Opcode::BrIfEqz(0i32.into()).code()) +
@@ -145,45 +145,45 @@ where
                 local.is_branching,
             );
 
-            // // When we are not branching, assert that local.pc + 4 <==> next.pc.
-            // builder.when(is_real.clone()).when(local.not_branching).assert_eq(
-            //     local.pc.reduce::<AB>() + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-            //     local.next_pc.reduce::<AB>(),
-            // );
+            // When we are not branching, assert that local.pc + 4 <==> next.pc.
+            builder.when(is_real.clone()).when(local.not_branching).assert_eq(
+                local.pc.reduce::<AB>() + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+                local.next_pc.reduce::<AB>(),
+            );
 
-            // // When local.not_branching is true, assert that local.is_real is true.
-            // builder.when(is_real.clone()).when(local.not_branching).assert_eq(
-            //     local.pc.reduce::<AB>() + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
-            //     local.next_pc.reduce::<AB>(),
-            // );
+            // When local.not_branching is true, assert that local.is_real is true.
+            builder.when(is_real.clone()).when(local.not_branching).assert_eq(
+                local.pc.reduce::<AB>() + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+                local.next_pc.reduce::<AB>(),
+            );
 
-            // // When local.not_branching is true, assert that local.is_real is true.
-            // builder.when(local.not_branching).assert_one(is_real.clone());
+            // When local.not_branching is true, assert that local.is_real is true.
+            builder.when(local.not_branching).assert_one(is_real.clone());
 
-            // // To prevent the ALU send above to be non-zero when the row is a padding row.
-            // builder.when_not(is_real.clone()).assert_zero(local.is_branching);
+            // To prevent the ALU send above to be non-zero when the row is a padding row.
+            builder.when_not(is_real.clone()).assert_zero(local.is_branching);
 
-            // // Assert that either we are branching or not branching when the instruction is a
-            // // branch.
-            // // The `next_pc` is constrained in both branching and not branching cases, so it is
-            // // fully constrained.
-            // builder.when(is_real.clone()).assert_one(local.is_branching + local.not_branching);
-            // builder.when(is_real.clone()).assert_bool(local.is_branching);
-            // builder.when(is_real.clone()).assert_bool(local.not_branching);
+            // Assert that either we are branching or not branching when the instruction is a
+            // branch.
+            // The `next_pc` is constrained in both branching and not branching cases, so it is
+            // fully constrained.
+            builder.when(is_real.clone()).assert_one(local.is_branching + local.not_branching);
+            builder.when(is_real.clone()).assert_bool(local.is_branching);
+            builder.when(is_real.clone()).assert_bool(local.not_branching);
         }
 
         // Evaluate branching value constraints.
         {
-            // builder
-            //     .when(local.is_br + local.is_brifeqz + local.is_brifnez)
-            //     .assert_word_eq(local.aux_value, local.offset_value);
+            builder
+                .when(local.is_br + local.is_brifeqz + local.is_brifnez)
+                .assert_word_eq(local.aux_value, local.offset_value);
 
-            // // When the opcode is BrIfEqz and we are branching, assert that a_eq_b is true.
-            // builder
-            //     .when(
-            //         local.is_brifeqz * local.is_branching + local.is_brifnez * local.not_branching,
-            //     )
-            //     .assert_one(local.arg1_eq_zero.result);
+            // When the opcode is BrIfEqz and we are branching, assert that a_eq_b is true.
+            builder
+                .when(
+                    local.is_brifeqz * local.is_branching + local.is_brifnez * local.not_branching,
+                )
+                .assert_one(local.arg1_eq_zero.result);
 
             // We must also assert that a_eq_zero and a_gt_zero are complementary.
             // This prevents a malicious prover from setting both to 1.
@@ -192,11 +192,11 @@ where
                 .assert_one(local.a_eq_zero + local.a_gt_zero);
 
             // When the opcode is BrIfNez and we are branching, assert that either a_gt_b
-            // builder
-            //     .when(
-            //         local.is_brifnez * local.is_branching + local.is_brifeqz * local.not_branching,
-            //     )
-            //     .assert_zero(local.arg1_eq_zero.result);
+            builder
+                .when(
+                    local.is_brifnez * local.is_branching + local.is_brifeqz * local.not_branching,
+                )
+                .assert_zero(local.arg1_eq_zero.result);
 
             IsZeroWordOperation::<AB::F>::eval(
                 builder,
@@ -205,19 +205,19 @@ where
                 is_real,
             );
 
-            // builder.when(local.is_br + local.is_brtable).assert_one(local.is_branching);
+            builder.when(local.is_br + local.is_brtable).assert_one(local.is_branching);
 
-            // builder.when(local.is_brtable).assert_zero(local.offset_value[3]);
-            // builder.when(local.is_brtable).assert_zero(local.offset_value[2]);
+            builder.when(local.is_brtable).assert_zero(local.offset_value[3]);
+            builder.when(local.is_brtable).assert_zero(local.offset_value[2]);
 
-            // builder
-            //     .when(local.is_brtable)
-            //     .when(local.a_lt_target)
-            //     .assert_zero(local.op_arg1_value[3]);
-            // builder
-            //     .when(local.is_brtable)
-            //     .when(local.a_lt_target)
-            //     .assert_zero(local.op_arg1_value[2]);
+            builder
+                .when(local.is_brtable)
+                .when(local.a_lt_target)
+                .assert_zero(local.op_arg1_value[3]);
+            builder
+                .when(local.is_brtable)
+                .when(local.a_lt_target)
+                .assert_zero(local.op_arg1_value[2]);
 
             builder
                 .when(local.is_brtable)
@@ -235,7 +235,8 @@ where
             );
             builder.when(local.is_brtable).when_not(local.a_lt_target).assert_eq(
                 local.offset_value.reduce::<AB>(),
-                local.target.reduce::<AB>() * AB::Expr::from_canonical_u32(2u32) - AB::Expr::one(),
+                local.aux_value.reduce::<AB>() * AB::Expr::from_canonical_u32(2u32) -
+                    AB::Expr::one(),
             );
 
             builder.when(local.is_brtable).assert_eq(

@@ -27,7 +27,7 @@ impl<F: PrimeField32, const START: u32, const END: u32> Range16bCols<F, START, E
 
         let shifted_value: u16 = shifted_value
             .try_into()
-            .expect(&format!("START: {}, END: {}, value: {}", START, END, value));
+            .unwrap_or_else(|_| panic!("START: {}, END: {}, value: {}", START, END, value));
 
         let hi_8bits: u8 = (shifted_value >> 8) as u8;
         let low_8bits: u8 = shifted_value as u8;

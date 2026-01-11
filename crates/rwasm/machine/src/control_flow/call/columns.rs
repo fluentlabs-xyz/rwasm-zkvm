@@ -72,7 +72,7 @@ pub struct CallColumns<T> {
 
     /// Flag indicating a "fake" return at the end of execution (exit from main).
     /// Used to disable stack reads when the stack is empty.
-    pub not_real_return: T,
+    pub is_main_return: T,
 }
 
 pub type TableIdxCols<T> = Range8bCols<T, 0, N_MAX_TABLES>;

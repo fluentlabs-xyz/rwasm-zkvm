@@ -340,6 +340,7 @@ pub trait InstructionAirBuilder: BaseAirBuilder {
     }
 
     /// Sends a RWASM instruction to be processed.
+    #[allow(clippy::too_many_arguments)]
     fn send_rwasm_instruction(
         &mut self,
         shard: impl Into<Self::Expr> + Clone,

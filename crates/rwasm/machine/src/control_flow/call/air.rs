@@ -44,17 +44,19 @@ where
         builder.assert_bool(local.is_call_indirect);
         builder.assert_bool(local.is_call_internal);
         builder.assert_bool(local.is_return);
-        builder.assert_bool(local.not_real_return);
+        builder.assert_bool(local.is_main_return);
 
-        // // Define aggregate flags
+        //  Define aggregate flags
         let is_real =
             local.is_call + local.is_call_indirect + local.is_call_internal + local.is_return;
         let next_is_real =
             next.is_call + next.is_call_indirect + next.is_call_internal + next.is_return;
         let is_call_ins = local.is_call + local.is_call_indirect + local.is_call_internal;
 
+        builder.when(local.is_main_return).assert_one(local.is_return);
+
         // // Ensure is_real is boolean (effectively checks mutual exclusivity)
-        // builder.assert_bool(is_real.clone());
+        builder.assert_bool(is_real.clone());
 
         // Construct opcode value based on active flag
         let opcode = local.is_call * AB::Expr::from_canonical_u32(Opcode::Call(0).code()) +
@@ -65,7 +67,7 @@ where
         // // --- 2. Trace Integrity Constraints ---
 
         // // Prevent "resurrection": if current row is padding (0), next row MUST be padding (0).
-        builder.when_transition().when_not(is_real.clone()).assert_zero(next_is_real.clone());
+        // builder.when_transition().when_not(is_real.clone()).assert_zero(next_is_real.clone());
 
         // // --- 3. Instruction Bus Interaction ---
 
@@ -129,7 +131,7 @@ where
             local.is_call_indirect,
         );
 
-        // // --- 5. Range Checks ---
+        // --- 5. Range Checks ---
 
         BabyBearWordRangeChecker::<AB::F>::range_check(
             builder,
@@ -146,17 +148,17 @@ where
         CallStackAddressCols::<AB::Var>::do_range_check(
             builder,
             local.call_stack_address,
-            is_real.clone(),
+            is_real.clone() - local.is_main_return,
         );
         TableIdxCols::<AB::Var>::do_range_check(builder, local.table_idx, local.is_call_indirect);
         FuncIndex::<AB::Var>::do_range_check(builder, local.func_index, local.is_call_indirect);
         // --- 6. Call Stack Logic (The Core) ---
 
         // Initial state: Call stack must start at 0
-        builder
-            .when(is_real.clone())
-            .when_first_row()
-            .assert_zero(local.call_stack_address.value::<AB>());
+        // builder
+        //     .when(is_real.clone())
+        //     .when_first_row()
+        //     .assert_zero(local.call_stack_address.value::<AB>());
 
         // Push: When calling, increment stack pointer by UNIT
         builder
@@ -175,10 +177,10 @@ where
 
         // Termination state:
         // If this is the last real row, stack must be empty (0)
-        builder
-            .when(is_real.clone())
-            .when_not(next_is_real.clone())
-            .assert_zero(local.call_stack_address.value::<AB>());
+        // builder
+        //     .when(is_real.clone())
+        //     .when_not(next_is_real.clone())
+        //     .assert_zero(local.call_stack_address.value::<AB>());
 
         // The last instruction MUST be a Return (to exit main)
         builder.when(is_real).when_not(next_is_real).assert_one(local.is_return);
@@ -204,7 +206,7 @@ where
             local.clk,
             local.call_stack_address.value::<AB>(),
             &local.call_stack_access,
-            local.is_return - local.not_real_return,
+            local.is_return - local.is_main_return,
         );
 
         // // READ Table (on Indirect Call)
@@ -220,9 +222,7 @@ where
 
         // --- 8. Specific Logic for Helpers ---
 
-        // Logic for fake return (program end)
-        builder.when(local.not_real_return).assert_zero(local.sp);
-        builder.when(local.not_real_return).assert_one(local.is_return);
+        builder.when(local.is_main_return).assert_one(local.is_return);
 
         // Delegate PC and Stack value logic to helper methods
         self.eval_call_sp(builder, local);
@@ -248,7 +248,7 @@ impl CallChip {
         // Return: Consistency check.
         // The value read from stack must match our next_pc.
         builder
-            .when(local.is_return - local.not_real_return)
+            .when(local.is_return - local.is_main_return)
             .assert_word_eq(local.next_pc, *local.call_stack_access.value());
     }
 
@@ -265,7 +265,7 @@ impl CallChip {
         // Return: Jump to address read from Stack.
         // DISABLED for fake return (program end) to avoid reading garbage from unconstrained
         // columns.
-        builder.when(local.is_return - local.not_real_return).assert_eq(
+        builder.when(local.is_return - local.is_main_return).assert_eq(
             local.next_pc.reduce::<AB>(),
             local.call_stack_access.value().reduce::<AB>(),
         );

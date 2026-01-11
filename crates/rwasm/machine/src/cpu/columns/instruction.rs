@@ -30,7 +30,8 @@ impl<F: PrimeField> InstructionCols<F> {
         self.has_result = F::from_bool(opcode.has_result());
         self.is_with_zero_params = F::from_bool(opcode.is_with_zero_params());
         self.is_with_one_param = F::from_bool(opcode.is_with_one_param());
-        self.is_with_two_three_params = F::from_bool(opcode.is_with_two_params() || opcode.is_with_three_params());
+        self.is_with_two_three_params =
+            F::from_bool(opcode.is_with_two_params() || opcode.is_with_three_params());
     }
 }
 

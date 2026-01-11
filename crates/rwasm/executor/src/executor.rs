@@ -3,9 +3,7 @@ use crate::profiler::Profiler;
 use crate::{
     dependencies::{emit_branch_dependencies, emit_fuel_dependencies, emit_memory_dependencies},
     estimator::RecordEstimator,
-    events::{
-        CallEvent, ConstEvent, ExtendEvent, I64AluEvent, LocalEvent, PrecompileEvent, SyscallEvent,
-    },
+    events::{CallEvent, ConstEvent, ExtendEvent, I64AluEvent, LocalEvent, SyscallEvent},
 };
 #[cfg(feature = "profiling")]
 use std::{fs::File, io::BufWriter};
@@ -21,8 +19,7 @@ use rwasm::{
     event::FatOpEvent,
     mem::{MemoryLocalEvent, MemoryRecordEnum},
     CallStack, CallStateExtension, DataOpEvent, I64AluStateExtension, InstrStateExtension,
-    InstructionPtr, MemExtension, Opcode, RwasmExecutor, RwasmStore, TrapCode, ValueStack,
-    ValueStackPtr,
+    InstructionPtr, Opcode, RwasmExecutor, RwasmStore, TrapCode, ValueStack, ValueStackPtr,
 };
 
 use fluentbase_runtime::syscall_handler::runtime_syscall_handler;
@@ -752,7 +749,7 @@ impl<'a> Executor<'a> {
         } else if opcode.is_extend_instruction() {
             self.emit_extend_event(pc, sp, opcode, arg1, arg2, res);
         } else if opcode.is_local_instruction() {
-            self.emit_local_event(sp, clk, opcode, state_extension);
+            self.emit_local_event(sp, clk, opcode, arg1, state_extension);
         } else {
             println!("Unimplemented opcode in emit_events: {:?}", opcode);
         }
@@ -852,6 +849,7 @@ impl<'a> Executor<'a> {
 
     // Emit a memory opcode event.
     #[inline]
+    #[allow(clippy::too_many_arguments)]
     fn emit_mem_instr_event(
         &mut self,
         opcode: Opcode,
@@ -908,6 +906,7 @@ impl<'a> Executor<'a> {
         sp: u32,
         clk: u32,
         opcode: Opcode,
+        arg1: u32,
         state_extension: Option<InstrStateExtension>,
     ) {
         let depth_access = match state_extension {
@@ -915,8 +914,15 @@ impl<'a> Executor<'a> {
             _ => unreachable!("mem operation should contain Store state extension"),
         };
 
-        let event =
-            LocalEvent { pc: self.state.pc, sp, clk, shard: self.shard(), opcode, depth_access };
+        let event = LocalEvent {
+            pc: self.state.pc,
+            sp,
+            arg1,
+            clk,
+            shard: self.shard(),
+            opcode,
+            depth_access,
+        };
         self.record.local_events.push(event);
     }
 
@@ -968,87 +974,6 @@ impl<'a> Executor<'a> {
         }
     }
 
-    /// Emit a syscall event.
-    #[allow(clippy::too_many_arguments)]
-    fn emit_syscall_event(
-        &mut self,
-        clk: u32,
-        a_record: Option<MemoryRecordEnum>,
-        syscall_code: SyscallCode,
-        arg1: u32,
-        arg2: u32,
-        next_pc: u32,
-        fat_op: Option<FatOpEvent>,
-    ) {
-        let syscall_event =
-            self.syscall_event(clk, a_record, Some(true), syscall_code, arg1, arg2, next_pc);
-
-        self.record.syscall_events.push(syscall_event);
-        println!("eventcode: {:?}", syscall_code);
-        match syscall_code {
-            SyscallCode::HALT => todo!(),
-            SyscallCode::WRITE => todo!(),
-            SyscallCode::ENTER_UNCONSTRAINED => todo!(),
-            SyscallCode::EXIT_UNCONSTRAINED => todo!(),
-            SyscallCode::SHA_EXTEND => todo!(),
-            SyscallCode::SHA_COMPRESS => todo!(),
-            SyscallCode::ED_ADD => todo!(),
-            SyscallCode::ED_DECOMPRESS => todo!(),
-            SyscallCode::KECCAK_PERMUTE => todo!(),
-            SyscallCode::SECP256K1_ADD => todo!(),
-            SyscallCode::SECP256K1_DOUBLE => todo!(),
-            SyscallCode::SECP256K1_DECOMPRESS => todo!(),
-            SyscallCode::BN254_ADD => todo!(),
-            SyscallCode::BN254_DOUBLE => todo!(),
-            SyscallCode::COMMIT => todo!(),
-            SyscallCode::COMMIT_DEFERRED_PROOFS => todo!(),
-            SyscallCode::VERIFY_SP1_PROOF => todo!(),
-            SyscallCode::BLS12381_DECOMPRESS => todo!(),
-            SyscallCode::HINT_LEN => todo!(),
-            SyscallCode::HINT_READ => todo!(),
-            SyscallCode::UINT256_MUL => todo!(),
-            SyscallCode::U256XU2048_MUL => todo!(),
-            SyscallCode::BLS12381_ADD => todo!(),
-            SyscallCode::BLS12381_DOUBLE => todo!(),
-            SyscallCode::BLS12381_FP_ADD => todo!(),
-            SyscallCode::BLS12381_FP_SUB => todo!(),
-            SyscallCode::BLS12381_FP_MUL => todo!(),
-            SyscallCode::BLS12381_FP2_ADD => todo!(),
-            SyscallCode::BLS12381_FP2_SUB => todo!(),
-            SyscallCode::BLS12381_FP2_MUL => todo!(),
-            SyscallCode::BN254_FP_ADD => todo!(),
-            SyscallCode::BN254_FP_SUB => todo!(),
-            SyscallCode::BN254_FP_MUL => todo!(),
-            SyscallCode::BN254_FP2_ADD => todo!(),
-            SyscallCode::BN254_FP2_SUB => todo!(),
-            SyscallCode::BN254_FP2_MUL => todo!(),
-            SyscallCode::SECP256R1_ADD => todo!(),
-            SyscallCode::SECP256R1_DOUBLE => todo!(),
-            SyscallCode::SECP256R1_DECOMPRESS => todo!(),
-            SyscallCode::TABLE_INIT => match fat_op.unwrap() {
-                FatOpEvent::TableInit(table_init_event) => self.record.precompile_events.add_event(
-                    SyscallCode::TABLE_INIT,
-                    syscall_event,
-                    PrecompileEvent::TableInit(table_init_event),
-                ),
-                _ => {
-                    unreachable!();
-                }
-            },
-            SyscallCode::TABLE_GROW => match fat_op.unwrap() {
-                FatOpEvent::TableGrow(table_grow_event) => self.record.precompile_events.add_event(
-                    SyscallCode::TABLE_GROW,
-                    syscall_event,
-                    PrecompileEvent::TableGrow(table_grow_event),
-                ),
-                _ => {
-                    unreachable!();
-                }
-            },
-            SyscallCode::FUEL => (),
-        }
-    }
-
     // Emit a branch event.
     #[inline]
     fn emit_const_event(&mut self, sp: u32, opcode: Opcode) {
@@ -1085,12 +1010,29 @@ impl<'a> Executor<'a> {
                     table_idx,
                     func_index,
                     call_stack_address,
-                    call_stack_access,
+                    call_stack_access: Some(call_stack_access),
                     table_access: table_read,
                 };
                 self.record.call_events.push(event);
             }
-            _ => assert_eq!(opcode, Opcode::Return),
+            _ => {
+                assert_eq!(opcode, Opcode::Return);
+
+                let event = CallEvent {
+                    shard: self.shard(),
+                    clk,
+                    pc,
+                    next_pc,
+                    opcode,
+                    sp,
+                    table_idx: 0,
+                    func_index,
+                    call_stack_address: 0,
+                    call_stack_access: None,
+                    table_access: None,
+                };
+                self.record.call_events.push(event)
+            }
         };
     }
 

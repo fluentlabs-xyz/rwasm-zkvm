@@ -895,7 +895,6 @@ mod tests {
             AluEvent::new(0, 0, Opcode::I32Eqz, 0, 5, 0, Opcode::I32Eqz.code()), // 5 != 0
             AluEvent::new(0, 0, Opcode::I32Eqz, 0, 1, 0, Opcode::I32Eqz.code()), // 1 != 0
             AluEvent::new(0, 0, Opcode::I32Eqz, 0, NEG_3, 0, Opcode::I32Eqz.code()), // NEG_3 != 0
-            
             AluEvent::new(0, 0, Opcode::I32Eq, 1, 7, 7, Opcode::I32Eq.code()),
             AluEvent::new(0, 0, Opcode::I32Eq, 0, 0, 1, Opcode::I32Eq.code()),
             AluEvent::new(0, 0, Opcode::I32Eq, 1, NEG_3, NEG_3, Opcode::I32Eq.code()),
