@@ -49,7 +49,7 @@ range-set-blaze = "0.1.16"
 
 # rwasm
 fluentbase-types = { git = "https://github.com/fluentlabs-xyz/fluentbase.git", branch = "feat/tracing", default-features = false }
-rwasm = { path = "/Users/aliakseidziadziuk/Work/rwasm", features = [
+rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "djadjka/cpu-chip", features = [
     "std",
     "tracing",
 ] }

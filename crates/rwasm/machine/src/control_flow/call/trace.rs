@@ -117,7 +117,10 @@ impl CallChip {
         if let Some(record) = event.table_access {
             cols.table_access.populate(record, blu);
             cols.table_idx.populate(event.table_idx, blu, true);
-            cols.func_index.populate(event.func_index.unwrap_or(0), blu, true);
+        }
+
+        if let Some(func_index) = event.func_index {
+            cols.func_index.populate(func_index, blu, true);
         }
 
         // --- 4. Decode Opcode and Set Flags ---

@@ -6946,6 +6946,7 @@ dependencies = [
 [[package]]
 name = "rwasm"
 version = "0.3.2"
+source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Fcpu-chip#efd8ac9b8c4b8938fbe7f9eafacb35277d3d428f"
 dependencies = [
  "anyhow",
  "bincode 2.0.1",

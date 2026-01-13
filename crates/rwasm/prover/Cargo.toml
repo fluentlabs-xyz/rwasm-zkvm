@@ -48,7 +48,7 @@ enum-map = { version = "2.7.3" }
 
 
 # rwasm
-rwasm = { path = "/Users/aliakseidziadziuk/Work/rwasm", features = [
+rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "djadjka/cpu-chip", features = [
     "std",
     "tracing",
 ] }

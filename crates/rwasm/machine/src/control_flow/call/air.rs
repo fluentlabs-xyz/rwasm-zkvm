@@ -148,7 +148,7 @@ where
             is_real.clone() - local.is_main_return,
         );
         TableIdxCols::<AB::Var>::do_range_check(builder, local.table_idx, local.is_call_indirect);
-        FuncIndex::<AB::Var>::do_range_check(builder, local.func_index, local.is_call_indirect);
+        FuncIndex::<AB::Var>::do_range_check(builder, local.func_index, is_call_ins.clone());
         // --- 6. Call Stack Logic (The Core) ---
 
         let next_is_call_ins = next.is_call + next.is_call_indirect + next.is_call_internal;
