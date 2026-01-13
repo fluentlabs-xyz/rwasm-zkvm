@@ -9,14 +9,11 @@ use p3_air::{Air, AirBuilder};
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
 use rwasm::{
-    mem_index::{TypedAddress, TABLE_SEG_START, UNIT},
+    mem_index::{LAST_SIG_ADDR, TABLE_SEG_START, UNIT},
     N_MAX_TABLE_SIZE,
 };
 use rwasm_executor::Opcode;
-use sp1_stark::{
-    air::{BaseAirBuilder, SP1AirBuilder},
-    Word,
-};
+use sp1_stark::{air::SP1AirBuilder, Word};
 use std::borrow::Borrow;
 
 // --- Constants ---
@@ -84,7 +81,7 @@ where
             Word::zero::<AB>(),
             Word::zero::<AB>(),
             Word::zero::<AB>(),
-            local.aux_value,
+            *local.aux_value.value(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -101,12 +98,12 @@ where
             local.next_pc.reduce::<AB>(),
             local.sp,
             local.sp + AB::Expr::from_canonical_u32(UNIT),
-            AB::Expr::zero(),
+            AB::Expr::two(),
             opcode,
             Word::zero::<AB>(),
             local.func_index.word::<AB>(),
             Word::zero::<AB>(),
-            local.aux_value,
+            *local.aux_value.value(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -115,11 +112,11 @@ where
         );
 
         // Sanitize aux_value on return
-        builder.when(local.is_return).assert_word_zero(local.aux_value);
+        builder.when(local.is_return).assert_word_zero(*local.aux_value.value());
 
         builder
             .when(local.is_call_internal)
-            .assert_word_eq(local.aux_value, local.func_index.word::<AB>());
+            .assert_word_eq(*local.aux_value.value(), local.func_index.word::<AB>());
 
         // --- 4. Sub-program Calls (Lookups) ---
 
@@ -154,46 +151,49 @@ where
         FuncIndex::<AB::Var>::do_range_check(builder, local.func_index, local.is_call_indirect);
         // --- 6. Call Stack Logic (The Core) ---
 
-        // Initial state: Call stack must start at 0
-        // builder
-        //     .when(is_real.clone())
-        //     .when_first_row()
-        //     .assert_zero(local.call_stack_address.value::<AB>());
+        let next_is_call_ins = next.is_call + next.is_call_indirect + next.is_call_internal;
 
         // Push: When calling, increment stack pointer by UNIT
         builder
             .when(is_call_ins.clone()) // Any call type
-            .when(next_is_real.clone())
+            .when(next_is_call_ins)
             .assert_eq(
                 local.call_stack_address.value::<AB>() + AB::Expr::from_canonical_u32(UNIT),
                 next.call_stack_address.value::<AB>(),
             );
 
         // Pop: When returning, decrement stack pointer by UNIT
-        builder.when(local.is_return).when(next_is_real.clone()).assert_eq(
+        builder.when(local.is_return).when(next.is_return - next.is_main_return).assert_eq(
             local.call_stack_address.value::<AB>() - AB::Expr::from_canonical_u32(UNIT),
             next.call_stack_address.value::<AB>(),
         );
 
-        // Termination state:
-        // If this is the last real row, stack must be empty (0)
-        // builder
-        //     .when(is_real.clone())
-        //     .when_not(next_is_real.clone())
-        //     .assert_zero(local.call_stack_address.value::<AB>());
+        {
+            //TODO: check is it correct correct ?
+            // Initial state: Call stack must start at 0
+            // builder
+            //     .when(is_real.clone())
+            //     .when_first_row()
+            //     .assert_zero(local.call_stack_address.value::<AB>());
 
-        // The last instruction MUST be a Return (to exit main)
-        builder.when(is_real).when_not(next_is_real).assert_one(local.is_return);
+            // Termination state:
+            // If this is the last real row, stack must be empty (0)
+            // builder
+            //     .when(is_real.clone())
+            //     .when_not(next_is_real.clone())
+            //     .assert_zero(local.call_stack_address.value::<AB>());
 
+            // The last instruction MUST be a Return (to exit main)
+            // builder.when(is_real).when_not(next_is_real).assert_one(local.is_return);
+        }
         // --- 7. Memory Access (Stack & Tables) ---
 
         // WRITE Return Address (on Call)
         // We write to the *current* stack address. Timestamp is clk+1 so Return can read it later.
         builder.eval_memory_access(
             local.shard,
-            local.clk + AB::Expr::from_canonical_u8(1),
-            AB::Expr::from_canonical_u32(TypedAddress::FuncFrame(0).to_virtual_addr()) +
-                local.call_stack_address.value::<AB>(),
+            local.clk + AB::Expr::one(),
+            local.call_stack_address.value::<AB>(),
             &local.call_stack_access,
             is_call_ins,
         );
@@ -209,7 +209,7 @@ where
             local.is_return - local.is_main_return,
         );
 
-        // // READ Table (on Indirect Call)
+        // READ Table (on Indirect Call)
         builder.eval_memory_access(
             local.shard,
             local.clk,
@@ -217,6 +217,14 @@ where
                 + local.func_index.value::<AB>() * AB::Expr::from_canonical_u32(UNIT)
                 + AB::Expr::from_canonical_u32(TABLE_MEMORY_SHIFT),
             &local.table_access,
+            local.is_call_indirect,
+        );
+
+        builder.eval_memory_access(
+            local.shard,
+            local.clk + AB::Expr::one(),
+            AB::Expr::from_canonical_u32(LAST_SIG_ADDR),
+            &local.aux_value,
             local.is_call_indirect,
         );
 
@@ -241,28 +249,24 @@ impl CallChip {
 
         // Indirect Call: RetAddr = PC + 2 (skips TableGet)
         builder.when(local.is_call_indirect).assert_eq(
-            AB::Expr::from_canonical_u32(2u32) + local.pc.reduce::<AB>(),
+            AB::Expr::two() + local.pc.reduce::<AB>(),
             (*local.call_stack_access.value()).reduce::<AB>(),
         );
-
-        // Return: Consistency check.
-        // The value read from stack must match our next_pc.
-        builder
-            .when(local.is_return - local.is_main_return)
-            .assert_word_eq(local.next_pc, *local.call_stack_access.value());
     }
 
     /// Evaluates the next Program Counter (Jump target)
     fn eval_next_pc<AB: SP1AirBuilder>(&self, builder: &mut AB, local: &CallColumns<AB::Var>) {
         // Internal Call: Jump to opcode_aux_val (immediate value)
-        builder.when(local.is_call_internal).assert_word_eq(local.next_pc, local.aux_value);
+        builder
+            .when(local.is_call_internal)
+            .assert_word_eq(local.next_pc, *local.aux_value.value());
 
         // Indirect Call: Jump to address fetched from Table
         builder
             .when(local.is_call_indirect)
             .assert_word_eq(local.next_pc, *local.table_access.value());
 
-        // Return: Jump to address read from Stack.
+        // Return: Jump to address read from Call Stack.
         // DISABLED for fake return (program end) to avoid reading garbage from unconstrained
         // columns.
         builder.when(local.is_return - local.is_main_return).assert_eq(

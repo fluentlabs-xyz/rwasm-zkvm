@@ -144,12 +144,14 @@ pub enum RwasmAirId {
     #[subenum(CoreAirId)]
     Call = 45,
 
+    #[subenum(CoreAirId)]
     TableInit = 46,
 
     /// The rotated left/right chip.
     #[subenum(CoreAirId)]
     Rotate = 47,
 
+    #[subenum(CoreAirId)]
     /// The TableGrow Chip
     TableGrow = 48,
 
@@ -167,6 +169,9 @@ pub enum RwasmAirId {
 
     #[subenum(CoreAirId)]
     Const = 53,
+
+    #[subenum(CoreAirId)]
+    ParamsCheck = 54,
 }
 
 impl RwasmAirId {
@@ -197,6 +202,9 @@ impl RwasmAirId {
             RwasmAirId::Global,
             RwasmAirId::Local,
             RwasmAirId::Const,
+            RwasmAirId::TableGrow,
+            RwasmAirId::TableInit,
+            RwasmAirId::ParamsCheck,
         ]
     }
 

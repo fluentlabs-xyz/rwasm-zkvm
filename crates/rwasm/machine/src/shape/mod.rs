@@ -105,7 +105,6 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                     .minimal_cluster_shape(self.partial_small_shapes.iter().enumerate(), &heights)
                     .ok_or_else(|| {
                         // No shape found, so return an error.
-                        println!("!!!!!!!!!!!PackedCoreError");
                         CoreShapeError::ShapeError(
                             heights
                                 .iter()
@@ -146,10 +145,7 @@ impl<F: PrimeField32> CoreShapeConfig<F> {
                         &heights,
                     )
                     // No shape found, so return an error.
-                    .ok_or_else(|| {
-                        println!("!!!!!!!!!!!CoreError");
-                        CoreShapeError::ShapeError(record.debug_stats())
-                    })?;
+                    .ok_or_else(|| CoreShapeError::ShapeError(record.debug_stats()))?;
 
                 let shard = record.shard();
                 tracing::debug!("Shard Lifted: Index={}, Cluster={}", shard, cluster_index);
@@ -650,6 +646,15 @@ fn derive_cluster_from_maximal_shape(shape: &Shape<RwasmAirId>) -> ShapeCluster<
 
     let local_log_height = shape.log2_height(&RwasmAirId::Local);
     maybe_log2_heights.insert(RwasmAirId::Local, heuristic(local_log_height, 1));
+
+    let table_grow_log_height = shape.log2_height(&RwasmAirId::TableGrow);
+    maybe_log2_heights.insert(RwasmAirId::TableGrow, heuristic(table_grow_log_height, 1));
+
+    let table_init_log_height = shape.log2_height(&RwasmAirId::TableInit);
+    maybe_log2_heights.insert(RwasmAirId::TableInit, heuristic(table_init_log_height, 1));
+
+    let params_check_log_height = shape.log2_height(&RwasmAirId::ParamsCheck);
+    maybe_log2_heights.insert(RwasmAirId::ParamsCheck, heuristic(params_check_log_height, 1));
 
     assert!(maybe_log2_heights.len() >= shape.len(), "not all chips were included in the shape");
 

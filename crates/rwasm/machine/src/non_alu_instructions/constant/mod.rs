@@ -49,6 +49,10 @@ where
         builder.assert_bool(local.is_const);
         builder.assert_bool(local.is_drop);
 
+        let is_real = local.is_const + local.is_drop;
+
+        builder.assert_bool(is_real);
+
         builder.receive_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -108,8 +112,6 @@ impl<F: PrimeField32> MachineAir<F> for ConstChip {
         for event in input.const_events.iter() {
             let mut row = [F::zero(); NUM_CONST_COLS];
             let cols: &mut ConstCols<F> = row.as_mut_slice().borrow_mut();
-
-            println!("$$$$$$$$$$$$$$ event.sp:{}", event.sp);
 
             cols.pc = F::from_canonical_u32(event.pc);
             cols.sp = F::from_canonical_u32(event.sp);

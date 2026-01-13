@@ -1,7 +1,7 @@
 use std::borrow::BorrowMut;
 
 use crate::{
-    syscall::fat_op::table::{TableInitCols, NUM_TABLE_INIT_SIZE},
+    non_alu_instructions::{TableInitCols, NUM_TABLE_INIT_SIZE},
     utils::pad_rows_fixed,
 };
 use hashbrown::HashMap;
@@ -9,10 +9,8 @@ use itertools::Itertools;
 use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
-use rwasm::event::TableInitEvent;
 use rwasm_executor::{
-    events::{ByteLookupEvent, ByteRecord, PrecompileEvent},
-    syscalls::SyscallCode,
+    events::{ByteLookupEvent, ByteRecord, TableInitEvent},
     ExecutionRecord, Program,
 };
 use sp1_stark::air::MachineAir;
@@ -32,13 +30,10 @@ impl<F: PrimeField32> MachineAir<F> for TableInitChip {
         input: &ExecutionRecord,
         _: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
-        println!("generate trace Table:");
         let rows = Vec::new();
 
         let mut wrapped_rows = Some(rows);
-        for (_, event) in input.get_precompile_events(SyscallCode::TABLE_INIT) {
-            let event =
-                if let PrecompileEvent::TableInit(event) = event { event } else { unreachable!() };
+        for event in &input.table_init_events {
             self.event_to_rows(event, &mut wrapped_rows, &mut Vec::new());
         }
         let mut rows = wrapped_rows.unwrap();
@@ -57,21 +52,14 @@ impl<F: PrimeField32> MachineAir<F> for TableInitChip {
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
-        println!("generate deps Table:");
-        let events = input.get_precompile_events(SyscallCode::TABLE_INIT);
-        println!("table events:{:?}", events);
         let chunk_size = 1usize;
 
-        let blu_batches = events
+        let blu_batches = input
+            .table_init_events
             .par_chunks(chunk_size)
             .map(|events| {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-                events.iter().for_each(|(_, event)| {
-                    let event = if let PrecompileEvent::TableInit(event) = event {
-                        event
-                    } else {
-                        unreachable!()
-                    };
+                events.iter().for_each(|event| {
                     self.event_to_rows::<F>(event, &mut None, &mut blu);
                 });
                 blu
@@ -85,7 +73,7 @@ impl<F: PrimeField32> MachineAir<F> for TableInitChip {
         if let Some(shape) = shard.shape.as_ref() {
             shape.included::<F, _>(self)
         } else {
-            !shard.get_precompile_events(SyscallCode::TABLE_INIT).is_empty()
+            !shard.table_init_events.is_empty()
         }
     }
 }
@@ -105,32 +93,35 @@ impl TableInitChip {
                 break;
             }
 
+            let is_first = idx == 0;
+
+            local.is_first = F::from_bool(is_first);
+
+            local.src = event.s.into();
+
+            local.sp = F::from_canonical_u32(event.sp);
+            local.pc = F::from_canonical_u32(event.pc);
+
+            local.length.populate(event.n, blu, is_first);
+
+            local.table_idx.populate(event.table_idx, blu, is_first);
+
             // populate SP access
             if idx == 0 {
-                local.is_first = F::one();
-                local.dst_access.populate(event.stack_access[0], blu);
-                local.src_access.populate(event.stack_access[1], blu);
-                local.length_access.populate(event.stack_access[2], blu);
-
-                local.table_idx.populate(event.table_idx, blu, true);
-                local.length.populate(event.n, blu, true);
-                local.sp.populate(event.sp, blu, true);
+                local.dst_access.populate(event.dst_index_record, blu);
             } else {
-                local.dst_access.populate(event.stack_access[0], &mut Vec::new());
-                local.src_access.populate(event.stack_access[1], &mut Vec::new());
-                local.length_access.populate(event.stack_access[2], &mut Vec::new());
-
-                local.table_idx.populate(event.table_idx, blu, false);
-                local.sp.populate(event.sp, blu, false);
+                local.dst_access.populate(event.dst_index_record, &mut Vec::new());
             }
+
+            let d = event.dst_index_record.value;
 
             // populate address
             if idx == 0 || idx == event.n as usize - 1 {
                 local.src_address.populate(event.s + idx as u32, blu, true);
-                local.dst_address.populate(event.d + idx as u32, blu, true);
+                local.dst_address.populate(d + idx as u32, blu, true);
             } else {
                 local.src_address.populate(event.s + idx as u32, blu, false);
-                local.dst_address.populate(event.d + idx as u32, blu, false);
+                local.dst_address.populate(d + idx as u32, blu, false);
             }
 
             if event.n != 0 {
@@ -142,7 +133,7 @@ impl TableInitChip {
             local.clk = F::from_canonical_u32(event.clk);
 
             if let (Some(memory_read_access), Some(memory_write_access)) =
-                (event.memory_read_access.get(idx), event.memory_write_acess.get(idx))
+                (event.memory_read_records.get(idx), event.memory_write_records.get(idx))
             {
                 local.src_read_access.populate(*memory_read_access, blu);
                 local.dst_write_access.populate(*memory_write_access, blu);

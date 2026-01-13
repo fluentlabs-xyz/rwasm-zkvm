@@ -84,7 +84,6 @@ impl<F: PrimeField32> MachineAir<F> for AddMul64Chip {
             |(i, rows)| {
                 rows.chunks_mut(NUM_ADDMUL64_COLS).enumerate().for_each(|(j, row)| {
                     let idx = i * chunk_size + j;
-                    println!("********* {} {} {}", i, chunk_size, j);
                     let cols: &mut AddMul64Cols<F> = row.borrow_mut();
                     if idx < nb_rows {
                         self.event_to_row(&input.i64_events[idx], cols, &mut Vec::new());

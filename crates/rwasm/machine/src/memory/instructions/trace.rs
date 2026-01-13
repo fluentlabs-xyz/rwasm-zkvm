@@ -135,8 +135,6 @@ impl MemoryInstructionsChip {
         // for store only
         cols.value = event.arg2.into();
 
-        println!("############# {} {} {}", addr_ls_two_bits, event.arg1, event.opcode.aux_value());
-
         cols.addr_ls_two_bits = F::from_canonical_u8(addr_ls_two_bits);
         cols.ls_bits_is_one = F::from_bool(addr_ls_two_bits == 1);
         cols.ls_bits_is_two = F::from_bool(addr_ls_two_bits == 2);

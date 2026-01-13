@@ -4,7 +4,7 @@ use sp1_stark::Word;
 use std::mem::size_of;
 
 use crate::{
-    memory::{CallStackAddressCols, MemoryReadCols, MemoryReadWriteCols},
+    memory::{CallStackAddressCols, MemoryReadCols, MemoryReadWriteCols, MemoryWriteCols},
     operations::{BabyBearWordRangeChecker, Range16bCols, Range8bCols},
 };
 
@@ -36,7 +36,7 @@ pub struct CallColumns<T> {
     pub sp: T,
 
     /// Auxiliary value, often used for immediate arguments or temporary storage.
-    pub aux_value: Word<T>,
+    pub aux_value: MemoryWriteCols<T>,
 
     // --- Call Stack Management ---
     /// Columns related to the address of the call stack pointer (where we push/pop return

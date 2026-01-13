@@ -136,6 +136,22 @@ pub struct ConstEvent {
     pub opcode: Opcode,
 }
 
+/// Const Opcode Event.
+///
+/// This object encapsulated the information needed to prove a RISC-V branch operation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[repr(C)]
+pub struct ParamsCheckEvent {
+    pub shard: u32,
+    pub clk: u32,
+    /// The program counter.
+    pub pc: u32,
+    pub sp: u32,
+    /// The Opcode
+    pub opcode: Opcode,
+    pub params_read_record: MemoryReadRecord,
+}
+
 impl ConstEvent {
     /// Create a new [`ConstEvent`].
     #[must_use]
@@ -197,6 +213,7 @@ pub struct CallEvent {
     pub call_stack_address: u32,
     pub call_stack_access: Option<MemoryRecordEnum>,
     pub table_access: Option<MemoryReadRecord>,
+    pub signature_write_record: Option<MemoryWriteRecord>,
 }
 
 impl CallEvent {
@@ -215,6 +232,7 @@ impl CallEvent {
         call_stack_address: u32,
         call_stack_access: Option<MemoryRecordEnum>,
         table_access: Option<MemoryReadRecord>,
+        signature_write_record: Option<MemoryWriteRecord>,
     ) -> Self {
         Self {
             shard,
@@ -228,6 +246,7 @@ impl CallEvent {
             call_stack_address,
             call_stack_access,
             table_access,
+            signature_write_record,
         }
     }
 }
@@ -290,4 +309,36 @@ pub struct LocalEvent {
     pub opcode: Opcode,
     pub arg1: u32,
     pub depth_access: MemoryRecordEnum,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[repr(C)]
+pub struct TableInitEvent {
+    pub clk: u32,
+    pub shard: u32,
+    pub sp: u32,
+    pub pc: u32,
+    pub s: u32,
+    pub n: u32,
+    pub table_idx: u32,
+    pub opcode: Opcode,
+    pub dst_index_record: MemoryReadRecord,
+    pub memory_read_records: Vec<MemoryReadRecord>,
+    pub memory_write_records: Vec<MemoryWriteRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[repr(C)]
+pub struct TableGrowEvent {
+    pub pc: u32,
+    pub clk: u32,
+    pub shard: u32,
+    pub sp: u32,
+    pub res: u32,
+    pub delta: u32,
+    pub init: u32,
+    pub opcode: Opcode,
+    pub dst_write_records: Vec<MemoryWriteRecord>,
+    pub table_size_read_record: MemoryReadRecord,
+    pub table_size_write_record: Option<MemoryWriteRecord>,
 }

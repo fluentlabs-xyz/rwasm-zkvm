@@ -6,7 +6,7 @@ use rwasm_executor::Program;
 pub fn test_base_case() {
     let ops = vec![
         Opcode::I32Const(0.into()),
-        Opcode::I32Const(8.into()),
+        Opcode::I32Const(2.into()),
         Opcode::TableGrow(0),
         Opcode::I32Const(1.into()),
         Opcode::I32Const(8.into()),

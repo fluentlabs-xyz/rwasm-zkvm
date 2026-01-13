@@ -15,8 +15,8 @@ use crate::{
     events::{
         AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, CallEvent, ConstEvent, CpuEvent,
         GlobalInteractionEvent, I64AluEvent, LocalEvent, MemInstrEvent,
-        MemoryInitializeFinalizeEvent, MemoryLocalEvent, PrecompileEvent, PrecompileEvents,
-        SysStateEvent, SyscallEvent,
+        MemoryInitializeFinalizeEvent, MemoryLocalEvent, ParamsCheckEvent, PrecompileEvent,
+        PrecompileEvents, SysStateEvent, SyscallEvent, TableGrowEvent, TableInitEvent,
     },
     program::Program,
     syscalls::SyscallCode,
@@ -65,6 +65,7 @@ pub struct ExecutionRecord {
     pub local_events: Vec<LocalEvent>,
     /// A trace of the constant events.
     pub const_events: Vec<ConstEvent>,
+    pub params_check_events: Vec<ParamsCheckEvent>,
     /// A trace of the constant events.
     pub call_events: Vec<CallEvent>,
     /// A trace of the Mul64 events.
@@ -73,6 +74,10 @@ pub struct ExecutionRecord {
     pub sys_state_events: Vec<SysStateEvent>,
     /// A trace of the fuel events.
     pub fuel_events: Vec<FuelEvent>,
+
+    pub table_init_events: Vec<TableInitEvent>,
+
+    pub table_grow_events: Vec<TableGrowEvent>,
 
     /// A trace of the byte lookups that are needed.
     pub byte_lookups: HashMap<ByteLookupEvent, usize>,

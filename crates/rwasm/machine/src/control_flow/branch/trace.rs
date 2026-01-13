@@ -82,8 +82,6 @@ impl BranchChip {
         cols: &mut BranchColumns<F>,
         blu: &mut HashMap<ByteLookupEvent, usize>,
     ) {
-        println!("^^^^^^^^^^^ {:?}", event);
-
         if matches!(event.opcode, Opcode::BrTable(_)) {
             // We limited it for optimization
             assert!(event.arg1 <= u16::MAX as u32);

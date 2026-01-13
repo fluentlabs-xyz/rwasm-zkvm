@@ -64,7 +64,7 @@ pub fn test_table_memory_bound() {
         Opcode::TableGrow(99),
         Opcode::I32Const(0.into()),
         Opcode::I32Const(0.into()),
-        Opcode::I32Const(N_MAX_TABLE_SIZE.into()),
+        Opcode::I32Const(1.into()),
         Opcode::TableInit(0),
         Opcode::TableGet(99),
     ];

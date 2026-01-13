@@ -86,15 +86,18 @@ impl CallChip {
         cols: &mut CallColumns<F>,
         blu: &mut HashMap<ByteLookupEvent, usize>,
     ) {
-        println!("^^^^^^^^^^^ {:?}", event);
-
         // --- 1. Populate Basic Columns ---
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
         cols.pc = event.pc.into();
         cols.next_pc = event.next_pc.into();
         cols.sp = F::from_canonical_u32(event.sp);
-        cols.aux_value = event.opcode.aux_value().into();
+
+        if let Some(signature_write_record) = event.signature_write_record {
+            cols.aux_value.populate(signature_write_record, blu);
+        } else {
+            cols.aux_value.access.value = event.opcode.aux_value().into();
+        }
 
         // --- 2. Populate Range-Check and Memory-Related Columns ---
 
@@ -137,7 +140,6 @@ impl CallChip {
             // Populate the call stack address. This is the pointer to the call stack frame.
             cols.call_stack_address.populate(event.call_stack_address, blu, true);
         } else {
-            println!("******* is_main_return");
             cols.is_main_return = F::one();
         }
     }

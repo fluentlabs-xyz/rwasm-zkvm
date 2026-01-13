@@ -8,7 +8,6 @@ use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use rwasm::Opcode;
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, CpuEvent, MemoryRecordEnum},
-    syscalls::SyscallCode,
     ByteOpcode::{self, U16Range},
     ExecutionRecord, Program,
 };
@@ -44,7 +43,6 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_CPU_COLS);
 
         let chunk_size = std::cmp::max(input.cpu_events.len() / num_cpus::get(), 1);
-        println!("input.cpu_events{:?}", input.cpu_events);
         values.chunks_mut(chunk_size * NUM_CPU_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
                 rows.chunks_mut(NUM_CPU_COLS).enumerate().for_each(|(j, row)| {
@@ -127,11 +125,13 @@ impl CpuChip {
         // Populate basic fields.
         cols.pc = F::from_canonical_u32(event.pc);
         cols.next_pc = F::from_canonical_u32(event.next_pc);
-        println!("&&&&&& {}", event.sp);
         cols.sp.populate(event.sp, blu_events, true);
         cols.next_sp.populate(event.next_sp, blu_events, true);
 
-        cols.instruction.is_implemented = F::from_bool(!matches!(instruction, Opcode::MemoryGrow));
+        cols.instruction.is_implemented = F::from_bool(
+            !matches!(instruction, Opcode::MemoryGrow) &&
+                !matches!(instruction, Opcode::TableGet(_)),
+        );
 
         if instruction.is_with_two_params() || instruction.is_with_three_params() {
             cols.op_arg2_sp.populate(event.sp, blu_events, true);
@@ -146,7 +146,9 @@ impl CpuChip {
 
         let is_complex_opcode = instruction.is_64b_op() ||
             instruction.is_local_instruction() ||
-            instruction.is_call_instruction();
+            instruction.is_call_instruction() ||
+            instruction.is_table_instruction() ||
+            matches!(instruction, Opcode::SignatureCheck(_));
 
         cols.is_complex_opcode = F::from_bool(is_complex_opcode);
 
@@ -174,7 +176,6 @@ impl CpuChip {
 
         // Populate memory accesses for result (lo and optional hi for 64-bit ops).
         if let Some(res) = event.res_record {
-            println!("enter to res_record {:?}", instruction);
             cols.op_res_access.populate(res, blu_events);
 
             blu_events.add_u8_range_checks(&res.value().to_le_bytes());
@@ -182,30 +183,19 @@ impl CpuChip {
 
         // Populate arg1/arg2 memory reads.
         if let Some(MemoryRecordEnum::Read(record)) = event.arg1_record {
-            println!("enter to arg1_record {:?}", instruction);
             cols.op_arg1_access.populate(record, blu_events);
         }
         if let Some(MemoryRecordEnum::Read(record)) = event.arg2_record {
-            println!("enter to arg2_record {:?}", instruction);
             cols.op_arg2_access.populate(record, blu_events);
         }
 
-        if instruction.is_ecall_instruction() {
-            let syscall_id = match instruction {
-                Opcode::Call(_) => instruction.aux_value(),
-                Opcode::TableInit(_) => SyscallCode::TABLE_INIT.syscall_id(),
-                Opcode::TableGrow(_) => SyscallCode::TABLE_GROW.syscall_id(),
-                _ => unimplemented!(),
-            };
-            let syscall_id = F::from_canonical_u32(syscall_id);
-            let num_extra_cycles = match instruction {
-                Opcode::TableInit(_) => F::from_canonical_u32(2),
-                _ => cols.op_res_access.prev_value[2],
-            };
-            cols.is_halt =
-                F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
-            cols.num_extra_cycles = num_extra_cycles;
-        }
+        let num_extra_cycles = match instruction {
+            Opcode::TableInit(_) => F::from_canonical_u32(2),
+            Opcode::CallIndirect(_) => F::from_canonical_u32(2),
+            _ => F::zero(),
+        };
+
+        cols.num_extra_cycles = num_extra_cycles;
     }
 
     /// Populates the shard and clk related rows.

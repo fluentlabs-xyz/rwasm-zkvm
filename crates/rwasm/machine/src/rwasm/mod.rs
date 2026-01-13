@@ -19,10 +19,11 @@ use crate::{
     fuel::FuelChip,
     global::GlobalChip,
     memory::{MemoryChipType, MemoryInstructionsChip, MemoryLocalChip},
-    non_alu_instructions::{ConstChip, ExtendChip, LocalChip},
+    non_alu_instructions::{
+        ConstChip, ExtendChip, LocalChip, ParamsCheckChip, TableGrowChip, TableInitChip,
+    },
     shape::Shapeable,
     syscall::{
-        fat_op::{table_grow::TableGrowChip, TableInitChip},
         instructions::SyscallInstrsChip,
         precompiles::fptower::{Fp2AddSubAssignChip, Fp2MulAssignChip, FpOpChip},
     },
@@ -182,6 +183,8 @@ pub enum RwasmAir<F: PrimeField32> {
 
     Const(ConstChip),
     Local(LocalChip),
+
+    ParamsCheck(ParamsCheckChip),
 }
 
 impl<F: PrimeField32> RwasmAir<F> {
@@ -464,6 +467,10 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(local_chip.name(), local_chip.cost());
         chips.push(local_chip);
 
+        let params_check_chip = Chip::new(RwasmAir::ParamsCheck(ParamsCheckChip::default()));
+        costs.insert(params_check_chip.name(), params_check_chip.cost());
+        chips.push(params_check_chip);
+
         assert_eq!(chips.len(), costs.len(), "chips and costs must have the same length",);
 
         (chips, costs)
@@ -506,6 +513,8 @@ impl<F: PrimeField32> RwasmAir<F> {
             RwasmAir::SyscallCore(SyscallChip::core()),
             RwasmAir::Const(ConstChip::default()),
             RwasmAir::Local(LocalChip::default()),
+            RwasmAir::TableGrow(TableGrowChip::default()),
+            RwasmAir::TableInit(TableInitChip::default()),
         ]
     }
 
@@ -631,6 +640,7 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Extend => RwasmAirId::Extend,
             RwasmAirDiscriminants::Const => RwasmAirId::Const,
             RwasmAirDiscriminants::Local => RwasmAirId::Local,
+            RwasmAirDiscriminants::ParamsCheck => RwasmAirId::ParamsCheck,
         }
     }
 }

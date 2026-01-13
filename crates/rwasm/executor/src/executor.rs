@@ -3,7 +3,10 @@ use crate::profiler::Profiler;
 use crate::{
     dependencies::{emit_branch_dependencies, emit_fuel_dependencies, emit_memory_dependencies},
     estimator::RecordEstimator,
-    events::{CallEvent, ConstEvent, ExtendEvent, I64AluEvent, LocalEvent, SyscallEvent},
+    events::{
+        CallEvent, ConstEvent, ExtendEvent, I64AluEvent, LocalEvent, ParamsCheckEvent,
+        SyscallEvent, TableGrowEvent, TableInitEvent,
+    },
 };
 #[cfg(feature = "profiling")]
 use std::{fs::File, io::BufWriter};
@@ -16,7 +19,6 @@ use fluentbase_types::import_linker_v1_preview;
 use hashbrown::HashMap;
 
 use rwasm::{
-    event::FatOpEvent,
     mem::{MemoryLocalEvent, MemoryRecordEnum},
     CallStack, CallStateExtension, DataOpEvent, I64AluStateExtension, InstrStateExtension,
     InstructionPtr, Opcode, RwasmExecutor, RwasmStore, TrapCode, ValueStack, ValueStackPtr,
@@ -725,33 +727,57 @@ impl<'a> Executor<'a> {
 
         self.emit_cpu(clk, pc, next_pc, sp, next_sp, arg1, arg2, res, record, 0u32);
 
-        if opcode.is_alu_instruction() {
-            self.emit_alu_event(pc, sp, opcode, arg1, arg2, res);
-        } else if opcode.is_memory_load_instruction() || opcode.is_memory_store_instruction() {
-            self.emit_mem_instr_event(opcode, sp, arg1, arg2, res, record, state_extension);
-        } else if opcode.is_branch_instruction() {
-            self.emit_branch_event(opcode, sp, arg1, arg2, res, next_pc);
-        } else if opcode.is_const_instruction() || matches!(opcode, Opcode::Drop) {
-            self.emit_const_event(sp, opcode);
-        } else if opcode.is_state_instrucition() {
-        } else if opcode.is_call_instruction() {
-            let func_index = match opcode {
-                Opcode::CallIndirect(_) => Some(
-                    record.arg1_record.expect("CallIndirect takes func_index from stack").value(),
-                ),
-                Opcode::CallInternal(func_index) => Some(func_index),
-                _ => None,
-            };
+        match opcode {
+            Opcode::TableInit(_) | Opcode::TableGrow(_) => self.emit_table_event(
+                sp,
+                clk,
+                opcode,
+                res,
+                arg1,
+                arg2,
+                state_extension.expect("table instructions contain state_extension"),
+            ),
+            Opcode::SignatureCheck(_) => self.emit_params_check_event(
+                sp,
+                clk,
+                opcode,
+                state_extension.expect("SignatureCheck contain state_extension"),
+            ),
+            Opcode::Drop | Opcode::I32Const(_) => self.emit_const_event(sp, opcode),
 
-            self.emit_call_event(clk, pc, next_pc, opcode, sp, func_index, state_extension);
-        } else if opcode.is_64b_op() {
-            self.emit_i64_event(clk, pc, sp, next_pc, opcode, res, arg1, arg2, state_extension);
-        } else if opcode.is_extend_instruction() {
-            self.emit_extend_event(pc, sp, opcode, arg1, arg2, res);
-        } else if opcode.is_local_instruction() {
-            self.emit_local_event(sp, clk, opcode, arg1, state_extension);
-        } else {
-            println!("Unimplemented opcode in emit_events: {:?}", opcode);
+            _ if opcode.is_alu_instruction() => {
+                self.emit_alu_event(pc, sp, opcode, arg1, arg2, res)
+            }
+            _ if opcode.is_memory_load_instruction() || opcode.is_memory_store_instruction() => {
+                self.emit_mem_instr_event(opcode, sp, arg1, arg2, res, record, state_extension)
+            }
+            _ if opcode.is_branch_instruction() => {
+                self.emit_branch_event(opcode, sp, arg1, arg2, res, next_pc)
+            }
+            _ if opcode.is_call_instruction() => {
+                let func_index = match opcode {
+                    Opcode::CallIndirect(_) => Some(
+                        record
+                            .arg1_record
+                            .expect("CallIndirect takes func_index from stack")
+                            .value(),
+                    ),
+                    Opcode::CallInternal(func_index) => Some(func_index),
+                    _ => None,
+                };
+
+                self.emit_call_event(clk, pc, next_pc, opcode, sp, func_index, state_extension);
+            }
+            _ if opcode.is_64b_op() => {
+                self.emit_i64_event(clk, pc, sp, next_pc, opcode, res, arg1, arg2, state_extension)
+            }
+            _ if opcode.is_extend_instruction() => {
+                self.emit_extend_event(pc, sp, opcode, arg1, arg2, res)
+            }
+            _ if opcode.is_local_instruction() => {
+                self.emit_local_event(sp, clk, opcode, arg1, state_extension)
+            }
+            _ => println!("no event :ins:{:?},", opcode),
         }
     }
 
@@ -926,6 +952,80 @@ impl<'a> Executor<'a> {
         self.record.local_events.push(event);
     }
 
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    fn emit_table_event(
+        &mut self,
+        sp: u32,
+        clk: u32,
+        opcode: Opcode,
+        res: u32,
+        arg1: u32,
+        arg2: u32,
+        state_extension: InstrStateExtension,
+    ) {
+        match state_extension {
+            InstrStateExtension::TableInit(state_extension) => {
+                let event = TableInitEvent {
+                    pc: self.state.pc,
+                    clk,
+                    shard: self.shard(),
+                    sp,
+                    s: arg1,
+                    n: arg2,
+                    opcode,
+                    table_idx: state_extension.table_idx,
+                    dst_index_record: state_extension.dst_index_record,
+                    memory_read_records: state_extension.src_read_records,
+                    memory_write_records: state_extension.dst_write_records,
+                };
+                self.record.table_init_events.push(event);
+            }
+            InstrStateExtension::TableGrow(state_extension) => {
+                let event = TableGrowEvent {
+                    pc: self.state.pc,
+                    clk,
+                    shard: self.shard(),
+                    sp,
+                    res,
+                    init: arg1,
+                    delta: arg2,
+                    opcode,
+                    dst_write_records: state_extension.dst_write_records,
+                    table_size_read_record: state_extension.table_size_read_record,
+                    table_size_write_record: state_extension.table_size_write_record,
+                };
+                self.record.table_grow_events.push(event);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    fn emit_params_check_event(
+        &mut self,
+        sp: u32,
+        clk: u32,
+        opcode: Opcode,
+        state_extension: InstrStateExtension,
+    ) {
+        match state_extension {
+            InstrStateExtension::SignatureCheck(state_extension) => {
+                let event = ParamsCheckEvent {
+                    shard: self.shard(),
+                    clk,
+                    pc: self.state.pc,
+                    sp,
+                    opcode,
+                    params_read_record: state_extension.last_signature_check_read,
+                };
+                self.record.params_check_events.push(event);
+            }
+            _ => unreachable!(),
+        }
+    }
+
     // /// Emit an AUIPC event.
     // #[inline]
     // fn emit_auipc_event(&mut self, opcode: &Opcode, a: u32, b: u32, c: u32, op_a_0: bool) {
@@ -999,6 +1099,7 @@ impl<'a> Executor<'a> {
                 table_read,
                 call_stack_access,
                 call_stack_address,
+                signature_write,
             })) => {
                 let event = CallEvent {
                     shard: self.shard(),
@@ -1012,6 +1113,7 @@ impl<'a> Executor<'a> {
                     call_stack_address,
                     call_stack_access: Some(call_stack_access),
                     table_access: table_read,
+                    signature_write_record: signature_write,
                 };
                 self.record.call_events.push(event);
             }
@@ -1030,6 +1132,7 @@ impl<'a> Executor<'a> {
                     call_stack_address: 0,
                     call_stack_access: None,
                     table_access: None,
+                    signature_write_record: None,
                 };
                 self.record.call_events.push(event)
             }
@@ -1610,6 +1713,8 @@ impl<'a> Executor<'a> {
             }
         }
 
+        self.record.dataop_events.extend_from_slice(&self.store.tracer.data_op_logs);
+
         // Get the final public values.
         let public_values = self.record.public_values;
         self.state.update_state(&self.store);
@@ -1766,30 +1871,6 @@ impl<'a> Executor<'a> {
                     MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record);
                 println!("final_event:{:?}", final_event);
                 memory_finalize_events.push(final_event);
-            }
-        }
-    }
-
-    pub fn postprocess_syscall(&mut self) {
-        if !self.unconstrained && self.executor_mode == ExecutorMode::Trace {
-            // Will need to transfer the existing memory local events in the executor to it's
-            // record, and return all the syscall memory local events.  This is similar
-            // to what `bump_record` does.
-
-            if let Some(op_state) = self.store.tracer.logs.last() {
-                let addrs = match &op_state.fat_op {
-                    Some(FatOpEvent::TableInit(event)) => &event.local_mem_access_addr,
-                    Some(FatOpEvent::TableGrow(event)) => &event.local_mem_access_addr,
-                    _ => &Vec::new(),
-                };
-
-                for addr in addrs {
-                    let local_mem_access = self.store.tracer.local_memory_event.remove(addr);
-
-                    if let Some(local_mem_access) = local_mem_access {
-                        self.record.cpu_local_memory_access.push(local_mem_access);
-                    }
-                }
             }
         }
     }

@@ -79,6 +79,10 @@ impl Shapeable for ExecutionRecord {
             (RwasmAirId::SyscallInstrs, self.syscall_events.len()),
             (RwasmAirId::Local, self.local_events.len()),
             (RwasmAirId::Const, self.const_events.len()),
+            (RwasmAirId::ParamsCheck, self.params_check_events.len()),
+            //TODO: is it true for TableGrow/TableInit ?
+            (RwasmAirId::TableGrow, self.table_grow_events.len()),
+            (RwasmAirId::TableInit, self.table_init_events.len()),
         ]
     }
 
