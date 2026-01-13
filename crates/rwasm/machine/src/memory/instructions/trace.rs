@@ -12,7 +12,7 @@ use rwasm::{
 };
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, MemInstrEvent},
-    ExecutionRecord, Opcode, Program,
+    ByteOpcode, ExecutionRecord, Opcode, Program,
 };
 use sp1_primitives::consts::WORD_SIZE;
 use sp1_stark::air::MachineAir;
@@ -141,13 +141,13 @@ impl MemoryInstructionsChip {
         cols.ls_bits_is_three = F::from_bool(addr_ls_two_bits == 3);
 
         // Add byte lookup event to verify correct calculation of addr_ls_two_bits.
-        // blu.add_byte_lookup_event(ByteLookupEvent {
-        //     opcode: ByteOpcode::AND,
-        //     a1: addr_ls_two_bits as u16,
-        //     a2: 0,
-        //     b: cols.addr_word[0].as_canonical_u32() as u8,
-        //     c: 0b11,
-        // });
+        blu.add_byte_lookup_event(ByteLookupEvent {
+            opcode: ByteOpcode::AND,
+            a1: addr_ls_two_bits as u16,
+            a2: 0,
+            b: cols.addr_word[0].as_canonical_u32() as u8,
+            c: 0b11,
+        });
 
         // If it is a load instruction, set the unsigned_mem_val column.
         let mem_value = event.mem_access.value();
@@ -194,13 +194,13 @@ impl MemoryInstructionsChip {
                 cols.most_sig_byte = F::from_canonical_u8(most_sig_mem_value_byte);
                 cols.most_sig_bit = F::from_canonical_u8(most_sig_mem_value_bit);
 
-                // blu.add_byte_lookup_event(ByteLookupEvent {
-                //     opcode: ByteOpcode::MSB,
-                //     a1: most_sig_mem_value_bit as u16,
-                //     a2: 0,
-                //     b: most_sig_mem_value_byte,
-                //     c: 0,
-                // });
+                blu.add_byte_lookup_event(ByteLookupEvent {
+                    opcode: ByteOpcode::MSB,
+                    a1: most_sig_mem_value_bit as u16,
+                    a2: 0,
+                    b: most_sig_mem_value_byte,
+                    c: 0,
+                });
             }
         }
 
@@ -215,15 +215,5 @@ impl MemoryInstructionsChip {
 
         cols.most_sig_bytes_zero
             .populate_from_field_element(cols.addr_word[1] + cols.addr_word[2] + cols.addr_word[3]);
-
-        // if cols.most_sig_bytes_zero.result == F::one() {
-        //     blu.add_byte_lookup_event(ByteLookupEvent {
-        //         opcode: ByteOpcode::LTU,
-        //         a1: 1,
-        //         a2: 0,
-        //         b: 31,
-        //         c: cols.addr_word[0].as_canonical_u32() as u8,
-        //     });
-        // }
     }
 }

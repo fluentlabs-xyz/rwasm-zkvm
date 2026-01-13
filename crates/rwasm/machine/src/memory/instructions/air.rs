@@ -12,7 +12,7 @@ use crate::{
     operations::IsZeroOperation,
 };
 
-use rwasm_executor::{Opcode, DEFAULT_PC_INC, UNUSED_PC};
+use rwasm_executor::{ByteOpcode, Opcode, DEFAULT_PC_INC, UNUSED_PC};
 
 use super::{columns::MemoryInstructionsColumns, MemoryInstructionsChip};
 
@@ -239,13 +239,13 @@ impl MemoryInstructionsChip {
 
         // Check the correct value of addr_ls_two_bits. Note that this lookup will implicitly do a
         // byte range check on the least sig addr byte.
-        // builder.send_byte(
-        //     ByteOpcode::AND.as_field::<AB::F>(),
-        //     local.addr_ls_two_bits,
-        //     local.addr_word[0],
-        //     AB::Expr::from_canonical_u8(0b11),
-        //     is_real.clone(),
-        // );
+        builder.send_byte(
+            ByteOpcode::AND.as_field::<AB::F>(),
+            local.addr_ls_two_bits,
+            local.addr_word[0],
+            AB::Expr::from_canonical_u8(0b11),
+            is_real.clone(),
+        );
 
         // For operations that require reading from memory (not registers), we need to read the
         // value into the memory columns.
@@ -307,13 +307,13 @@ impl MemoryInstructionsChip {
 
         // SAFETY: `is_lb + is_lh` is already constrained to be boolean.
         // This is because at most one opcode selector can be turned on.
-        // builder.send_byte(
-        //     ByteOpcode::MSB.as_field::<AB::F>(),
-        //     local.most_sig_bit,
-        //     local.most_sig_byte,
-        //     AB::Expr::zero(),
-        //     local.is_i32load8s + local.is_i32load16s,
-        // );
+        builder.send_byte(
+            ByteOpcode::MSB.as_field::<AB::F>(),
+            local.most_sig_bit,
+            local.most_sig_byte,
+            AB::Expr::zero(),
+            local.is_i32load8s + local.is_i32load16s,
+        );
         builder.assert_eq(
             local.most_sig_byte,
             local.is_i32load8s * local.unsigned_mem_val[0] +
