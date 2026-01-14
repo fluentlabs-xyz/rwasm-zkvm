@@ -357,13 +357,9 @@ impl MemoryInstructionsChip {
 
         let is_unsigned_op = local.is_i32load8u + local.is_i32load16u;
 
-        // builder
-        //     .when(is_unsigned_op + is_positive_signed)
-        //     .assert_word_eq(local.value, local.unsigned_mem_val);
-
-        // These two cases combine for all cases where it's a load instruction and `op_a_0 == 0`.
-        // Since the store instructions have `op_a_immutable = 1`, this completely constrains the
-        // `op_a`'s value.
+        builder
+            .when(is_unsigned_op + is_positive_signed)
+            .assert_word_eq(local.value, local.unsigned_mem_val);
     }
 
     /// Evaluates constraints related to storing to memory.

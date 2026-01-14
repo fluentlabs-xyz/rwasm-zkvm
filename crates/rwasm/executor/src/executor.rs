@@ -2094,7 +2094,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 15);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 15);
     }
 
     /// Branch is TAKEN when condition is non-zero; block is skipped and earlier result remains.
@@ -2120,7 +2120,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
         // since the branch was taken, the 4-op block is skipped; final stays 6
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 6);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 6);
     }
 
     /// Non-zero can be any value (including 0xFFFF_FFFF); ensure branch is taken.
@@ -2145,7 +2145,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
         // branch taken -> block skipped -> result remains 9
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 9);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 9);
     }
 
     /// Two conditional blocks: first NOT taken (executes), second TAKEN (skips).
@@ -2180,7 +2180,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
         // block A executed (+9), block B skipped; final remains 15
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 15);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 15);
     }
     // ---  store8 + store8 -> load16U (endianness sanity) ---
     #[test]
@@ -2212,7 +2212,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp0, rt.state.sp + 2 * UNIT);
     }
 
@@ -2230,7 +2230,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     #[test]
@@ -2241,7 +2241,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     #[test]
     fn test_gts() {
@@ -2251,7 +2251,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     #[test]
     fn test_lts_vs_ltu_diverge() {
@@ -2277,7 +2277,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     //--- GtS vs GtU should diverge for (0x80000000, 0) ---
@@ -2305,7 +2305,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     // --- shift counts are masked mod 32 (33 -> 1, 65 -> 1) ---
@@ -2331,7 +2331,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp0, rt.state.sp + 4);
     }
 
@@ -2360,7 +2360,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // --- unaligned mw/mr must panic (addr % 4 != 0) ---
     #[test]
@@ -2442,7 +2442,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2462,7 +2462,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2482,7 +2482,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
 
@@ -2506,7 +2506,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2529,7 +2529,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2549,7 +2549,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2567,7 +2567,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2588,7 +2588,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 0);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 0);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2604,7 +2604,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 0);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 0);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2624,7 +2624,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
 
@@ -2642,7 +2642,7 @@ mod tests {
             let program = Program::from_instrs(opcodes);
             let mut runtime = Executor::new(program, SP1CoreOpts::default());
             runtime.run().unwrap();
-            assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+            assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
             assert_eq!(sp_value, runtime.state.sp + 4);
         }
         for opcode in
@@ -2657,7 +2657,7 @@ mod tests {
             let program = Program::from_instrs(opcodes);
             let mut runtime = Executor::new(program, SP1CoreOpts::default());
             runtime.run().unwrap();
-            assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+            assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
             assert_eq!(sp_value, runtime.state.sp + 4);
         }
         for opcode in [Opcode::I32GeS, Opcode::I32Ne, Opcode::I32GtS] {
@@ -2670,7 +2670,7 @@ mod tests {
             let program = Program::from_instrs(opcodes);
             let mut runtime = Executor::new(program, SP1CoreOpts::default());
             runtime.run().unwrap();
-            assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+            assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
             assert_eq!(sp_value, runtime.state.sp + 4);
         }
         for opcode in [Opcode::I32LeS, Opcode::I32Ne, Opcode::I32LtS] {
@@ -2683,7 +2683,7 @@ mod tests {
             let program = Program::from_instrs(opcodes);
             let mut runtime = Executor::new(program, SP1CoreOpts::default());
             runtime.run().unwrap();
-            assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+            assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
             assert_eq!(sp_value, runtime.state.sp + 4);
         }
     }
@@ -2707,7 +2707,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2728,7 +2728,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
 
@@ -2751,7 +2751,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2831,45 +2831,14 @@ mod tests {
             (-1i32 as u32, 0x80000000u32),
         ];
 
-        let opcodes = [Opcode::I32DivU, Opcode::I32DivS, Opcode::I32RemU, Opcode::I32RemS];
-
-        for &(b, c) in instructions {
-            for &op in &opcodes {
-                println!("next test: {:?} with b = {:#010x}, c = {:#010x}", op, b, c);
-                // For each (b, c, op) we run a tiny program: push b, push c, apply op.
-                let program = Program::from_instrs(vec![
-                    Opcode::I32Const(b.into()),
-                    Opcode::I32Const(c.into()),
-                    op,
-                ]);
-
-                let mut runtime = Executor::new(program, SP1CoreOpts::default());
-                runtime.run().unwrap();
-
-                // Top-of-stack is at runtime.state.sp (stack grows down).
-                let top =
-                    runtime.state.memory.get(runtime.state.sp).expect("stack top must exist").value;
-
-                let expected = compute_expected(op, b, c);
-
-                assert_eq!(
-                    top, expected,
-                    "div/rem result mismatch for {:?} with b = {:#010x}, c = {:#010x}",
-                    op, b, c
-                );
-
-                // Stack pointer should have moved by exactly one 32-bit word:
-                // initial SP = SP_START, final SP = SP_START - 4  =>  SP_START == sp + 4
-                assert_eq!(
-                    sp_value,
-                    runtime.state.sp + 4,
-                    "unexpected SP movement for {:?} with b = {:#010x}, c = {:#010x}",
-                    op,
-                    b,
-                    c
-                );
-            }
-        }
+        let program = Program::from_instrs(opcodes);
+        let mut runtime = Executor::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
+        assert_eq!(
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
+            x_value / (y_value / z_value)
+        );
+        assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
     fn test_rems_remu() {
@@ -2890,7 +2859,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value % (y_value % z_value)
         );
         assert_eq!(sp_value, runtime.state.sp + 4);
@@ -2915,7 +2884,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value << (y_value << z_value)
         );
         assert_eq!(sp_value, runtime.state.sp + 4);
@@ -2940,7 +2909,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value >> (y_value >> z_value)
         );
         assert_eq!(sp_value, runtime.state.sp + 4);
@@ -2956,7 +2925,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         println!("opxxx:{}", opcode);
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, expected);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, expected);
     }
     fn simple_opcode_test_expect_error(opcode: Opcode, expected: u32, a: u32, b: u32) {
         let sp_value: u32 = SP_START;
@@ -3214,7 +3183,7 @@ mod tests {
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, expected);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, expected);
     }
 
     #[test]
@@ -3436,7 +3405,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, x_value);
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
     }
 
@@ -3462,7 +3431,7 @@ mod tests {
         peek_stack(&runtime);
         println!("stack pointer: {}", runtime.state.sp);
 
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, x_value);
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
     }
 
@@ -3485,7 +3454,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 0x11);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 0x11);
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
     }
     #[test]
@@ -3509,7 +3478,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value & 0x0000_FFFF
         );
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
@@ -3534,7 +3503,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value & 0x0000_ffff
         );
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
@@ -3559,7 +3528,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value & 0x0000_ffff
         );
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
@@ -3586,7 +3555,7 @@ mod tests {
 
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             (x_value & 0x0000_FF00) >> 8
         );
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
@@ -3612,7 +3581,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value as i8,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value as i8,
             ((x_value & 0xff00_0000) >> 24) as i8
         );
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
@@ -3639,7 +3608,10 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
 
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, ((1 << 1) << 1) << 1);
+        assert_eq!(
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
+            ((1 << 1) << 1) << 1
+        );
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
 
@@ -3668,7 +3640,7 @@ mod tests {
         runtime.run().unwrap();
 
         println!("initial.sp {} , state.sp {}", sp_value, runtime.state.sp);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 6);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 6);
     }
 
     #[test]
@@ -3694,7 +3666,7 @@ mod tests {
         runtime.run().unwrap();
         peek_stack(&runtime);
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value + 5 + x_value + 4
         );
         assert_eq!(sp_value, runtime.state.sp + 7 * 4);
@@ -3750,7 +3722,10 @@ mod tests {
         println!("before {}", runtime.state.sp);
         runtime.run().unwrap();
         println!("after {}", runtime.state.sp);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, y_value + z_value);
+        assert_eq!(
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
+            y_value + z_value
+        );
     }
 
     #[test]
@@ -3773,7 +3748,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(runtime.state.sp, sp_value - 20);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value + 7);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, x_value + 7);
     }
 
     #[test]
@@ -3787,7 +3762,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(runtime.state.sp, sp_value - 4);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, x_value);
     }
 
     #[test]
@@ -3814,7 +3789,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value - (y_value + z_value)
         );
     }
@@ -3862,7 +3837,10 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(runtime.state.sp, sp_value - 4);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value + y_value);
+        assert_eq!(
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
+            x_value + y_value
+        );
     }
 
     #[test]
@@ -3879,7 +3857,7 @@ mod tests {
         println!("record:{:?}", runtime.record);
         println!("records:{:?}", runtime.records);
         assert_eq!(runtime.state.sp, sp_value - 4);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, x_value);
     }
     #[test]
     fn test_call_chain_incrementers() {
@@ -3914,7 +3892,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     #[test]
     fn test_store_then_load_via_function() {
@@ -3959,7 +3937,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
 
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
 
         // sanity: at least one mem event and one call event
         let mem_events: usize = rt.records.iter().map(|r| r.memory_instr_events.len()).sum();
@@ -4018,7 +3996,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     #[test]
     fn test_stack_after_nested_calls() {
@@ -4064,7 +4042,7 @@ mod tests {
         rt.run().unwrap();
 
         // one boolean result left on stack
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(rt.state.sp, sp0 - 4);
     }
 
@@ -4126,7 +4104,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // --- chain calls: (((x+1)+1)*2) then >> 1 => x+2 (sanity of order) ---
     #[test]
@@ -4165,7 +4143,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // --- function that conditionally skips work with Br (simple jump) ---
     #[test]
@@ -4201,7 +4179,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // --- many events sanity: multiple calls + mem ops + alu; check counts ---
     #[test]
@@ -4278,7 +4256,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
 
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
 
         // sanity on events
         let calls: usize = rt.records.iter().map(|r| r.call_events.len()).sum();
@@ -4383,7 +4361,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // --- Nested calls: f1 -> f2 -> f3 (3 levels) ---
     #[test]
@@ -4441,7 +4419,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // --- Direct call using Opcode::CallInternal (f_add) ---
     #[test]
@@ -4472,7 +4450,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     // --- Fibonacci n=25 via iterative step function and CallInternal ---
@@ -4560,7 +4538,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     //Cross-page unaligned store/load with calls
     #[test]
@@ -4618,7 +4596,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
 
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // Dot product length=8 via stateful step function (loads, stores, ptr++), FIXED store order.
     #[test]
@@ -4746,7 +4724,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // 3) Branch-free piecewise select using compares and arithmetic masks — FIXED
     #[test]
@@ -4802,7 +4780,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // Sign vs zero extension mix: Load8S + Load8U on the same byte and combine (unchanged)
     #[test]
@@ -4834,7 +4812,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     #[test]
@@ -4998,7 +4976,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     /// Success-path boundary check: writing a single byte at the very last
@@ -5030,7 +5008,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     #[test]
@@ -5049,7 +5027,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+        let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
         assert_eq!(top, expected, "I32Rotl result mismatch (masking or rotation incorrect)");
     }
 
@@ -5070,7 +5048,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+        let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
         assert_eq!(top, expected, "I32Rotr result mismatch");
     }
     #[test]
@@ -5089,7 +5067,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+        let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
         assert_eq!(top, b, "recovery result mismatch");
         assert_eq!(sp0, rt.state.sp + UNIT);
     }
@@ -5104,7 +5082,7 @@ mod tests {
             rt.run().unwrap();
 
             let expected = a.count_ones();
-            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
             assert_eq!(top, expected, "I32Popcnt result mismatch for a={:#x}", a);
             // One 32-bit value pushed
             assert_eq!(sp0, rt.state.sp + UNIT);
@@ -5135,7 +5113,7 @@ mod tests {
             rt.run().unwrap();
 
             let expected = a.leading_zeros(); // WASM spec: clz(0) = 32
-            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
             assert_eq!(top, expected, "I32Clz result mismatch for a={:#x}", a);
             // One 32-bit value pushed
             assert_eq!(sp0, rt.state.sp + UNIT);
@@ -5166,7 +5144,7 @@ mod tests {
             rt.run().unwrap();
 
             let expected = a.trailing_zeros(); // Rust matches WASM semantics: ctz(0) = 32
-            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
             assert_eq!(top, expected, "I32Ctz result mismatch for a={:#x}", a);
             // One 32-bit value pushed
             assert_eq!(sp0, rt.state.sp + UNIT);
@@ -5207,14 +5185,14 @@ mod tests {
 
             // Convention for 64-bit ops: top-of-stack = HI, next = LO.
             assert_eq!(
-                rt.state.memory.get(rt.state.sp).unwrap().value,
+                rt.state.memory.get(rt.state.sp + UNIT).unwrap().value,
                 hi,
                 "HI mismatch for a={:#x}, b={:#x}",
                 a,
                 b
             );
             assert_eq!(
-                rt.state.memory.get(rt.state.sp + 4).unwrap().value,
+                rt.state.memory.get(rt.state.sp + UNIT + 4).unwrap().value,
                 lo,
                 "LO mismatch for a={:#x}, b={:#x}",
                 a,
@@ -5256,14 +5234,14 @@ mod tests {
 
             // After 64-bit ops, convention is: top-of-stack = HI, next = LO (see test_i32add64).
             assert_eq!(
-                rt.state.memory.get(rt.state.sp).unwrap().value,
+                rt.state.memory.get(rt.state.sp + UNIT).unwrap().value,
                 hi as u32,
                 "HI mismatch for a={:#x}, b={:#x}",
                 a,
                 b
             );
             assert_eq!(
-                rt.state.memory.get(rt.state.sp + 4).unwrap().value,
+                rt.state.memory.get(rt.state.sp + UNIT + 4).unwrap().value,
                 lo as u32,
                 "LO mismatch for a={:#x}, b={:#x}",
                 a,
@@ -5307,7 +5285,7 @@ mod tests {
                 let mut rt = Executor::new(program, SP1CoreOpts::default());
                 rt.run().unwrap();
 
-                let top = rt.state.memory.get(rt.state.sp + 3).unwrap().value;
+                let top = rt.state.memory.get(rt.state.sp + UNIT + 3).unwrap().value;
                 assert_eq!(top, expected, "I32Extend8S({:#010x}) mismatch", input);
             }
         }
@@ -5335,7 +5313,7 @@ mod tests {
                 let mut rt = Executor::new(program, SP1CoreOpts::default());
                 rt.run().unwrap();
 
-                let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+                let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
                 assert_eq!(top, expected, "I32Extend16S({:#010x}) mismatch", input);
             }
         }
@@ -5375,7 +5353,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        rt.state.memory.get(rt.state.sp).unwrap().value
+        rt.state.memory.get(rt.state.sp + UNIT).unwrap().value
     }
 
     #[test]
@@ -5420,7 +5398,7 @@ mod tests {
         rt.run().unwrap();
 
         // Verify Value
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 0);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 0);
         // Verify Stack Pointer (Should be SP_START + 4 bytes, as 2 args popped, 1 pushed)
         assert_eq!(sp0, rt.state.sp + 4);
     }

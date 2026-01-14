@@ -1043,8 +1043,7 @@ mod tests {
 
             let result =
                 run_malicious_test::<P>(program, stdin, Box::new(malicious_trace_pv_generator));
-
-            let chip_name = chip_name!(CpuChip, BabyBear);
+            let chip_name = chip_name!(LtChip, BabyBear);
             println!("run_malicious_lt for opcode : {:?}", opcode);
             assert!(result.is_err());
             assert!(result.unwrap_err().is_constraints_failing(&chip_name));
