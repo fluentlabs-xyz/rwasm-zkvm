@@ -16,7 +16,6 @@ use crate::{
     alu::{AddMul64Chip, TrailingChip},
     bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
     control_flow::{BranchChip, CallChip},
-    fuel::FuelChip,
     global::GlobalChip,
     memory::{MemoryChipType, MemoryInstructionsChip, MemoryLocalChip},
     non_alu_instructions::{
@@ -108,8 +107,6 @@ pub enum RwasmAir<F: PrimeField32> {
     Memory(MemoryInstructionsChip),
     /// An AIR for Rwasm branch instructions.
     Branch(BranchChip),
-    ///An Air for Rwasm Fuel instructions.
-    Fuel(FuelChip),
     /// An AIR for Rwasm branch instructions.
     Call(CallChip),
     /// An AIR for Rwasm ecall instructions.
@@ -417,9 +414,7 @@ impl<F: PrimeField32> RwasmAir<F> {
         let branch = Chip::new(RwasmAir::Branch(BranchChip::default()));
         costs.insert(branch.name(), branch.cost());
         chips.push(branch);
-        let fuel = Chip::new(RwasmAir::Fuel(FuelChip::default()));
-        costs.insert(fuel.name(), fuel.cost());
-        chips.push(fuel);
+
         let call = Chip::new(RwasmAir::Call(CallChip::default()));
         costs.insert(call.name(), call.cost());
         chips.push(call);
@@ -505,7 +500,6 @@ impl<F: PrimeField32> RwasmAir<F> {
             RwasmAir::Extend(ExtendChip::default()),
             RwasmAir::Memory(MemoryInstructionsChip::default()),
             RwasmAir::Branch(BranchChip::default()),
-            RwasmAir::Fuel(FuelChip::default()),
             RwasmAir::Call(CallChip::default()),
             RwasmAir::SyscallInstrs(SyscallInstrsChip::default()),
             RwasmAir::MemoryLocal(MemoryLocalChip::new()),
@@ -599,7 +593,6 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::ShiftRight => RwasmAirId::ShiftRight,
             RwasmAirDiscriminants::Memory => RwasmAirId::MemoryInstrs,
             RwasmAirDiscriminants::Branch => RwasmAirId::Branch,
-            RwasmAirDiscriminants::Fuel => RwasmAirId::Fuel,
             RwasmAirDiscriminants::Call => RwasmAirId::Call,
             RwasmAirDiscriminants::SyscallInstrs => RwasmAirId::SyscallInstrs,
             RwasmAirDiscriminants::ByteLookup => RwasmAirId::Byte,

@@ -72,8 +72,6 @@ pub struct ExecutionRecord {
     pub i64_events: Vec<I64AluEvent>,
     /// A trace of the constant events.
     pub sys_state_events: Vec<SysStateEvent>,
-    /// A trace of the fuel events.
-    pub fuel_events: Vec<FuelEvent>,
 
     pub table_init_events: Vec<TableInitEvent>,
 

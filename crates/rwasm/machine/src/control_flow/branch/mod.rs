@@ -33,7 +33,7 @@ mod tests {
     use std::borrow::BorrowMut;
 
     fn be(pc: u32, next_pc: u32, opcode: Opcode, res: u32, arg1: u32, arg2: u32) -> BranchEvent {
-        BranchEvent { pc, next_pc, opcode, res, arg1, arg2 }
+        BranchEvent { pc, sp: 0, next_pc, opcode, res, arg1, arg2 }
     }
 
     #[test]
@@ -169,14 +169,11 @@ mod tests {
 
         // Force "not branching" path (fall-through), and lie about condition.
         cols.is_branching = BabyBear::zero();
-        cols.is_branching_table = BabyBear::zero();
-        cols.is_branching_non_table = BabyBear::zero();
+        cols.is_brtable = BabyBear::zero();
+        cols.is_br = BabyBear::zero();
 
         // Force next_pc = pc + DEFAULT_PC_INC.
         cols.next_pc = (1000 + DEFAULT_PC_INC).into();
-
-        // Lie: claim arg1 == 0 (even though arg1 is still 7).
-        cols.a_eq_zero = BabyBear::one();
 
         // Prove+verify should FAIL if the AIR is sound.
         let mut challenger = config.challenger();

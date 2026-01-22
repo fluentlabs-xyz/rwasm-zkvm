@@ -6,7 +6,6 @@ mod call;
 mod comp;
 mod divrem;
 mod extend;
-mod fuel;
 mod lt;
 mod mul;
 mod rotate;

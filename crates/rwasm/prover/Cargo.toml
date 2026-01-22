@@ -46,14 +46,8 @@ eyre = "0.6.12"
 hashbrown = { workspace = true, features = ["inline-more"] }
 enum-map = { version = "2.7.3" }
 
-
 # rwasm
-rwasm = { git = "https://github.com/fluentlabs-xyz/rwasm.git", branch = "djadjka/cpu-chip", features = [
-    "std",
-    "tracing",
-] }
-
-
+rwasm = { workspace = true}
 
 [build-dependencies]
 downloader = { version = "0.2", default-features = false, features = [

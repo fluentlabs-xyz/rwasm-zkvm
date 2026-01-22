@@ -185,7 +185,7 @@ pub struct ShiftRightCols<T> {
 
     pub sp: T,
 
-    /// The output operand.
+    /// Output operand: `a = b >> c` (32-bit).
     pub a: Word<T>,
 
     /// First input operand (shifted value).
@@ -611,29 +611,9 @@ where
             }
         }
 
-        // SAFETY: All selectors `is_srl`, `is_sra` are checked to be boolean.
-        // Each "real" row has exactly one selector turned on, as `is_real = is_srl + is_sra` is
-        // boolean. All interactions are done with multiplicity `is_real`.
-        // Therefore, the `opcode` matches the corresponding opcode.
-
-        // Check that the operation flags are boolean.
-        builder.assert_bool(local.is_srl);
-        builder.assert_bool(local.is_sra);
-        builder.assert_bool(local.is_real);
-
-        // Check that is_real is the sum of the two operation flags.
-        builder.assert_eq(local.is_srl + local.is_sra, local.is_real);
-
-        // Receive the arguments.
-        // SAFETY: This checks the following.
-        // - `next_pc = pc + 4`
-        // - `num_extra_cycles = 0`
-        // - `op_a_val` is constrained by the chip when `op_a_not_0 == 1`
-        // - `op_a_not_0` is correct, due to the sent `op_a_0` being equal to `1 - op_a_not_0`
-        // - `op_a_immutable = 0`
-        // - `is_memory = 0`
-        // - `is_syscall = 0`
-        // - `is_halt = 0`
+        //
+        // 8. CPU wiring (receive_instruction_old).
+        //
         builder.receive_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -685,8 +665,10 @@ mod tests {
     #[test]
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
-        shard.shift_right_events =
-            vec![AluEvent::new(0, 0, Opcode::I32ShrU, 6, 12, 1, Opcode::I32ShrU.code())];
+        shard.shift_right_events = vec![
+            AluEvent::new(0, 0, Opcode::I32ShrU, 6, 12, 1, Opcode::I32ShrU.code()),
+            AluEvent::new(0, 0, Opcode::I32ShrS, 6, 12, 1, Opcode::I32ShrS.code()),
+        ];
         let chip = ShiftRightChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());

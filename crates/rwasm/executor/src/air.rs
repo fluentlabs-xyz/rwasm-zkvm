@@ -195,7 +195,6 @@ impl RwasmAirId {
             RwasmAirId::MemoryLocal,
             RwasmAirId::MemoryInstrs,
             RwasmAirId::Branch,
-            RwasmAirId::Fuel,
             RwasmAirId::Call,
             RwasmAirId::SyscallCore,
             RwasmAirId::SyscallInstrs,

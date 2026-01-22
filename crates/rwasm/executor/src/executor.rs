@@ -1,7 +1,7 @@
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
 use crate::{
-    dependencies::{emit_branch_dependencies, emit_fuel_dependencies, emit_memory_dependencies},
+    dependencies::{emit_branch_dependencies, emit_memory_dependencies},
     estimator::RecordEstimator,
     events::{
         CallEvent, ConstEvent, ExtendEvent, I64AluEvent, LocalEvent, ParamsCheckEvent,
@@ -15,7 +15,6 @@ use std::{str::FromStr, sync::Arc};
 use clap::ValueEnum;
 use enum_map::EnumMap;
 use fluentbase_runtime::RuntimeContext;
-use fluentbase_types::import_linker_v1_preview;
 use hashbrown::HashMap;
 
 use rwasm::{
@@ -23,8 +22,6 @@ use rwasm::{
     CallStack, CallStateExtension, DataOpEvent, I64AluStateExtension, InstrStateExtension,
     InstructionPtr, Opcode, RwasmExecutor, RwasmStore, TrapCode, ValueStack, ValueStackPtr,
 };
-
-use fluentbase_runtime::syscall_handler::runtime_syscall_handler;
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
 use sp1_stark::{air::PublicValues, SP1CoreOpts};
@@ -93,7 +90,7 @@ pub struct RwasmExecutorState {
     pub ip: InstructionPtr,
 }
 
-/// An executor for the SP1 Rwasm zkVM.
+/// An executor for the SP1 RISC-V zkVM.
 ///
 /// The exeuctor is responsible for executing a user program and tracing important events which
 /// occur during execution (i.e., memory reads, alu operations, etc).
@@ -357,14 +354,8 @@ impl<'a> Executor<'a> {
             serde_json::from_str(include_str!("./artifacts/rv32im_costs.json")).unwrap();
         let costs: HashMap<RwasmAirId, usize> =
             costs.into_iter().map(|(k, v)| (RwasmAirId::from_str(&k).unwrap(), v)).collect();
-        let ctx = RuntimeContext::default();
-        let limit = ctx.fuel_limit;
-        let store = RwasmStore::new(
-            import_linker_v1_preview(),
-            ctx,
-            runtime_syscall_handler,
-            FuelConfig::default().with_fuel_limit(500000),
-        );
+
+        let store = RwasmStore::default();
 
         Self {
             record: Box::new(record),
@@ -851,7 +842,6 @@ impl<'a> Executor<'a> {
             }
             Opcode::I32DivS | Opcode::I32DivU | Opcode::I32RemS | Opcode::I32RemU => {
                 self.record.divrem_events.push(event);
-                //emit_divrem_dependencies(self, event);
             }
             Opcode::I32Rotl | Opcode::I32Rotr => {
                 self.record.rotate_events.push(event);
@@ -1170,49 +1160,6 @@ impl<'a> Executor<'a> {
             };
             self.record.i64_events.push(event);
         }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    #[inline]
-    fn emit_fuel_event(
-        &mut self,
-        clk: u32,
-        pc: u32,
-        next_pc: u32,
-        opcode: Opcode,
-        record: MemoryAccessRecord,
-    ) {
-        println!("fuel record in emit:{:?}", record);
-        let fuel_low = record.arg1_record.unwrap().value();
-        let fuel_high = record.arg1_hi_record.unwrap().value();
-        let fuel = ((fuel_high as u64) << 32) | (fuel_low as u64);
-        let next_fuel_low = record.res_record.unwrap().value();
-        let next_fuel_high = record.res_hi_record.unwrap().value();
-        let next_fuel = ((next_fuel_high as u64) << 32) | (next_fuel_low as u64);
-        let to_consume_fuel = match opcode {
-            Opcode::ConsumeFuel(consume_fuel) => consume_fuel,
-            Opcode::ConsumeFuelStack => record.arg2_record.unwrap().value(),
-            _ => {
-                panic!("Invalid opcode for fuel event: {:?}", opcode);
-            }
-        };
-
-        let event = FuelEvent {
-            clk,
-            shard: self.shard(),
-            pc,
-            next_pc,
-            opcode,
-            fuel,
-            next_fuel,
-            to_consume_fuel,
-            fuel_consumed_low_record: record.arg1_record.unwrap(),
-            fuel_consumed_high_record: record.arg1_hi_record.unwrap(),
-            next_consumed_fuel_low_record: record.res_record.unwrap(),
-            next_consumed_fuel_high_record: record.res_hi_record.unwrap(),
-        };
-        self.record.fuel_events.push(event);
-        emit_fuel_dependencies(self, event);
     }
 
     /// Execute an ecall opcode.
@@ -2831,15 +2778,51 @@ mod tests {
             (-1i32 as u32, 0x80000000u32),
         ];
 
-        let program = Program::from_instrs(opcodes);
-        let mut runtime = Executor::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(
-            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
-            x_value / (y_value / z_value)
-        );
-        assert_eq!(sp_value, runtime.state.sp + 4);
+        let opcodes = [Opcode::I32DivU, Opcode::I32DivS, Opcode::I32RemU, Opcode::I32RemS];
+
+        for &(b, c) in instructions {
+            for &op in &opcodes {
+                println!("next test: {:?} with b = {:#010x}, c = {:#010x}", op, b, c);
+                // For each (b, c, op) we run a tiny program: push b, push c, apply op.
+                let program = Program::from_instrs(vec![
+                    Opcode::I32Const(b.into()),
+                    Opcode::I32Const(c.into()),
+                    op,
+                ]);
+
+                let mut runtime = Executor::new(program, SP1CoreOpts::default());
+                runtime.run().unwrap();
+
+                // Top-of-stack is at runtime.state.sp (stack grows down).
+                let top = runtime
+                    .state
+                    .memory
+                    .get(runtime.state.sp + UNIT)
+                    .expect("stack top must exist")
+                    .value;
+
+                let expected = compute_expected(op, b, c);
+
+                assert_eq!(
+                    top, expected,
+                    "div/rem result mismatch for {:?} with b = {:#010x}, c = {:#010x}",
+                    op, b, c
+                );
+
+                // Stack pointer should have moved by exactly one 32-bit word:
+                // initial SP = SP_START, final SP = SP_START - 4  =>  SP_START == sp + 4
+                assert_eq!(
+                    sp_value,
+                    runtime.state.sp + 4,
+                    "unexpected SP movement for {:?} with b = {:#010x}, c = {:#010x}",
+                    op,
+                    b,
+                    c
+                );
+            }
+        }
     }
+
     #[test]
     fn test_rems_remu() {
         let sp_value: u32 = SP_START;
@@ -2864,7 +2847,6 @@ mod tests {
         );
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
-
     #[test]
     fn test_shl() {
         let sp_value: u32 = SP_START;
@@ -2889,7 +2871,6 @@ mod tests {
         );
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
-
     #[test]
     fn test_shr_shru() {
         let sp_value: u32 = SP_START;

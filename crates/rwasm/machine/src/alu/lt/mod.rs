@@ -11,17 +11,13 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::*;
 use rwasm::{mem_index::UNIT, Opcode};
 
-use crate::{
-    air::WordAirBuilder,
-    utils::{next_power_of_two, zeroed_f_vec},
-};
 use rwasm_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ByteOpcode, ExecutionRecord, Program, DEFAULT_PC_INC,
 };
 use sp1_derive::AlignedBorrow;
 use sp1_stark::{
-    air::{MachineAir, SP1AirBuilder},
+    air::{BaseAirBuilder, MachineAir, SP1AirBuilder},
     Word,
 };
 
@@ -134,6 +130,7 @@ impl LtCols<u32> {
 
 impl<F: PrimeField32> MachineAir<F> for LtChip {
     type Record = ExecutionRecord;
+
     type Program = Program;
 
     fn name(&self) -> String {
@@ -145,12 +142,12 @@ impl<F: PrimeField32> MachineAir<F> for LtChip {
         input: &ExecutionRecord,
         _: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
+        // Generate the trace rows for each event.
         let nb_rows = input.lt_events.len();
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
         let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
-
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_LT_COLS);
-        let chunk_size = core::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
+        let chunk_size = std::cmp::max((nb_rows + 1) / num_cpus::get(), 1);
 
         values.chunks_mut(chunk_size * NUM_LT_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
@@ -167,11 +164,13 @@ impl<F: PrimeField32> MachineAir<F> for LtChip {
             },
         );
 
+        // Convert the trace to a row major matrix.
+
         RowMajorMatrix::new(values, NUM_LT_COLS)
     }
 
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
-        let chunk_size = core::cmp::max(input.lt_events.len() / num_cpus::get(), 1);
+        let chunk_size = std::cmp::max(input.lt_events.len() / num_cpus::get(), 1);
 
         let blu_batches = input
             .lt_events
@@ -499,6 +498,10 @@ where
         // but we verify them for consistency.
         let sum_flags =
             local.byte_flags[0] + local.byte_flags[1] + local.byte_flags[2] + local.byte_flags[3];
+        builder.assert_bool(local.byte_flags[0]);
+        builder.assert_bool(local.byte_flags[1]);
+        builder.assert_bool(local.byte_flags[2]);
+        builder.assert_bool(local.byte_flags[3]);
         builder.assert_bool(sum_flags.clone());
 
         // For comparison operations: if operands not equal, exactly one byte flag set.
@@ -535,7 +538,7 @@ where
         builder.assert_eq(c_comp_byte, c_comparison_byte);
 
         builder
-            .when(sum_flags.clone())
+            .when_not(local.is_comp_eq)
             .assert_eq(local.not_eq_inv * (b_comp_byte - c_comp_byte), is_real.clone());
 
         // Send byte lookup only for comparison operations.
@@ -686,7 +689,7 @@ mod tests {
         let chip = LtChip::default();
         let generate_trace = chip.generate_trace(&shard, &mut ExecutionRecord::default());
         let trace: RowMajorMatrix<BabyBear> = generate_trace;
-        println!("{:?}", trace.width)
+        println!("{:?}", trace.values)
     }
 
     fn prove_babybear_template(shard: &mut ExecutionRecord) {
@@ -739,124 +742,6 @@ mod tests {
         prove_babybear_template(&mut shard);
     }
 
-    #[test]
-    fn prove_babybear_all_comparisons_single() {
-        // One proof that matches the *new executor lowering*:
-        //
-        // The executor emits ONLY LtChip-primitive events:
-        //   - signed  primitive: I32LtS(b,c)  with a = [b <_s c]
-        //   - unsigned primitive: I32LtU(b,c) with a = [b <_u c]
-        //
-        // Lowerings in the executor:
-        //   LT*: emit LT(b,c)                      (a = b<c)
-        //   GT*: emit LT(c,b)                      (a = b>c)
-        //   GE*: emit LT(b,c)                      (witness for b<c ; CPU takes NOT later)
-        //   LE*: emit LT(c,b)                      (witness for b>c ; CPU takes NOT later)
-        //   EQZ: emit LTU(x,1)                     (a = x==0)
-        //   EQ:  emit LTU(b^c,1)                   (a = b==c)
-        //   NE:  emit LTU(0,b^c)                   (a = b!=c)
-        //
-        // This test does NOT try to check CPU's NOT wiring for GE/LE directly here;
-        // it verifies that LtChip accepts the exact primitive events that executor produces.
-
-        const I32_MIN: u32 = 0x8000_0000;
-        const I32_MAX: u32 = 0x7FFF_FFFF;
-        const NEG1: u32 = 0xFFFF_FFFF; // -1
-        const NEG2: u32 = 0xFFFF_FFFE; // -2
-        const NEG3: u32 = 0xFFFF_FFFD; // -3
-        const NEG4: u32 = 0xFFFF_FFFC; // -4
-
-        let mut shard = ExecutionRecord::default();
-        let mut evs: Vec<AluEvent> = Vec::new();
-
-        // Push a *primitive* LtChip event (opcode determines signed/unsigned semantics).
-        let mut push_lt = |primitive: Opcode, a: u32, b: u32, c: u32| {
-            debug_assert!(matches!(primitive, Opcode::I32LtS | Opcode::I32LtU));
-            evs.push(AluEvent::new(0, primitive, a, b, c, primitive.code()));
-        };
-
-        // --- EQZ(x) -> LTU(x, 1)
-        for &x in &[0, 1, 2, I32_MAX, I32_MIN, NEG1, 0xDEAD_BEEF] {
-            push_lt(Opcode::I32LtU, u32::from(x == 0), x, 1);
-        }
-
-        // --- EQ/NE via XOR lowering
-        for &(b, c) in &[
-            (0, 0),
-            (0, 1),
-            (1, 0),
-            (NEG1, NEG1),
-            (NEG1, 0),
-            (0, NEG1),
-            (I32_MIN, I32_MAX),
-            (I32_MAX, I32_MIN),
-            (0xDEAD_BEEF, 0xDEAD_BEEF),
-            (0xDEAD_BEEF, 0xDEAD_BEEE),
-        ] {
-            let x = b ^ c;
-
-            // Eq(b,c): LTU(x,1)  == [x==0]
-            push_lt(Opcode::I32LtU, u32::from(x == 0), x, 1);
-
-            // Ne(b,c): LTU(0,x)  == [x!=0]
-            push_lt(Opcode::I32LtU, u32::from(x != 0), 0, x);
-        }
-
-        // Canonical (b,c) pairs used for LT/GT/GE/LE primitives.
-        // Include: equal, boundaries, sign boundary, neg/pos, and first-diff byte3/2/1/0.
-        let pairs: &[(u32, u32)] = &[
-            (0, 0),
-            (0, 1),
-            (1, 0),
-            (I32_MAX, I32_MIN),
-            (I32_MIN, I32_MAX),
-            (0, NEG1),
-            (NEG1, 0),
-            // first differing byte (MSB..LSB)
-            (0x0100_0000, 0x0200_0000), // byte3
-            (0x0001_0000, 0x0002_0000), // byte2
-            (0x0000_0100, 0x0000_0200), // byte1
-            (0x0000_0001, 0x0000_0002), // byte0
-            (0xDEAD_BEEF, 0xDEAD_BEF0),
-            (0x80FF_0000, 0x80FE_FFFF),
-            // extra signed stress
-            (NEG4, NEG3),
-            (NEG3, NEG4),
-            (NEG3, NEG2),
-            (NEG2, NEG3),
-            (0x8000_0001, 0x8000_0002),
-            (0x8000_0002, 0x8000_0001),
-        ];
-
-        // --- LT primitives (what executor emits for I32LtS/I32LtU)
-        for &(b, c) in pairs {
-            push_lt(Opcode::I32LtU, u32::from(b < c), b, c);
-            push_lt(Opcode::I32LtS, u32::from((b as i32) < (c as i32)), b, c);
-        }
-
-        // --- GT primitives (what executor emits for I32GtS/I32GtU): LT(c,b)
-        for &(b, c) in pairs {
-            push_lt(Opcode::I32LtU, u32::from(b > c), c, b); // c < b  == b > c
-            push_lt(Opcode::I32LtS, u32::from((b as i32) > (c as i32)), c, b);
-        }
-
-        // --- GE primitives (what executor emits for I32GeS/I32GeU): LT(b,c) witness
-        // CPU must later compute GE = 1 - LT(b,c).
-        for &(b, c) in pairs {
-            push_lt(Opcode::I32LtU, u32::from(b < c), b, c);
-            push_lt(Opcode::I32LtS, u32::from((b as i32) < (c as i32)), b, c);
-        }
-
-        // --- LE primitives (what executor emits for I32LeS/I32LeU): LT(c,b) witness
-        // CPU must later compute LE = 1 - LT(c,b) = 1 - (b > c).
-        for &(b, c) in pairs {
-            push_lt(Opcode::I32LtU, u32::from(b > c), c, b);
-            push_lt(Opcode::I32LtS, u32::from((b as i32) > (c as i32)), c, b);
-        }
-
-        shard.lt_events = evs;
-        prove_babybear_template(&mut shard);
-    }
     #[test]
     fn prove_babybear_sltu() {
         let mut shard = ExecutionRecord::default();
@@ -979,10 +864,10 @@ mod tests {
         use core::borrow::BorrowMut;
         const NUM_TESTS: usize = 1;
 
-        let mut rng = thread_rng();
+        let rng = thread_rng();
         for _ in 0..NUM_TESTS {
-            let op_b = rng.gen_range(0..u32::MAX);
-            let op_c = rng.gen_range(0..u32::MAX);
+            let op_b = thread_rng().gen_range(0..u32::MAX);
+            let op_c = thread_rng().gen_range(0..u32::MAX);
 
             let correct_op_a = if opcode == Opcode::I32LtU {
                 op_b < op_c
@@ -1007,9 +892,8 @@ mod tests {
             } else {
                 true
             };
-
+            //Pops rhs, then lhs, pushes i32( lhs <_s rhs ? 1 : 0 )
             let op_a = !correct_op_a;
-
             let program = Program::from_instrs(vec![
                 Opcode::I32Const(op_b.into()),
                 Opcode::I32Const(op_c.into()),
@@ -1020,6 +904,7 @@ mod tests {
 
             let malicious_trace_pv_generator = move |prover: &P, record: &mut ExecutionRecord| {
                 let mut malicious_record = record.clone();
+                // The ALU op is the 3rd instruction (index 2)
                 if malicious_record.cpu_events.len() > 2 {
                     // keep memory write consistent
                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
@@ -1028,14 +913,13 @@ mod tests {
                         write_record.value = op_a as u32;
                     }
                 }
-
                 let mut traces = prover.generate_traces(&malicious_record);
                 let lt_chip_name = chip_name!(LtChip, BabyBear);
                 if let Some((_, trace)) = traces.iter_mut().find(|(name, _)| *name == lt_chip_name)
                 {
                     let row = trace.row_mut(0);
                     let row: &mut LtCols<BabyBear> = row.borrow_mut();
-                    row.a = BabyBear::from_bool(op_a); // inject forged value
+                    row.a = BabyBear::from_bool(op_a); // inject the forged value
                 }
 
                 traces

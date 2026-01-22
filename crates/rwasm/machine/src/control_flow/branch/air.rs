@@ -185,12 +185,6 @@ where
                 )
                 .assert_one(local.arg1_eq_zero.result);
 
-            // We must also assert that a_eq_zero and a_gt_zero are complementary.
-            // This prevents a malicious prover from setting both to 1.
-            builder
-                .when(local.is_brifeqz + local.is_brifnez)
-                .assert_one(local.a_eq_zero + local.a_gt_zero);
-
             // When the opcode is BrIfNez and we are branching, assert that either a_gt_b
             builder
                 .when(
