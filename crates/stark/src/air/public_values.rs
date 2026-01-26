@@ -57,6 +57,8 @@ pub struct PublicValues<W, T> {
 
     /// This field is here to ensure that the size of the public values struct is a multiple of 8.
     pub empty: [T; 3],
+    /// Fuel limit
+    pub fuel_limit: [W; 2],
 }
 
 impl PublicValues<u32, u32> {
@@ -84,6 +86,7 @@ impl PublicValues<u32, u32> {
         copy.last_init_addr_bits = [0; 32];
         copy.previous_finalize_addr_bits = [0; 32];
         copy.last_finalize_addr_bits = [0; 32];
+        copy.fuel_limit = [0, 0];
         copy
     }
 }
@@ -136,6 +139,7 @@ impl<F: AbstractField> From<PublicValues<u32, u32>> for PublicValues<Word<F>, F>
             last_init_addr_bits,
             previous_finalize_addr_bits,
             last_finalize_addr_bits,
+            fuel_limit,
             ..
         } = value;
 
@@ -155,6 +159,8 @@ impl<F: AbstractField> From<PublicValues<u32, u32>> for PublicValues<Word<F>, F>
         let previous_finalize_addr_bits = previous_finalize_addr_bits.map(F::from_canonical_u32);
         let last_finalize_addr_bits = last_finalize_addr_bits.map(F::from_canonical_u32);
 
+        let fuel_limit = fuel_limit.map(Word::from);
+
         Self {
             committed_value_digest,
             deferred_proofs_digest,
@@ -167,6 +173,7 @@ impl<F: AbstractField> From<PublicValues<u32, u32>> for PublicValues<Word<F>, F>
             last_init_addr_bits,
             previous_finalize_addr_bits,
             last_finalize_addr_bits,
+            fuel_limit,
             empty: [F::zero(), F::zero(), F::zero()],
         }
     }

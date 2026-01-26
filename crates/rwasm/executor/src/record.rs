@@ -14,7 +14,7 @@ use std::{mem::take, str::FromStr, sync::Arc};
 use crate::{
     events::{
         AluEvent, BranchEvent, ByteLookupEvent, ByteRecord, CallEvent, ConstEvent, CpuEvent,
-        GlobalInteractionEvent, I64AluEvent, LocalEvent, MemInstrEvent,
+        FuelEvent, GlobalInteractionEvent, I64AluEvent, LocalEvent, MemInstrEvent,
         MemoryInitializeFinalizeEvent, MemoryLocalEvent, ParamsCheckEvent, PrecompileEvent,
         PrecompileEvents, SysStateEvent, SyscallEvent, TableGrowEvent, TableInitEvent,
     },
@@ -66,6 +66,10 @@ pub struct ExecutionRecord {
     /// A trace of the constant events.
     pub const_events: Vec<ConstEvent>,
     pub params_check_events: Vec<ParamsCheckEvent>,
+    // A trace for fuel events
+    pub fuel_events: Vec<FuelEvent>,
+    // A trace to check that consumed fuel is less than the fuel limit.
+    pub fuel_limit_leu_event: Option<AluEvent>,
     /// A trace of the constant events.
     pub call_events: Vec<CallEvent>,
     /// A trace of the Mul64 events.
@@ -298,6 +302,7 @@ impl MachineRecord for ExecutionRecord {
         stats.insert("call_events".to_string(), self.call_events.len());
         stats.insert("i64_events".to_string(), self.i64_events.len());
         stats.insert("local_events".to_string(), self.local_events.len());
+        stats.insert("fuel_events".to_string(), self.fuel_events.len());
 
         for (syscall_code, events) in self.precompile_events.iter() {
             stats.insert(format!("syscall {syscall_code:?}"), events.len());
@@ -341,6 +346,7 @@ impl MachineRecord for ExecutionRecord {
         self.syscall_events.append(&mut other.syscall_events);
         self.precompile_events.append(&mut other.precompile_events);
         self.local_events.append(&mut other.local_events);
+        self.fuel_events.append(&mut other.fuel_events);
 
         if self.byte_lookups.is_empty() {
             self.byte_lookups = std::mem::take(&mut other.byte_lookups);

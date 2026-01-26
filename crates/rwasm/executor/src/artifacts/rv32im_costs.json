@@ -53,5 +53,6 @@
   "AddMul64": 166,
   "Local": 137,
   "Const": 137,
-  "ParamsCheck": 137
+  "ParamsCheck": 137,
+  "Fuel": 137
 }

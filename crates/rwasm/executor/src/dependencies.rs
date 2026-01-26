@@ -137,3 +137,26 @@ pub fn emit_branch_dependencies(executor: &mut Executor, event: BranchEvent) {
         }
     }
 }
+
+pub fn emit_fuel_dependencies(executor: &mut Executor) {
+    let consumed_fuel = executor.store.fuel_consumed();
+    let fuel_limit = u64::MAX;
+
+    let (b, c) = if consumed_fuel >> 32 == fuel_limit >> 32 {
+        (consumed_fuel as u32, fuel_limit as u32)
+    } else {
+        ((consumed_fuel >> 32) as u32, (fuel_limit >> 32) as u32)
+    };
+
+    let leu_event = AluEvent {
+        pc: UNUSED_PC,
+        sp: 0,
+        opcode: Opcode::I32LeU,
+        a: 1,
+        b,
+        c,
+        code: Opcode::I32LeU.code(),
+    };
+
+    executor.record.fuel_limit_leu_event = Some(leu_event);
+}

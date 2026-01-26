@@ -1,10 +1,10 @@
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
 use crate::{
-    dependencies::{emit_branch_dependencies, emit_memory_dependencies},
+    dependencies::{emit_branch_dependencies, emit_fuel_dependencies, emit_memory_dependencies},
     estimator::RecordEstimator,
     events::{
-        CallEvent, ConstEvent, ExtendEvent, I64AluEvent, LocalEvent, ParamsCheckEvent,
+        CallEvent, ConstEvent, ExtendEvent, FuelEvent, I64AluEvent, LocalEvent, ParamsCheckEvent,
         SyscallEvent, TableGrowEvent, TableInitEvent,
     },
 };
@@ -19,8 +19,9 @@ use hashbrown::HashMap;
 
 use rwasm::{
     mem::{MemoryLocalEvent, MemoryRecordEnum},
-    CallStack, CallStateExtension, DataOpEvent, I64AluStateExtension, InstrStateExtension,
-    InstructionPtr, Opcode, RwasmExecutor, RwasmStore, TrapCode, ValueStack, ValueStackPtr,
+    CallStack, CallStateExtension, DataOpEvent, FuelConfig, I64AluStateExtension,
+    InstrStateExtension, InstructionPtr, Opcode, RwasmExecutor, RwasmStore, TrapCode, ValueStack,
+    ValueStackPtr,
 };
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
@@ -355,7 +356,9 @@ impl<'a> Executor<'a> {
         let costs: HashMap<RwasmAirId, usize> =
             costs.into_iter().map(|(k, v)| (RwasmAirId::from_str(&k).unwrap(), v)).collect();
 
-        let store = RwasmStore::default();
+        let mut store = RwasmStore::default();
+
+        store = store.with_fuel_config(FuelConfig { fuel_limit: context.fuel_limit });
 
         Self {
             record: Box::new(record),
@@ -768,6 +771,9 @@ impl<'a> Executor<'a> {
             _ if opcode.is_local_instruction() => {
                 self.emit_local_event(sp, clk, opcode, arg1, state_extension)
             }
+            _ if opcode.is_fuel_instruction() => {
+                self.emit_fuel_event(sp, opcode, arg1);
+            }
             _ => println!("no event :ins:{:?},", opcode),
         }
     }
@@ -989,6 +995,21 @@ impl<'a> Executor<'a> {
             }
             _ => unreachable!(),
         }
+    }
+
+    #[inline]
+    fn emit_fuel_event(&mut self, sp: u32, opcode: Opcode, arg1: u32) {
+        let event = FuelEvent {
+            pc: self.state.pc,
+            sp,
+            opcode,
+            arg1,
+            fuel_consumed: self.store.fuel_consumed(),
+        };
+
+        emit_fuel_dependencies(self);
+
+        self.record.fuel_events.push(event);
     }
 
     #[inline]
@@ -1662,6 +1683,13 @@ impl<'a> Executor<'a> {
 
         self.record.dataop_events.extend_from_slice(&self.store.tracer.data_op_logs);
 
+        if let Some(event) = self.record.fuel_limit_leu_event {
+            self.record.lt_events.push(event);
+        }
+
+        self.record.public_values.fuel_limit =
+            [self.store.fuel_limit() as u32, (self.store.fuel_limit() >> 32) as u32];
+
         // Get the final public values.
         let public_values = self.record.public_values;
         self.state.update_state(&self.store);
@@ -1693,6 +1721,7 @@ impl<'a> Executor<'a> {
         // Set the global public values for all shards.
         let mut last_next_pc = 0;
         let mut last_exit_code = 0;
+
         for (i, record) in self.records.iter_mut().enumerate() {
             record.program = program.clone();
             record.public_values = public_values;

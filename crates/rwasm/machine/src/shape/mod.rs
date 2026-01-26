@@ -655,6 +655,9 @@ fn derive_cluster_from_maximal_shape(shape: &Shape<RwasmAirId>) -> ShapeCluster<
     let params_check_log_height = shape.log2_height(&RwasmAirId::ParamsCheck);
     maybe_log2_heights.insert(RwasmAirId::ParamsCheck, heuristic(params_check_log_height, 1));
 
+    let fuel_log_height = shape.log2_height(&RwasmAirId::Fuel);
+    maybe_log2_heights.insert(RwasmAirId::Fuel, heuristic(fuel_log_height, 0));
+
     assert!(maybe_log2_heights.len() >= shape.len(), "not all chips were included in the shape");
 
     ShapeCluster::new(maybe_log2_heights)

@@ -151,6 +151,8 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                     "start_pc != next_pc: start_pc should equal next_pc for non-cpu shards",
                 ));
             }
+            //TODO: add fuel limit check
+
             // else
             //  if shard_proof.contains_cpu() && public_values.start_pc == BabyBear::zero() {
             //     return Err(MachineVerificationError::InvalidPublicValues(

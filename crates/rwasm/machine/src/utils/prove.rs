@@ -248,6 +248,7 @@ where
                                     record.public_values.committed_value_digest;
                                 state.deferred_proofs_digest =
                                     record.public_values.deferred_proofs_digest;
+                                state.fuel_limit = record.public_values.fuel_limit;
                                 record.public_values = *state;
                             }
 
@@ -293,6 +294,8 @@ where
                                     state.last_finalize_addr_bits =
                                         record.public_values.last_finalize_addr_bits;
                                     state.start_pc = state.next_pc;
+                                    state.fuel_limit = record.public_values.fuel_limit;
+
                                     record.public_values = *state;
                                 }
 
@@ -353,6 +356,8 @@ where
                                     state.last_finalize_addr_bits =
                                         record.public_values.last_finalize_addr_bits;
                                     state.start_pc = state.next_pc;
+                                    state.fuel_limit = record.public_values.fuel_limit;
+
                                     record.public_values = *state;
                                 }
                                 records.append(&mut deferred);

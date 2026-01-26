@@ -172,6 +172,9 @@ pub enum RwasmAirId {
 
     #[subenum(CoreAirId)]
     ParamsCheck = 54,
+
+    #[subenum(CoreAirId)]
+    Fuel = 55,
 }
 
 impl RwasmAirId {
@@ -204,6 +207,7 @@ impl RwasmAirId {
             RwasmAirId::TableGrow,
             RwasmAirId::TableInit,
             RwasmAirId::ParamsCheck,
+            RwasmAirId::Fuel,
         ]
     }
 

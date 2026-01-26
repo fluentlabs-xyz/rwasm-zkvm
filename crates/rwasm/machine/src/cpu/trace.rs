@@ -139,10 +139,12 @@ impl CpuChip {
 
         cols.instruction.populate(instruction);
 
+        let is_call_instruction = matches!(instruction, Opcode::Call(_));
+
         cols.is_memory = F::from_bool(
             instruction.is_memory_load_instruction() || instruction.is_memory_store_instruction(),
         );
-        cols.is_syscall = F::from_bool(instruction.is_ecall_instruction());
+        cols.is_syscall = F::from_bool(is_call_instruction);
 
         let is_complex_opcode = instruction.is_64b_op() ||
             instruction.is_local_instruction() ||
@@ -154,7 +156,7 @@ impl CpuChip {
 
         cols.shard_to_send = if instruction.is_memory_load_instruction() ||
             instruction.is_memory_store_instruction() ||
-            instruction.is_ecall_instruction() ||
+            is_call_instruction ||
             instruction.is_call_instruction() ||
             is_complex_opcode
         {
@@ -165,7 +167,7 @@ impl CpuChip {
 
         cols.clk_to_send = if instruction.is_memory_load_instruction() ||
             instruction.is_memory_store_instruction() ||
-            instruction.is_ecall_instruction() ||
+            is_call_instruction ||
             instruction.is_call_instruction() ||
             is_complex_opcode
         {
