@@ -7,6 +7,7 @@ use rwasm::{
     N_MAX_TABLES, N_MAX_TABLE_SIZE,
 };
 use sp1_derive::AlignedBorrow;
+use sp1_stark::Word;
 
 use crate::memory::{MemoryReadCols, MemoryWriteCols};
 
@@ -19,13 +20,13 @@ pub const fn num_table_cols() -> usize {
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
 pub struct TableInitCols<T> {
-    pub sp: StackAddressCols<T>,
+    pub pc: T,
+    pub sp: T,
     pub shard: T,
     pub clk: T,
     pub table_idx: TableIdxCols<T>,
-    pub src_access: MemoryReadCols<T>,
     pub dst_access: MemoryReadCols<T>,
-    pub length_access: MemoryReadCols<T>,
+    pub src: Word<T>,
     pub length: LengthCols<T>,
     pub src_read_access: MemoryReadCols<T>,
     pub dst_write_access: MemoryWriteCols<T>,

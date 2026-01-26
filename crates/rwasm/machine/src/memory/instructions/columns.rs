@@ -3,7 +3,7 @@ use sp1_stark::Word;
 use std::mem::size_of;
 
 use crate::{
-    memory::MemoryReadWriteCols,
+    memory::{GlobalMemoryCol, MemoryReadWriteCols},
     operations::{BabyBearWordRangeChecker, IsZeroOperation},
 };
 
@@ -16,17 +16,19 @@ pub struct MemoryInstructionsColumns<T> {
     /// The program counter of the instruction.
     pub pc: T,
 
+    pub sp: T,
+
     /// The shard number.
     pub shard: T,
     /// The clock cycle number.
     pub clk: T,
 
     /// The value of the first operand.
-    pub res: Word<T>,
+    pub value: Word<T>,
     /// The value of the second operand.
-    pub raw_addr: Word<T>,
+    pub raw_addr: GlobalMemoryCol<T>,
     /// The value of the third operand.
-    pub instr_offset: Word<T>,
+    pub instr_offset: GlobalMemoryCol<T>,
 
     pub is_i32load: T,
     pub is_i32load16s: T,
@@ -37,7 +39,7 @@ pub struct MemoryInstructionsColumns<T> {
     pub is_i32store16: T,
     pub is_i32store8: T,
 
-    pub memory_addr: Word<T>,
+    pub memory_addr: GlobalMemoryCol<T>,
     /// The relationships among addr_word, addr_aligned, and addr_offset is as follows:
     /// addr_aligned = addr_word - addr_offset
     /// addr_offset = addr_word % 4
@@ -46,9 +48,6 @@ pub struct MemoryInstructionsColumns<T> {
 
     /// The aligned address.
     pub addr_aligned: T,
-
-    /// The aligned high address.
-    pub addr_aligned_hi: T,
 
     pub is_multi_aligned_load: T,
     pub is_multi_aligned_store: T,
@@ -86,4 +85,6 @@ pub struct MemoryInstructionsColumns<T> {
     /// This is used to check if the most significant three bytes of the memory address are all
     /// zero.
     pub most_sig_bytes_zero: IsZeroOperation<T>,
+
+    pub mem_value_is_neg: T,
 }

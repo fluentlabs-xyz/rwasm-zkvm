@@ -656,6 +656,7 @@ impl<SC: StarkGenericConfig> MachineVerificationError<SC> {
             VerificationError::OodEvaluationMismatch(chip_name),
         ) = self
         {
+            println!("{} {}", chip_name, expected_chip_name);
             return chip_name == expected_chip_name;
         }
 

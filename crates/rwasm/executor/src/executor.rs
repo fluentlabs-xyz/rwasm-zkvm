@@ -1,10 +1,12 @@
 #[cfg(feature = "profiling")]
 use crate::profiler::Profiler;
 use crate::{
-    dependencies::{emit_branch_dependencies, emit_fuel_dependencies, emit_memory_dependencies},
+    dependencies::{emit_branch_dependencies, emit_memory_dependencies},
     estimator::RecordEstimator,
-    events::{CallEvent, ConstEvent, FuelEvent, I64AluEvent, PrecompileEvent, SyscallEvent},
-    syscalls::func_id_to_syscall_code,
+    events::{
+        CallEvent, ConstEvent, ExtendEvent, I64AluEvent, LocalEvent, ParamsCheckEvent,
+        SyscallEvent, TableGrowEvent, TableInitEvent,
+    },
 };
 #[cfg(feature = "profiling")]
 use std::{fs::File, io::BufWriter};
@@ -13,17 +15,13 @@ use std::{str::FromStr, sync::Arc};
 use clap::ValueEnum;
 use enum_map::EnumMap;
 use fluentbase_runtime::RuntimeContext;
-use fluentbase_types::import_linker_v1_preview;
 use hashbrown::HashMap;
 
 use rwasm::{
-    event::FatOpEvent,
     mem::{MemoryLocalEvent, MemoryRecordEnum},
-    CallStack, DataOpEvent, FuelConfig, InstructionPtr, Opcode, RwasmExecutor, RwasmStore,
-    TraceCallData, TrapCode, ValueStack, ValueStackPtr,
+    CallStack, CallStateExtension, DataOpEvent, I64AluStateExtension, InstrStateExtension,
+    InstructionPtr, Opcode, RwasmExecutor, RwasmStore, TrapCode, ValueStack, ValueStackPtr,
 };
-
-use fluentbase_runtime::syscall_handler::runtime_syscall_handler;
 use serde::{Deserialize, Serialize};
 use sp1_primitives::consts::BABYBEAR_PRIME;
 use sp1_stark::{air::PublicValues, SP1CoreOpts};
@@ -92,7 +90,7 @@ pub struct RwasmExecutorState {
     pub ip: InstructionPtr,
 }
 
-/// An executor for the SP1 Rwasm zkVM.
+/// An executor for the SP1 RISC-V zkVM.
 ///
 /// The exeuctor is responsible for executing a user program and tracing important events which
 /// occur during execution (i.e., memory reads, alu operations, etc).
@@ -356,14 +354,8 @@ impl<'a> Executor<'a> {
             serde_json::from_str(include_str!("./artifacts/rv32im_costs.json")).unwrap();
         let costs: HashMap<RwasmAirId, usize> =
             costs.into_iter().map(|(k, v)| (RwasmAirId::from_str(&k).unwrap(), v)).collect();
-        let ctx = RuntimeContext::default();
-        let limit = ctx.fuel_limit;
-        let store = RwasmStore::new(
-            import_linker_v1_preview(),
-            ctx,
-            runtime_syscall_handler,
-            FuelConfig::default().with_fuel_limit(500000),
-        );
+
+        let store = RwasmStore::default();
 
         Self {
             record: Box::new(record),
@@ -715,125 +707,68 @@ impl<'a> Executor<'a> {
         next_pc: u32,
         sp: u32,
         next_sp: u32,
-        call_sp: u32,
-        next_call_sp: u32,
         opcode: Opcode,
-        syscall_code: SyscallCode,
-        arg1: u32,
-        arg2: u32,
-        res: u32,
-        res_hi: u32,
         record: MemoryAccessRecord,
-        call_data: Option<TraceCallData>,
-        fat_op: Option<FatOpEvent>,
+        state_extension: Option<InstrStateExtension>,
         dataop_event: Option<DataOpEvent>,
     ) {
-        if opcode.is_memory_instruction() {
-            self.emit_cpu(
-                clk,
-                pc,
-                next_pc,
-                sp,
-                next_sp,
-                call_sp,
-                next_call_sp,
-                arg1,
-                opcode.aux_value(),
-                arg2,
-                res_hi,
-                record,
-                0u32,
-                call_data.clone(),
-            );
-        } else {
-            self.emit_cpu(
-                clk,
-                pc,
-                next_pc,
-                sp,
-                next_sp,
-                call_sp,
-                next_call_sp,
-                arg1,
-                arg2,
-                res,
-                res_hi,
-                record,
-                0u32,
-                call_data.clone(),
-            );
-        }
+        let arg1 = record.arg1_record.map(|arg1| arg1.value()).unwrap_or(0);
+        let arg2 = record.arg2_record.map(|arg2| arg2.value()).unwrap_or(0);
+        let res = record.res_record.map(|res| res.value()).unwrap_or(0);
 
-        if opcode.is_alu_instruction() {
-            self.emit_alu_event(pc, opcode, arg1, arg2, res);
-        } else if opcode.is_memory_load_instruction() || opcode.is_memory_store_instruction() {
-            self.emit_mem_instr_event(opcode, arg1, arg2, res, record);
-        } else if opcode.is_branch_instruction() {
-            self.emit_branch_event(opcode, arg1, arg2, res, next_pc);
-        } else if opcode.is_ecall_instruction() {
-            let syscall_code = match opcode {
-                Opcode::TableInit(_) => SyscallCode::TABLE_INIT,
-                Opcode::TableGrow(_) => SyscallCode::TABLE_GROW,
-                Opcode::Call(sys_funcid) => func_id_to_syscall_code(sys_funcid),
-                _ => syscall_code,
-            };
-            self.emit_syscall_event(
+        self.emit_cpu(clk, pc, next_pc, sp, next_sp, arg1, arg2, res, record, 0u32);
+
+        match opcode {
+            Opcode::TableInit(_) | Opcode::TableGrow(_) => self.emit_table_event(
+                sp,
                 clk,
-                record.arg1_record,
-                syscall_code,
+                opcode,
+                res,
                 arg1,
                 arg2,
-                next_pc,
-                fat_op,
-            );
-        } else if opcode.is_const_instruction() {
-            self.emit_const_event(opcode);
-        } else if opcode.is_state_instrucition() {
-        } else if opcode.is_call_instruction() {
-            let call_sp_record = record.call_sp_access;
-            match call_data {
-                Some(call_data) => {
-                    self.emit_call_event(
-                        clk,
-                        pc,
-                        next_pc,
-                        opcode,
-                        call_sp,
-                        next_call_sp,
-                        call_data.signature_id,
-                        call_data.func_ref,
-                        call_data.table_id,
-                        call_data.table_idx,
-                        call_sp_record,
-                        call_data.table_access.map(MemoryRecordEnum::Read),
-                        dataop_event,
-                    );
-                }
-                None => {
-                    self.emit_call_event(
-                        clk,
-                        pc,
-                        next_pc,
-                        opcode,
-                        call_sp,
-                        next_call_sp,
-                        0,
-                        opcode.aux_value(),
-                        0,
-                        0,
-                        call_sp_record,
-                        None,
-                        None,
-                    );
-                }
+                state_extension.expect("table instructions contain state_extension"),
+            ),
+            Opcode::SignatureCheck(_) => self.emit_params_check_event(
+                sp,
+                clk,
+                opcode,
+                state_extension.expect("SignatureCheck contain state_extension"),
+            ),
+            Opcode::Drop | Opcode::I32Const(_) => self.emit_const_event(sp, opcode),
+
+            _ if opcode.is_alu_instruction() => {
+                self.emit_alu_event(pc, sp, opcode, arg1, arg2, res)
             }
-        } else if opcode.is_64b_op() {
-            self.emit_i64_event(clk, pc, next_pc, opcode, res, res_hi, arg1, arg2, record);
-        } else if matches!(opcode, Opcode::ConsumeFuel(_) | Opcode::ConsumeFuelStack) {
-            // Fuel consumption opcodes do not emit any events.
-            self.emit_fuel_event(clk, pc, next_pc, opcode, record);
-        } else {
-            println!("Unimplemented opcode in emit_events: {:?}", opcode);
+            _ if opcode.is_memory_load_instruction() || opcode.is_memory_store_instruction() => {
+                self.emit_mem_instr_event(opcode, sp, arg1, arg2, res, record, state_extension)
+            }
+            _ if opcode.is_branch_instruction() => {
+                self.emit_branch_event(opcode, sp, arg1, arg2, res, next_pc)
+            }
+            _ if opcode.is_call_instruction() => {
+                let func_index = match opcode {
+                    Opcode::CallIndirect(_) => Some(
+                        record
+                            .arg1_record
+                            .expect("CallIndirect takes func_index from stack")
+                            .value(),
+                    ),
+                    Opcode::CallInternal(func_index) => Some(func_index),
+                    _ => None,
+                };
+
+                self.emit_call_event(clk, pc, next_pc, opcode, sp, func_index, state_extension);
+            }
+            _ if opcode.is_64b_op() => {
+                self.emit_i64_event(clk, pc, sp, next_pc, opcode, res, arg1, arg2, state_extension)
+            }
+            _ if opcode.is_extend_instruction() => {
+                self.emit_extend_event(pc, sp, opcode, arg1, arg2, res)
+            }
+            _ if opcode.is_local_instruction() => {
+                self.emit_local_event(sp, clk, opcode, arg1, state_extension)
+            }
+            _ => println!("no event :ins:{:?},", opcode),
         }
     }
 
@@ -847,15 +782,11 @@ impl<'a> Executor<'a> {
         next_pc: u32,
         sp: u32,
         next_sp: u32,
-        call_sp: u32,
-        next_call_sp: u32,
         arg1: u32,
         arg2: u32,
         res: u32,
-        res_hi: u32,
         record: MemoryAccessRecord,
         exit_code: u32,
-        call_data: Option<TraceCallData>,
     ) {
         self.record.cpu_events.push(CpuEvent {
             clk,
@@ -863,29 +794,17 @@ impl<'a> Executor<'a> {
             next_pc,
             sp,
             next_sp,
-            call_sp,
-            next_call_sp,
-            res,
             res_record: record.res_record,
-            res_addr: record.res_addr,
-            res_hi,
-            res_hi_record: record.res_hi_record,
-            res_hi_addr: record.res_hi_addr,
-            arg1,
             arg1_record: record.arg1_record,
-            arg1_addr: record.arg1_addr,
-            arg2,
             arg2_record: record.arg2_record,
-            arg2_addr: record.arg2_addr,
             exit_code,
-            call_data,
         });
     }
 
     /// Emit an ALU event.
     #[allow(clippy::too_many_lines)]
-    fn emit_alu_event(&mut self, pc: u32, opcode: Opcode, arg1: u32, arg2: u32, res: u32) {
-        let event = AluEvent { pc, opcode, a: res, b: arg1, c: arg2, code: opcode.code() };
+    fn emit_alu_event(&mut self, pc: u32, sp: u32, opcode: Opcode, arg1: u32, arg2: u32, res: u32) {
+        let event = AluEvent { pc, sp, opcode, a: res, b: arg1, c: arg2, code: opcode.code() };
         match opcode {
             Opcode::I32Add => {
                 self.record.add_events.push(event);
@@ -913,92 +832,7 @@ impl<'a> Executor<'a> {
             Opcode::I32Eq |
             Opcode::I32Eqz |
             Opcode::I32Ne => {
-                let use_signed_comparison = matches!(
-                    opcode,
-                    Opcode::I32GeS | Opcode::I32GtS | Opcode::I32LeS | Opcode::I32LtS
-                );
-
-                let (lt_res, gt_res, cmp_opcode) = {
-                    if use_signed_comparison {
-                        (
-                            ((event.b as i32) < (event.c as i32)) as u32,
-                            ((event.b as i32) > (event.c as i32)) as u32,
-                            Opcode::I32LtS,
-                        )
-                    } else {
-                        ((event.b < event.c) as u32, (event.b > event.c) as u32, Opcode::I32LtU)
-                    }
-                };
-
-                let make_lt = |a, b, c| AluEvent {
-                    pc: UNUSED_PC,
-                    opcode: cmp_opcode,
-                    a,
-                    b,
-                    c,
-                    code: cmp_opcode.code(),
-                };
-
-                let lt_comp_event = make_lt(lt_res, event.b, event.c);
-                let gt_comp_event = make_lt(gt_res, event.c, event.b);
-
-                let ev_eqz = AluEvent {
-                    pc: UNUSED_PC,
-                    opcode: Opcode::I32LtU,
-                    a: u32::from(event.b == 0),
-                    b: event.b,
-                    c: 1,
-                    code: Opcode::I32LtU.code(),
-                };
-
-                match opcode {
-                    // Opcodes that only need a "less than" check.
-                    Opcode::I32LtS | Opcode::I32LtU => {
-                        self.record.lt_events.push(lt_comp_event);
-                    }
-                    // b > c is equivalent to c < b
-                    Opcode::I32GtS | Opcode::I32GtU => {
-                        self.record.lt_events.push(gt_comp_event);
-                    }
-                    // b >= c is equivalent to !(b < c)
-                    Opcode::I32GeS | Opcode::I32GeU => {
-                        self.record.lt_events.push(lt_comp_event);
-                    }
-                    // b <= c is equivalent to !(c < b)
-                    Opcode::I32LeS | Opcode::I32LeU => {
-                        self.record.lt_events.push(gt_comp_event);
-                    }
-                    // EQZ(x): CPU AIR expects two LtU checks:
-                    // 1. LtU(x, 0) -> always false (0)
-                    // 2. LtU(0, x) -> true if x > 0 (i.e. x != 0)
-                    Opcode::I32Eqz => {
-                        self.record.lt_events.push(AluEvent {
-                            pc: UNUSED_PC,
-                            opcode: Opcode::I32LtU,
-                            a: 0, // x < 0 is always false for unsigned
-                            b: event.b,
-                            c: 0,
-                            code: Opcode::I32LtU.code(),
-                        });
-                        self.record.lt_events.push(AluEvent {
-                            pc: UNUSED_PC,
-                            opcode: Opcode::I32LtU,
-                            a: u32::from(event.b != 0), // 0 < x is true if x != 0
-                            b: 0,
-                            c: event.b,
-                            code: Opcode::I32LtU.code(),
-                        });
-                    }
-
-                    // EQ(b,c) / NE(b,c): CPU AIR expects two LtU checks:
-                    // 1. LtU(b, c)
-                    // 2. LtU(c, b)
-                    Opcode::I32Eq | Opcode::I32Ne => {
-                        self.record.lt_events.push(lt_comp_event);
-                        self.record.lt_events.push(gt_comp_event);
-                    }
-                    _ => unreachable!(),
-                }
+                self.record.lt_events.push(event);
             }
             Opcode::I32Ctz | Opcode::I32Clz | Opcode::I32Popcnt => {
                 self.record.trailing_events.push(event);
@@ -1008,53 +842,178 @@ impl<'a> Executor<'a> {
             }
             Opcode::I32DivS | Opcode::I32DivU | Opcode::I32RemS | Opcode::I32RemU => {
                 self.record.divrem_events.push(event);
-                //emit_divrem_dependencies(self, event);
             }
             Opcode::I32Rotl | Opcode::I32Rotr => {
                 self.record.rotate_events.push(event);
-            }
-            Opcode::I32Extend8S | Opcode::I32Extend16S => {
-                self.record.extend_events.push(event);
             }
             _ => unreachable!(),
         }
     }
 
-    // Emit a memory opcode event.
-    #[inline]
-    fn emit_mem_instr_event(
+    fn emit_extend_event(
         &mut self,
+        pc: u32,
+        sp: u32,
         opcode: Opcode,
         arg1: u32,
         arg2: u32,
         res: u32,
-        record: MemoryAccessRecord,
     ) {
-        println!("record in emit:{:?}", record.memory.expect("Must have memory access"));
+        let event = ExtendEvent { pc, sp, opcode, a: res, b: arg1, c: arg2, code: opcode.code() };
+        self.record.extend_events.push(event);
+    }
+
+    // Emit a memory opcode event.
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    fn emit_mem_instr_event(
+        &mut self,
+        opcode: Opcode,
+        sp: u32,
+        arg1: u32,
+        arg2: u32,
+        res: u32,
+        record: MemoryAccessRecord,
+        state_extension: Option<InstrStateExtension>,
+    ) {
+        let (mem_access_hi, mem_access) = match state_extension {
+            Some(InstrStateExtension::Memory(extension)) => {
+                (extension.upper_record, extension.low_record)
+            }
+            _ => unreachable!("mem operation should contain Store state extension"),
+        };
+
         let event = MemInstrEvent {
             shard: self.shard(),
             clk: self.state.clk,
             pc: self.state.pc,
+            sp,
             opcode,
-            raw_addr: arg1,
-            offset: opcode.aux_value(),
+            arg1,
+            arg2,
             res,
-            mem_access: record.memory.expect("Must have memory access"),
-            mem_access_hi: record.memory_hi,
+            mem_access,
+            mem_access_hi,
         };
-        println!("mem event:{:?}", event);
         self.record.memory_instr_events.push(event);
         emit_memory_dependencies(self, event);
     }
 
     // Emit a branch event.
     #[inline]
-    fn emit_branch_event(&mut self, opcode: Opcode, arg1: u32, arg2: u32, res: u32, next_pc: u32) {
-        let event = BranchEvent { pc: self.state.pc, next_pc, opcode, res, arg1, arg2 };
-        println!("br event:{:?}", event);
+    fn emit_branch_event(
+        &mut self,
+        opcode: Opcode,
+        sp: u32,
+        arg1: u32,
+        arg2: u32,
+        res: u32,
+        next_pc: u32,
+    ) {
+        let event = BranchEvent { pc: self.state.pc, next_pc, sp, opcode, res, arg1, arg2 };
         self.record.branch_events.push(event);
 
         emit_branch_dependencies(self, event);
+    }
+
+    #[inline]
+    fn emit_local_event(
+        &mut self,
+        sp: u32,
+        clk: u32,
+        opcode: Opcode,
+        arg1: u32,
+        state_extension: Option<InstrStateExtension>,
+    ) {
+        let depth_access = match state_extension {
+            Some(InstrStateExtension::Local(extension)) => extension.local_depth_access,
+            _ => unreachable!("mem operation should contain Store state extension"),
+        };
+
+        let event = LocalEvent {
+            pc: self.state.pc,
+            sp,
+            arg1,
+            clk,
+            shard: self.shard(),
+            opcode,
+            depth_access,
+        };
+        self.record.local_events.push(event);
+    }
+
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    fn emit_table_event(
+        &mut self,
+        sp: u32,
+        clk: u32,
+        opcode: Opcode,
+        res: u32,
+        arg1: u32,
+        arg2: u32,
+        state_extension: InstrStateExtension,
+    ) {
+        match state_extension {
+            InstrStateExtension::TableInit(state_extension) => {
+                let event = TableInitEvent {
+                    pc: self.state.pc,
+                    clk,
+                    shard: self.shard(),
+                    sp,
+                    s: arg1,
+                    n: arg2,
+                    opcode,
+                    table_idx: state_extension.table_idx,
+                    dst_index_record: state_extension.dst_index_record,
+                    memory_read_records: state_extension.src_read_records,
+                    memory_write_records: state_extension.dst_write_records,
+                };
+                self.record.table_init_events.push(event);
+            }
+            InstrStateExtension::TableGrow(state_extension) => {
+                let event = TableGrowEvent {
+                    pc: self.state.pc,
+                    clk,
+                    shard: self.shard(),
+                    sp,
+                    res,
+                    init: arg1,
+                    delta: arg2,
+                    opcode,
+                    dst_write_records: state_extension.dst_write_records,
+                    table_size_read_record: state_extension.table_size_read_record,
+                    table_size_write_record: state_extension.table_size_write_record,
+                };
+                self.record.table_grow_events.push(event);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    fn emit_params_check_event(
+        &mut self,
+        sp: u32,
+        clk: u32,
+        opcode: Opcode,
+        state_extension: InstrStateExtension,
+    ) {
+        match state_extension {
+            InstrStateExtension::SignatureCheck(state_extension) => {
+                let event = ParamsCheckEvent {
+                    shard: self.shard(),
+                    clk,
+                    pc: self.state.pc,
+                    sp,
+                    opcode,
+                    params_read_record: state_extension.last_signature_check_read,
+                };
+                self.record.params_check_events.push(event);
+            }
+            _ => unreachable!(),
+        }
     }
 
     // /// Emit an AUIPC event.
@@ -1105,209 +1064,102 @@ impl<'a> Executor<'a> {
         }
     }
 
-    /// Emit a syscall event.
-    #[allow(clippy::too_many_arguments)]
-    fn emit_syscall_event(
-        &mut self,
-        clk: u32,
-        a_record: Option<MemoryRecordEnum>,
-        syscall_code: SyscallCode,
-        arg1: u32,
-        arg2: u32,
-        next_pc: u32,
-        fat_op: Option<FatOpEvent>,
-    ) {
-        let syscall_event =
-            self.syscall_event(clk, a_record, Some(true), syscall_code, arg1, arg2, next_pc);
-
-        self.record.syscall_events.push(syscall_event);
-        println!("eventcode: {:?}", syscall_code);
-        match syscall_code {
-            SyscallCode::HALT => todo!(),
-            SyscallCode::WRITE => todo!(),
-            SyscallCode::ENTER_UNCONSTRAINED => todo!(),
-            SyscallCode::EXIT_UNCONSTRAINED => todo!(),
-            SyscallCode::SHA_EXTEND => todo!(),
-            SyscallCode::SHA_COMPRESS => todo!(),
-            SyscallCode::ED_ADD => todo!(),
-            SyscallCode::ED_DECOMPRESS => todo!(),
-            SyscallCode::KECCAK_PERMUTE => todo!(),
-            SyscallCode::SECP256K1_ADD => todo!(),
-            SyscallCode::SECP256K1_DOUBLE => todo!(),
-            SyscallCode::SECP256K1_DECOMPRESS => todo!(),
-            SyscallCode::BN254_ADD => todo!(),
-            SyscallCode::BN254_DOUBLE => todo!(),
-            SyscallCode::COMMIT => todo!(),
-            SyscallCode::COMMIT_DEFERRED_PROOFS => todo!(),
-            SyscallCode::VERIFY_SP1_PROOF => todo!(),
-            SyscallCode::BLS12381_DECOMPRESS => todo!(),
-            SyscallCode::HINT_LEN => todo!(),
-            SyscallCode::HINT_READ => todo!(),
-            SyscallCode::UINT256_MUL => todo!(),
-            SyscallCode::U256XU2048_MUL => todo!(),
-            SyscallCode::BLS12381_ADD => todo!(),
-            SyscallCode::BLS12381_DOUBLE => todo!(),
-            SyscallCode::BLS12381_FP_ADD => todo!(),
-            SyscallCode::BLS12381_FP_SUB => todo!(),
-            SyscallCode::BLS12381_FP_MUL => todo!(),
-            SyscallCode::BLS12381_FP2_ADD => todo!(),
-            SyscallCode::BLS12381_FP2_SUB => todo!(),
-            SyscallCode::BLS12381_FP2_MUL => todo!(),
-            SyscallCode::BN254_FP_ADD => todo!(),
-            SyscallCode::BN254_FP_SUB => todo!(),
-            SyscallCode::BN254_FP_MUL => todo!(),
-            SyscallCode::BN254_FP2_ADD => todo!(),
-            SyscallCode::BN254_FP2_SUB => todo!(),
-            SyscallCode::BN254_FP2_MUL => todo!(),
-            SyscallCode::SECP256R1_ADD => todo!(),
-            SyscallCode::SECP256R1_DOUBLE => todo!(),
-            SyscallCode::SECP256R1_DECOMPRESS => todo!(),
-            SyscallCode::TABLE_INIT => match fat_op.unwrap() {
-                FatOpEvent::TableInit(table_init_event) => self.record.precompile_events.add_event(
-                    SyscallCode::TABLE_INIT,
-                    syscall_event,
-                    PrecompileEvent::TableInit(table_init_event),
-                ),
-                _ => {
-                    unreachable!();
-                }
-            },
-            SyscallCode::TABLE_GROW => match fat_op.unwrap() {
-                FatOpEvent::TableGrow(table_grow_event) => self.record.precompile_events.add_event(
-                    SyscallCode::TABLE_GROW,
-                    syscall_event,
-                    PrecompileEvent::TableGrow(table_grow_event),
-                ),
-                _ => {
-                    unreachable!();
-                }
-            },
-            SyscallCode::FUEL => (),
-        }
-    }
-
     // Emit a branch event.
     #[inline]
-    fn emit_const_event(&mut self, opcode: Opcode) {
-        let event = ConstEvent { pc: self.state.pc, opcode, value: opcode.aux_value() };
+    fn emit_const_event(&mut self, sp: u32, opcode: Opcode) {
+        let event = ConstEvent { pc: self.state.pc, sp, opcode };
         self.record.const_events.push(event);
     }
     #[allow(clippy::too_many_arguments)]
     #[inline]
     fn emit_call_event(
         &mut self,
-
         clk: u32,
         pc: u32,
         next_pc: u32,
         opcode: Opcode,
-        call_sp: u32,
-        next_call_sp: u32,
-        signature_id: u32,
-        func_ref: u32,
-        table_id: u32,
-        table_idx: u32,
-        call_stack_access: Option<MemoryRecordEnum>,
-        table_access: Option<MemoryRecordEnum>,
-        dataop_event: Option<DataOpEvent>,
+        sp: u32,
+        func_index: Option<u32>,
+        state_extension: Option<InstrStateExtension>,
     ) {
-        let event = CallEvent {
-            shard: self.shard(),
-            clk,
-            pc,
-            next_pc,
-            opcode,
-            call_sp,
-            next_call_sp,
-            signature_id,
-            func_ref,
-            table_id,
-            table_idx,
-            call_stack_access,
-            table_access,
+        match state_extension {
+            Some(InstrStateExtension::Call(CallStateExtension {
+                table_idx,
+                table_size_read,
+                table_read,
+                call_stack_access,
+                call_stack_address,
+                signature_write,
+            })) => {
+                let event = CallEvent {
+                    shard: self.shard(),
+                    clk,
+                    pc,
+                    next_pc,
+                    opcode,
+                    sp,
+                    table_idx,
+                    func_index,
+                    call_stack_address,
+                    call_stack_access: Some(call_stack_access),
+                    table_access: table_read,
+                    signature_write_record: signature_write,
+                };
+                self.record.call_events.push(event);
+            }
+            _ => {
+                assert_eq!(opcode, Opcode::Return);
+
+                let event = CallEvent {
+                    shard: self.shard(),
+                    clk,
+                    pc,
+                    next_pc,
+                    opcode,
+                    sp,
+                    table_idx: 0,
+                    func_index,
+                    call_stack_address: 0,
+                    call_stack_access: None,
+                    table_access: None,
+                    signature_write_record: None,
+                };
+                self.record.call_events.push(event)
+            }
         };
-        self.record.call_events.push(event);
-        if let Some(event) = dataop_event {
-            self.record.dataop_events.push(event)
-        }
     }
 
     #[allow(clippy::too_many_arguments)]
     #[inline]
     fn emit_i64_event(
         &mut self,
-
         clk: u32,
         pc: u32,
+        sp: u32,
         next_pc: u32,
         opcode: Opcode,
-        res_lo: u32,
-        res_hi: u32,
+        res: u32,
         arg1: u32,
         arg2: u32,
-        memory_access: MemoryAccessRecord,
+        state_extension: Option<InstrStateExtension>,
     ) {
-        let event = I64AluEvent {
-            pc,
-            opcode,
-            a_lo: res_lo,
-            a_hi: res_hi,
-            b: arg1,
-            c: arg2,
-            code: opcode.code(),
-            res_hi_addr: memory_access.res_hi_addr.unwrap().to_virtual_addr(),
-            res_hi_access: memory_access.res_hi_record,
-        };
-        match opcode {
-            Opcode::I32Mul64 => self.record.mul64_events.push(event),
-            Opcode::I32Add64 => self.record.add64_events.push(event),
-            _ => {
-                unreachable!();
-            }
+        if let Some(InstrStateExtension::I64Alu(I64AluStateExtension { res_lo_write })) =
+            state_extension
+        {
+            let event = I64AluEvent {
+                clk,
+                shard: self.shard(),
+                pc,
+                sp,
+                opcode,
+                res_hi: res,
+                res_lo_write_record: res_lo_write,
+                b: arg1,
+                c: arg2,
+                code: opcode.code(),
+            };
+            self.record.i64_events.push(event);
         }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    #[inline]
-    fn emit_fuel_event(
-        &mut self,
-        clk: u32,
-        pc: u32,
-        next_pc: u32,
-        opcode: Opcode,
-        record: MemoryAccessRecord,
-    ) {
-        println!("fuel record in emit:{:?}", record);
-        let fuel_low = record.arg1_record.unwrap().value();
-        let fuel_high = record.arg1_hi_record.unwrap().value();
-        let fuel = ((fuel_high as u64) << 32) | (fuel_low as u64);
-        let next_fuel_low = record.res_record.unwrap().value();
-        let next_fuel_high = record.res_hi_record.unwrap().value();
-        let next_fuel = ((next_fuel_high as u64) << 32) | (next_fuel_low as u64);
-        let to_consume_fuel = match opcode {
-            Opcode::ConsumeFuel(consume_fuel) => consume_fuel,
-            Opcode::ConsumeFuelStack => record.arg2_record.unwrap().value(),
-            _ => {
-                panic!("Invalid opcode for fuel event: {:?}", opcode);
-            }
-        };
-
-        let event = FuelEvent {
-            clk,
-            shard: self.shard(),
-            pc,
-            next_pc,
-            opcode,
-            fuel,
-            next_fuel,
-            to_consume_fuel,
-            fuel_consumed_low_record: record.arg1_record.unwrap(),
-            fuel_consumed_high_record: record.arg1_hi_record.unwrap(),
-            next_consumed_fuel_low_record: record.res_record.unwrap(),
-            next_consumed_fuel_high_record: record.res_hi_record.unwrap(),
-        };
-        self.record.fuel_events.push(event);
-        emit_fuel_dependencies(self, event);
     }
 
     /// Execute an ecall opcode.
@@ -1423,10 +1275,10 @@ impl<'a> Executor<'a> {
 
         let op_state = self.store.tracer.logs.last().unwrap();
         let syscall = SyscallCode::default();
-        let dataop_event = match op_state.opcode {
-            Opcode::CallIndirect(_) => Some(self.store.tracer.data_op_logs.last().unwrap()),
-            _ => None,
-        };
+        // let dataop_event = match op_state.opcode {
+        //     // Opcode::CallIndirect(_) => Some(self.store.tracer.data_op_logs.last().unwrap()),
+        //     _ => None,
+        // };
 
         self.state.clk = op_state.clk;
         self.state.pc = op_state.pc;
@@ -1436,18 +1288,10 @@ impl<'a> Executor<'a> {
             op_state.next_pc,
             op_state.sp,
             op_state.next_sp,
-            op_state.call_sp,
-            op_state.next_call_sp,
             op_state.opcode,
-            syscall,
-            op_state.arg1,
-            op_state.arg2,
-            op_state.res,
-            op_state.res_hi,
             op_state.memory_access,
-            op_state.call_state.clone(),
-            op_state.fat_op.clone(),
-            dataop_event.cloned(),
+            op_state.extension.clone(),
+            None,
         );
 
         // Increment the clock.
@@ -1789,7 +1633,7 @@ impl<'a> Executor<'a> {
             )
             .step();
 
-            self.postprocess_syscall();
+            // self.postprocess_syscall();
 
             let res = self.execute_cycle(res)?;
             if res {
@@ -1815,6 +1659,8 @@ impl<'a> Executor<'a> {
                 }
             }
         }
+
+        self.record.dataop_events.extend_from_slice(&self.store.tracer.data_op_logs);
 
         // Get the final public values.
         let public_values = self.record.public_values;
@@ -1972,30 +1818,6 @@ impl<'a> Executor<'a> {
                     MemoryInitializeFinalizeEvent::finalize_from_record(addr, &record);
                 println!("final_event:{:?}", final_event);
                 memory_finalize_events.push(final_event);
-            }
-        }
-    }
-
-    pub fn postprocess_syscall(&mut self) {
-        if !self.unconstrained && self.executor_mode == ExecutorMode::Trace {
-            // Will need to transfer the existing memory local events in the executor to it's
-            // record, and return all the syscall memory local events.  This is similar
-            // to what `bump_record` does.
-
-            if let Some(op_state) = self.store.tracer.logs.last() {
-                let addrs = match &op_state.fat_op {
-                    Some(FatOpEvent::TableInit(event)) => &event.local_mem_access_addr,
-                    Some(FatOpEvent::TableGrow(event)) => &event.local_mem_access_addr,
-                    _ => &Vec::new(),
-                };
-
-                for addr in addrs {
-                    let local_mem_access = self.store.tracer.local_memory_event.remove(addr);
-
-                    if let Some(local_mem_access) = local_mem_access {
-                        self.record.cpu_local_memory_access.push(local_mem_access);
-                    }
-                }
             }
         }
     }
@@ -2219,7 +2041,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 15);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 15);
     }
 
     /// Branch is TAKEN when condition is non-zero; block is skipped and earlier result remains.
@@ -2245,7 +2067,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
         // since the branch was taken, the 4-op block is skipped; final stays 6
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 6);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 6);
     }
 
     /// Non-zero can be any value (including 0xFFFF_FFFF); ensure branch is taken.
@@ -2270,7 +2092,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
         // branch taken -> block skipped -> result remains 9
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 9);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 9);
     }
 
     /// Two conditional blocks: first NOT taken (executes), second TAKEN (skips).
@@ -2305,7 +2127,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
         // block A executed (+9), block B skipped; final remains 15
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 15);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 15);
     }
     // ---  store8 + store8 -> load16U (endianness sanity) ---
     #[test]
@@ -2337,7 +2159,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp0, rt.state.sp + 2 * UNIT);
     }
 
@@ -2355,7 +2177,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     #[test]
@@ -2366,7 +2188,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     #[test]
     fn test_gts() {
@@ -2376,7 +2198,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     #[test]
     fn test_lts_vs_ltu_diverge() {
@@ -2402,7 +2224,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     //--- GtS vs GtU should diverge for (0x80000000, 0) ---
@@ -2430,7 +2252,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     // --- shift counts are masked mod 32 (33 -> 1, 65 -> 1) ---
@@ -2456,7 +2278,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp0, rt.state.sp + 4);
     }
 
@@ -2485,7 +2307,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // --- unaligned mw/mr must panic (addr % 4 != 0) ---
     #[test]
@@ -2567,7 +2389,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2587,7 +2409,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2607,7 +2429,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
 
@@ -2631,7 +2453,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2654,7 +2476,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2674,7 +2496,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2692,7 +2514,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2713,7 +2535,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 0);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 0);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2729,7 +2551,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 0);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 0);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2749,7 +2571,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
 
@@ -2767,7 +2589,7 @@ mod tests {
             let program = Program::from_instrs(opcodes);
             let mut runtime = Executor::new(program, SP1CoreOpts::default());
             runtime.run().unwrap();
-            assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+            assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
             assert_eq!(sp_value, runtime.state.sp + 4);
         }
         for opcode in
@@ -2782,7 +2604,7 @@ mod tests {
             let program = Program::from_instrs(opcodes);
             let mut runtime = Executor::new(program, SP1CoreOpts::default());
             runtime.run().unwrap();
-            assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+            assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
             assert_eq!(sp_value, runtime.state.sp + 4);
         }
         for opcode in [Opcode::I32GeS, Opcode::I32Ne, Opcode::I32GtS] {
@@ -2795,7 +2617,7 @@ mod tests {
             let program = Program::from_instrs(opcodes);
             let mut runtime = Executor::new(program, SP1CoreOpts::default());
             runtime.run().unwrap();
-            assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+            assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
             assert_eq!(sp_value, runtime.state.sp + 4);
         }
         for opcode in [Opcode::I32LeS, Opcode::I32Ne, Opcode::I32LtS] {
@@ -2808,7 +2630,7 @@ mod tests {
             let program = Program::from_instrs(opcodes);
             let mut runtime = Executor::new(program, SP1CoreOpts::default());
             runtime.run().unwrap();
-            assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+            assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
             assert_eq!(sp_value, runtime.state.sp + 4);
         }
     }
@@ -2832,7 +2654,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2853,7 +2675,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
 
@@ -2876,7 +2698,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 1);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
     #[test]
@@ -2972,8 +2794,12 @@ mod tests {
                 runtime.run().unwrap();
 
                 // Top-of-stack is at runtime.state.sp (stack grows down).
-                let top =
-                    runtime.state.memory.get(runtime.state.sp).expect("stack top must exist").value;
+                let top = runtime
+                    .state
+                    .memory
+                    .get(runtime.state.sp + UNIT)
+                    .expect("stack top must exist")
+                    .value;
 
                 let expected = compute_expected(op, b, c);
 
@@ -2996,6 +2822,7 @@ mod tests {
             }
         }
     }
+
     #[test]
     fn test_rems_remu() {
         let sp_value: u32 = SP_START;
@@ -3015,12 +2842,11 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value % (y_value % z_value)
         );
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
-
     #[test]
     fn test_shl() {
         let sp_value: u32 = SP_START;
@@ -3040,12 +2866,11 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value << (y_value << z_value)
         );
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
-
     #[test]
     fn test_shr_shru() {
         let sp_value: u32 = SP_START;
@@ -3065,7 +2890,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value >> (y_value >> z_value)
         );
         assert_eq!(sp_value, runtime.state.sp + 4);
@@ -3081,7 +2906,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         println!("opxxx:{}", opcode);
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, expected);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, expected);
     }
     fn simple_opcode_test_expect_error(opcode: Opcode, expected: u32, a: u32, b: u32) {
         let sp_value: u32 = SP_START;
@@ -3339,7 +3164,7 @@ mod tests {
 
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, expected);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, expected);
     }
 
     #[test]
@@ -3561,7 +3386,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, x_value);
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
     }
 
@@ -3587,7 +3412,7 @@ mod tests {
         peek_stack(&runtime);
         println!("stack pointer: {}", runtime.state.sp);
 
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, x_value);
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
     }
 
@@ -3610,7 +3435,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 0x11);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 0x11);
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
     }
     #[test]
@@ -3634,7 +3459,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value & 0x0000_FFFF
         );
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
@@ -3659,7 +3484,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value & 0x0000_ffff
         );
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
@@ -3684,7 +3509,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value & 0x0000_ffff
         );
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
@@ -3711,7 +3536,7 @@ mod tests {
 
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             (x_value & 0x0000_FF00) >> 8
         );
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
@@ -3737,7 +3562,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value as i8,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value as i8,
             ((x_value & 0xff00_0000) >> 24) as i8
         );
         assert_eq!(sp_value, runtime.state.sp + 2 * UNIT);
@@ -3764,7 +3589,10 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
 
         runtime.run().unwrap();
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, ((1 << 1) << 1) << 1);
+        assert_eq!(
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
+            ((1 << 1) << 1) << 1
+        );
         assert_eq!(sp_value, runtime.state.sp + 4);
     }
 
@@ -3793,7 +3621,7 @@ mod tests {
         runtime.run().unwrap();
 
         println!("initial.sp {} , state.sp {}", sp_value, runtime.state.sp);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, 6);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, 6);
     }
 
     #[test]
@@ -3819,7 +3647,7 @@ mod tests {
         runtime.run().unwrap();
         peek_stack(&runtime);
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value + 5 + x_value + 4
         );
         assert_eq!(sp_value, runtime.state.sp + 7 * 4);
@@ -3875,7 +3703,10 @@ mod tests {
         println!("before {}", runtime.state.sp);
         runtime.run().unwrap();
         println!("after {}", runtime.state.sp);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, y_value + z_value);
+        assert_eq!(
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
+            y_value + z_value
+        );
     }
 
     #[test]
@@ -3898,7 +3729,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(runtime.state.sp, sp_value - 20);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value + 7);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, x_value + 7);
     }
 
     #[test]
@@ -3912,7 +3743,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(runtime.state.sp, sp_value - 4);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, x_value);
     }
 
     #[test]
@@ -3939,7 +3770,7 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(
-            runtime.state.memory.get(runtime.state.sp).unwrap().value,
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
             x_value - (y_value + z_value)
         );
     }
@@ -3987,7 +3818,10 @@ mod tests {
         let mut runtime = Executor::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(runtime.state.sp, sp_value - 4);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value + y_value);
+        assert_eq!(
+            runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value,
+            x_value + y_value
+        );
     }
 
     #[test]
@@ -4004,7 +3838,7 @@ mod tests {
         println!("record:{:?}", runtime.record);
         println!("records:{:?}", runtime.records);
         assert_eq!(runtime.state.sp, sp_value - 4);
-        assert_eq!(runtime.state.memory.get(runtime.state.sp).unwrap().value, x_value);
+        assert_eq!(runtime.state.memory.get(runtime.state.sp + UNIT).unwrap().value, x_value);
     }
     #[test]
     fn test_call_chain_incrementers() {
@@ -4039,7 +3873,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     #[test]
     fn test_store_then_load_via_function() {
@@ -4084,7 +3918,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
 
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
 
         // sanity: at least one mem event and one call event
         let mem_events: usize = rt.records.iter().map(|r| r.memory_instr_events.len()).sum();
@@ -4143,7 +3977,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     #[test]
     fn test_stack_after_nested_calls() {
@@ -4189,7 +4023,7 @@ mod tests {
         rt.run().unwrap();
 
         // one boolean result left on stack
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
         assert_eq!(rt.state.sp, sp0 - 4);
     }
 
@@ -4251,7 +4085,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // --- chain calls: (((x+1)+1)*2) then >> 1 => x+2 (sanity of order) ---
     #[test]
@@ -4290,7 +4124,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // --- function that conditionally skips work with Br (simple jump) ---
     #[test]
@@ -4326,7 +4160,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // --- many events sanity: multiple calls + mem ops + alu; check counts ---
     #[test]
@@ -4403,7 +4237,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
 
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
 
         // sanity on events
         let calls: usize = rt.records.iter().map(|r| r.call_events.len()).sum();
@@ -4508,7 +4342,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // --- Nested calls: f1 -> f2 -> f3 (3 levels) ---
     #[test]
@@ -4566,7 +4400,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // --- Direct call using Opcode::CallInternal (f_add) ---
     #[test]
@@ -4597,7 +4431,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     // --- Fibonacci n=25 via iterative step function and CallInternal ---
@@ -4685,7 +4519,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     //Cross-page unaligned store/load with calls
     #[test]
@@ -4743,7 +4577,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
 
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // Dot product length=8 via stateful step function (loads, stores, ptr++), FIXED store order.
     #[test]
@@ -4871,7 +4705,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // 3) Branch-free piecewise select using compares and arithmetic masks — FIXED
     #[test]
@@ -4927,7 +4761,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
     // Sign vs zero extension mix: Load8S + Load8U on the same byte and combine (unchanged)
     #[test]
@@ -4959,7 +4793,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     #[test]
@@ -5123,7 +4957,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     /// Success-path boundary check: writing a single byte at the very last
@@ -5155,7 +4989,7 @@ mod tests {
         let program = Program::from_instrs(ops);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 1);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 1);
     }
 
     #[test]
@@ -5174,7 +5008,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+        let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
         assert_eq!(top, expected, "I32Rotl result mismatch (masking or rotation incorrect)");
     }
 
@@ -5195,7 +5029,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+        let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
         assert_eq!(top, expected, "I32Rotr result mismatch");
     }
     #[test]
@@ -5214,7 +5048,7 @@ mod tests {
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
 
-        let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+        let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
         assert_eq!(top, b, "recovery result mismatch");
         assert_eq!(sp0, rt.state.sp + UNIT);
     }
@@ -5229,7 +5063,7 @@ mod tests {
             rt.run().unwrap();
 
             let expected = a.count_ones();
-            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
             assert_eq!(top, expected, "I32Popcnt result mismatch for a={:#x}", a);
             // One 32-bit value pushed
             assert_eq!(sp0, rt.state.sp + UNIT);
@@ -5260,7 +5094,7 @@ mod tests {
             rt.run().unwrap();
 
             let expected = a.leading_zeros(); // WASM spec: clz(0) = 32
-            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
             assert_eq!(top, expected, "I32Clz result mismatch for a={:#x}", a);
             // One 32-bit value pushed
             assert_eq!(sp0, rt.state.sp + UNIT);
@@ -5291,7 +5125,7 @@ mod tests {
             rt.run().unwrap();
 
             let expected = a.trailing_zeros(); // Rust matches WASM semantics: ctz(0) = 32
-            let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+            let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
             assert_eq!(top, expected, "I32Ctz result mismatch for a={:#x}", a);
             // One 32-bit value pushed
             assert_eq!(sp0, rt.state.sp + UNIT);
@@ -5332,14 +5166,14 @@ mod tests {
 
             // Convention for 64-bit ops: top-of-stack = HI, next = LO.
             assert_eq!(
-                rt.state.memory.get(rt.state.sp).unwrap().value,
+                rt.state.memory.get(rt.state.sp + UNIT).unwrap().value,
                 hi,
                 "HI mismatch for a={:#x}, b={:#x}",
                 a,
                 b
             );
             assert_eq!(
-                rt.state.memory.get(rt.state.sp + 4).unwrap().value,
+                rt.state.memory.get(rt.state.sp + UNIT + 4).unwrap().value,
                 lo,
                 "LO mismatch for a={:#x}, b={:#x}",
                 a,
@@ -5381,14 +5215,14 @@ mod tests {
 
             // After 64-bit ops, convention is: top-of-stack = HI, next = LO (see test_i32add64).
             assert_eq!(
-                rt.state.memory.get(rt.state.sp).unwrap().value,
+                rt.state.memory.get(rt.state.sp + UNIT).unwrap().value,
                 hi as u32,
                 "HI mismatch for a={:#x}, b={:#x}",
                 a,
                 b
             );
             assert_eq!(
-                rt.state.memory.get(rt.state.sp + 4).unwrap().value,
+                rt.state.memory.get(rt.state.sp + UNIT + 4).unwrap().value,
                 lo as u32,
                 "LO mismatch for a={:#x}, b={:#x}",
                 a,
@@ -5432,7 +5266,7 @@ mod tests {
                 let mut rt = Executor::new(program, SP1CoreOpts::default());
                 rt.run().unwrap();
 
-                let top = rt.state.memory.get(rt.state.sp + 3).unwrap().value;
+                let top = rt.state.memory.get(rt.state.sp + UNIT + 3).unwrap().value;
                 assert_eq!(top, expected, "I32Extend8S({:#010x}) mismatch", input);
             }
         }
@@ -5460,7 +5294,7 @@ mod tests {
                 let mut rt = Executor::new(program, SP1CoreOpts::default());
                 rt.run().unwrap();
 
-                let top = rt.state.memory.get(rt.state.sp).unwrap().value;
+                let top = rt.state.memory.get(rt.state.sp + UNIT).unwrap().value;
                 assert_eq!(top, expected, "I32Extend16S({:#010x}) mismatch", input);
             }
         }
@@ -5500,7 +5334,7 @@ mod tests {
         let program = Program::from_instrs(opcodes);
         let mut rt = Executor::new(program, SP1CoreOpts::default());
         rt.run().unwrap();
-        rt.state.memory.get(rt.state.sp).unwrap().value
+        rt.state.memory.get(rt.state.sp + UNIT).unwrap().value
     }
 
     #[test]
@@ -5545,7 +5379,7 @@ mod tests {
         rt.run().unwrap();
 
         // Verify Value
-        assert_eq!(rt.state.memory.get(rt.state.sp).unwrap().value, 0);
+        assert_eq!(rt.state.memory.get(rt.state.sp + UNIT).unwrap().value, 0);
         // Verify Stack Pointer (Should be SP_START + 4 bytes, as 2 args popped, 1 pushed)
         assert_eq!(sp0, rt.state.sp + 4);
     }

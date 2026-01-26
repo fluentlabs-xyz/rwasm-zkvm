@@ -8,7 +8,7 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
-use rwasm::Opcode;
+use rwasm::{mem_index::UNIT, Opcode};
 use rwasm_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord, EmptyByteRecord},
     ExecutionRecord, Program, DEFAULT_PC_INC,
@@ -31,6 +31,8 @@ pub struct MulChip;
 #[repr(C)]
 pub struct MulCols<T> {
     pub pc: T,
+
+    pub sp: T,
     pub a: Word<T>, // Result (Lower 32 bits)
     pub b: Word<T>, // Input 1
     pub c: Word<T>, // Input 2
@@ -115,6 +117,8 @@ impl MulChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.pc = F::from_canonical_u32(event.pc);
+        cols.sp = F::from_canonical_u32(event.sp);
+
         let a_word = event.a.to_le_bytes();
         let b_word = event.b.to_le_bytes();
         let c_word = event.c.to_le_bytes();
@@ -210,16 +214,20 @@ where
 
         let opcode: AB::Expr = AB::F::from_canonical_u32(Opcode::I32Mul.code()).into();
         // 4. Receive Instruction
-        builder.receive_instruction_old(
+        builder.receive_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp + AB::Expr::from_canonical_u32(UNIT),
             AB::Expr::zero(),
             opcode,
             local.a,
             local.b,
             local.c,
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -257,7 +265,7 @@ mod tests {
             let b = thread_rng().gen::<u32>();
             let c = thread_rng().gen::<u32>();
             let a = b.wrapping_mul(c);
-            mul_events.push(AluEvent::new(0, Opcode::I32Mul, a, b, c, Opcode::I32Mul.code()));
+            mul_events.push(AluEvent::new(0, 0, Opcode::I32Mul, a, b, c, Opcode::I32Mul.code()));
         }
         shard.mul_events = mul_events;
         let chip = MulChip::default();
@@ -278,7 +286,7 @@ mod tests {
 
         for (b, c) in instructions {
             let a = b.wrapping_mul(c);
-            mul_events.push(AluEvent::new(0, Opcode::I32Mul, a, b, c, Opcode::I32Mul.code()));
+            mul_events.push(AluEvent::new(0, 0, Opcode::I32Mul, a, b, c, Opcode::I32Mul.code()));
         }
 
         shard.mul_events = mul_events;
@@ -314,7 +322,6 @@ mod tests {
                 }
                 // Manipulate the CPU event result (instruction index 2)
                 if mal_rec.cpu_events.len() > 2 {
-                    mal_rec.cpu_events[2].res = a_malicious;
                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
                         mal_rec.cpu_events[2].res_record
                     {

@@ -410,7 +410,7 @@ where
         let quotient_values =
             parent_span.in_scope(|| {
                 quotient_domains
-                .into_par_iter()
+                .iter()
                 .enumerate()
                 .map(|(i, quotient_domain)| {
                     tracing::debug_span!(parent: &parent_span, "compute quotient values for domain")

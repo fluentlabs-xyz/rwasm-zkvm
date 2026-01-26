@@ -1,13 +1,11 @@
-use super::super::TableIdxCols;
 use crate::{
+    control_flow::TableIdxCols,
     memory::{MemoryReadCols, MemoryWriteCols, TableAddressCols},
     operations::Range16bCols,
 };
-use rwasm::{
-    mem_index::{SP_END, UNIT},
-    N_MAX_TABLE_SIZE,
-};
+use rwasm::N_MAX_TABLE_SIZE;
 use sp1_derive::AlignedBorrow;
+use sp1_stark::Word;
 
 /// Total size of a TableGrow trace row in field elements.
 pub const NUM_TABLE_GROW_SIZE: usize = num_table_cols();
@@ -28,8 +26,9 @@ pub const fn num_table_cols() -> usize {
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
 pub struct TableGrowCols<T> {
+    pub pc: T,
     /// Stack pointer at the time of execution
-    pub sp: StackAddressCols<T>,
+    pub sp: T,
     /// Shard identifier for this execution
     pub shard: T,
     /// Clock cycle when the operation executes
@@ -62,21 +61,16 @@ pub struct TableGrowCols<T> {
     /// Memory write of updated table size (old_size + delta)
     pub table_size_write_access: MemoryWriteCols<T>,
 
-    /// Memory read of initialization value from stack (used to fill new entries)
-    pub init_access: MemoryReadCols<T>,
-    /// Memory read of delta from stack (number of entries to grow)
-    pub delta_access: MemoryReadCols<T>,
     /// Range check decomposition of delta value (16-bit limbs)
     pub delta: DeltaCols<T>,
 
-    /// Memory write of result to stack (old_size on success, u32::MAX on failure)
-    pub result_write_access: MemoryWriteCols<T>,
+    pub res: Word<T>,
+
+    pub init: Word<T>,
+
     /// Memory write of initialization value to table at dst_address
     pub dst_write_access: MemoryWriteCols<T>,
 }
 
 /// Type alias for delta range check columns (16-bit decomposition).
 pub type DeltaCols<T> = Range16bCols<T, 0, N_MAX_TABLE_SIZE>;
-
-const SP_START: u32 = rwasm::mem_index::SP_START - UNIT;
-pub type StackAddressCols<T> = Range16bCols<T, SP_END, SP_START>;

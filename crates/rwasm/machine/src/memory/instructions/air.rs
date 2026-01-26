@@ -8,9 +8,10 @@ use sp1_stark::{air::SP1AirBuilder, Word};
 
 use crate::{
     air::{SP1CoreAirBuilder, WordAirBuilder},
-    memory::MemoryCols,
-    operations::{BabyBearWordRangeChecker, IsZeroOperation},
+    memory::{GlobalMemoryCol, MemoryCols},
+    operations::IsZeroOperation,
 };
+
 use rwasm_executor::{ByteOpcode, Opcode, DEFAULT_PC_INC, UNUSED_PC};
 
 use super::{columns::MemoryInstructionsColumns, MemoryInstructionsChip};
@@ -77,38 +78,53 @@ where
             builder,
             local,
             is_real.clone(),
-            is_load,
-            is_store,
+            is_load.clone(),
+            is_store.clone(),
         );
+
         self.eval_memory_load::<AB>(builder, local);
         self.eval_memory_store::<AB>(builder, local);
 
         let opcode = self.compute_opcode::<AB>(local);
 
-        // SAFETY: This checks the following.
-        // - `shard`, `clk` are correctly received from the CpuChip
-        // - `next_pc = pc + 4`
-        // - `num_extra_cycles = 0`
-        // - `op_a_immutable = is_sb + is_sh + is_sw`, as store instruction keeps `op_a` immutable
-        // - `is_memory = 1`
-        // - `is_syscall = 0`
-        // - `is_halt = 0`
-        // `op_a_value` when the instruction is load still has to be constrained, as well as memory
-        // opcode behavior.
-        builder.receive_instruction_old(
+        builder.receive_rwasm_instruction(
             local.shard,
             local.clk,
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp + AB::Expr::from_canonical_u32(2 * UNIT),
             AB::Expr::zero(),
-            opcode,
-            local.res,
-            local.raw_addr,
-            local.instr_offset,
+            opcode.clone(),
+            Word::zero::<AB>(),
+            local.raw_addr.word::<AB>(),
+            local.value,
+            local.instr_offset.word::<AB>(),
             AB::Expr::one(),
             AB::Expr::zero(),
             AB::Expr::zero(),
-            is_real,
+            AB::Expr::zero(),
+            is_store,
+        );
+
+        builder.receive_rwasm_instruction(
+            local.shard,
+            local.clk,
+            local.pc,
+            local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp,
+            AB::Expr::zero(),
+            opcode,
+            local.value,
+            local.raw_addr.word::<AB>(),
+            Word::zero::<AB>(),
+            local.instr_offset.word::<AB>(),
+            AB::Expr::one(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            is_load,
         );
     }
 }
@@ -136,70 +152,64 @@ impl MemoryInstructionsChip {
     /// 2. Calculate that the address offset is address % 4.
     /// 3. Assert the validity of the aligned address given the address offset and the unaligned
     ///    address.
-    pub(crate) fn eval_memory_address_and_access<AB: SP1CoreAirBuilder>(
+    pub(crate) fn eval_memory_address_and_access<AB>(
         &self,
         builder: &mut AB,
         local: &MemoryInstructionsColumns<AB::Var>,
         is_real: AB::Expr,
         is_load: AB::Expr,
         is_store: AB::Expr,
-    ) {
+    ) where
+        AB: SP1CoreAirBuilder,
+    {
         // Send to the ALU table to verify correct calculation of addr_word.
-        builder.send_instruction_old(
+        builder.send_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
             AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
             AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNIT),
+            AB::Expr::zero(),
             AB::Expr::from_canonical_u32(Opcode::I32Add.code()),
-            local.memory_addr,
-            local.raw_addr,
-            local.instr_offset,
+            local.memory_addr.word::<AB>(),
+            local.raw_addr.word::<AB>(),
+            local.instr_offset.word::<AB>(),
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             is_real.clone(),
         );
 
+        GlobalMemoryCol::<AB::Var>::range_check(builder, local.memory_addr);
+        builder.when(is_real.clone()).assert_one(local.memory_addr.is_real::<AB>());
+        //TODO: check if it secure to remove this checks
+        GlobalMemoryCol::<AB::Var>::range_check(builder, local.raw_addr);
+        builder.when(is_real.clone()).assert_one(local.raw_addr.is_real::<AB>());
+        GlobalMemoryCol::<AB::Var>::range_check(builder, local.instr_offset);
+        builder.when(is_real.clone()).assert_one(local.instr_offset.is_real::<AB>());
+
         // Send to the ALU table to verify correct calculation of addr_word.
-        builder.send_instruction_old(
+        builder.send_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
             AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNIT),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(Opcode::I32Add.code()),
             local.addr_word,
             Word::<AB::Expr>::from(GLOBAL_MEM_START),
-            local.memory_addr,
+            local.memory_addr.word::<AB>(),
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             is_real.clone(),
-        );
-
-        // Range check the addr_word to be a valid babybear word. Note that this will also
-        // implicitly do a byte range check on the most significant byte.
-        BabyBearWordRangeChecker::<AB::F>::range_check(
-            builder,
-            local.addr_word,
-            local.addr_word_range_checker,
-            is_real.clone(),
-        );
-
-        // Check that the 2nd and 3rd addr_word elements are bytes. We already check the most sig
-        // byte in the BabyBearWordRangeChecker, and the least sig one in the AND byte lookup below.
-        builder.slice_range_check_u8(&local.addr_word.0[1..3], is_real.clone());
-
-        // We check that `addr_word >= 32`, or `addr_word > 31` to avoid registers.
-        // Check that if the most significant bytes are zero, then the least significant byte is at
-        // least 32.
-        builder.send_byte(
-            ByteOpcode::LTU.as_field::<AB::F>(),
-            AB::Expr::one(),
-            AB::Expr::from_canonical_u8(31),
-            local.addr_word[0],
-            local.most_sig_bytes_zero.result,
         );
 
         // SAFETY: Check that the above interaction is only sent if one of the opcode flags is set.
@@ -310,9 +320,46 @@ impl MemoryInstructionsChip {
                 local.is_i32load16s * local.unsigned_mem_val[1],
         );
 
-        // These two cases combine for all cases where it's a load instruction and `op_a_0 == 0`.
-        // Since the store instructions have `op_a_immutable = 1`, this completely constrains the
-        // `op_a`'s value.
+        let sign_base_word = Word([
+            AB::Expr::zero(),
+            local.is_i32load8s * AB::Expr::one(),
+            local.is_i32load16s * AB::Expr::one(),
+            AB::Expr::zero(),
+        ]);
+
+        builder.assert_eq(
+            local.mem_value_is_neg,
+            (local.is_i32load8s + local.is_i32load16s) * local.most_sig_bit,
+        );
+
+        builder.send_rwasm_instruction(
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNUSED_PC),
+            AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNIT),
+            AB::Expr::from_canonical_u32(Opcode::I32Add.code()),
+            local.addr_word,
+            Word::<AB::Expr>::from(GLOBAL_MEM_START),
+            local.memory_addr.word::<AB>(),
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            local.mem_value_is_neg,
+        );
+
+        let is_positive_signed =
+            (local.is_i32load8s + local.is_i32load16s) - local.mem_value_is_neg;
+
+        let is_unsigned_op = local.is_i32load8u + local.is_i32load16u;
+
+        builder
+            .when(is_unsigned_op + is_positive_signed)
+            .assert_word_eq(local.value, local.unsigned_mem_val);
     }
 
     /// Evaluates constraints related to storing to memory.
@@ -331,7 +378,7 @@ impl MemoryInstructionsChip {
 
         // Compute the expected stored value for a SB instruction.
         let one = AB::Expr::one();
-        let a_val = local.res;
+        let a_val = local.value;
         let mem_val = *local.memory_access.value();
         let prev_mem_val = *local.memory_access.prev_value();
         let mem_val_hi = *local.memory_access_hi.value();
@@ -350,13 +397,10 @@ impl MemoryInstructionsChip {
             .when(local.is_i32store8)
             .assert_word_eq(mem_val.map(|x| x.into()), sb_expected_stored_value);
 
-        // // When the instruction is SH, make sure both offset one and three are off.
-        // builder
-        //     .when(local.is_i32store16)
-        //     .assert_zero(local.ls_bits_is_one + local.ls_bits_is_three);
-
-        // // When the instruction is SW, ensure that the offset is 0.
-        // builder.when(local.is_i32store).assert_one(offset_is_zero.clone());
+        // When the instruction is SH, make sure both offset one and three are off.
+        builder
+            .when(local.is_i32store16)
+            .assert_zero(local.ls_bits_is_one + local.ls_bits_is_three);
 
         // Compute the expected stored value for a SH instruction.
 
@@ -492,7 +536,7 @@ impl MemoryInstructionsChip {
                 ls_bits_is_three * mem_val_hi[2],
         ]);
 
-        builder.when(local.is_i32load).assert_word_eq(val, local.res);
+        builder.when(local.is_i32load).assert_word_eq(val, local.value);
     }
 
     /// Evaluates the offset value flags.

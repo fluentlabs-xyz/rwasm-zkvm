@@ -1,6 +1,9 @@
 use crate::operations::{Range16bCols, Range32bCols};
 use rwasm::{
-    mem_index::{FUNC_FRAME_END, FUNC_FRAME_START, SP_END, TABLE_SEG_END, TABLE_SEG_START},
+    mem_index::{
+        FUNC_FRAME_END, FUNC_FRAME_START, GLOBAL_MEM_END, GLOBAL_MEM_START, SP_END, TABLE_SEG_END,
+        TABLE_SEG_START,
+    },
     N_MAX_ELEM_SEGMENTS_BITS, N_MAX_TABLE_SIZE,
 };
 use rwasm_executor::SP_START;
@@ -8,6 +11,7 @@ use rwasm_executor::SP_START;
 pub type StackAddressCols<T> = Range16bCols<T, SP_END, SP_START>;
 
 pub type TableAddressCols<T> = Range16bCols<T, 0, N_MAX_TABLE_SIZE>;
+
 pub type CallStackAddressCols<T> = Range16bCols<T, FUNC_FRAME_START, FUNC_FRAME_END>;
 
 const N_MAX_ELEM_SEGMENTS_BITS_U32: u32 = N_MAX_ELEM_SEGMENTS_BITS as u32;
@@ -28,3 +32,11 @@ pub type TableAccessCol<T> = Range32bCols<
     TABLE_ADDR_START_LOW16_SHIFTED,
     TABLE_ADDR_END_LOW16_SHIFTED,
 >;
+
+const MEM_ADDR_END: u32 = GLOBAL_MEM_END - GLOBAL_MEM_START;
+
+const MEM_ADDR_END_HI16_SHIFTED: u32 = MEM_ADDR_END >> 16;
+const MEM_ADDR_END_LOW16_SHIFTED: u32 = MEM_ADDR_END as u16 as u32;
+
+pub type GlobalMemoryCol<T> =
+    Range32bCols<T, 0, MEM_ADDR_END, 0, MEM_ADDR_END_HI16_SHIFTED, 0, MEM_ADDR_END_LOW16_SHIFTED>;

@@ -142,7 +142,7 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
-use rwasm::Opcode;
+use rwasm::{mem_index::UNIT, Opcode};
 use rwasm_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord},
     ByteOpcode, ExecutionRecord, Program, DEFAULT_PC_INC,
@@ -182,6 +182,8 @@ pub struct ShiftRightChip;
 pub struct ShiftRightCols<T> {
     /// Program counter.
     pub pc: T,
+
+    pub sp: T,
 
     /// Output operand: `a = b >> c` (32-bit).
     pub a: Word<T>,
@@ -310,6 +312,7 @@ impl ShiftRightChip {
         //
         {
             cols.pc = F::from_canonical_u32(event.pc);
+            cols.sp = F::from_canonical_u32(event.sp);
             cols.a = Word::from(event.a);
             cols.b = Word::from(event.b);
             cols.c = Word::from(event.c);
@@ -611,17 +614,21 @@ where
         //
         // 8. CPU wiring (receive_instruction_old).
         //
-        builder.receive_instruction_old(
+        builder.receive_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp + AB::Expr::from_canonical_u32(UNIT),
             AB::Expr::zero(),
             local.is_srl * AB::F::from_canonical_u32(Opcode::I32ShrU.code() as u32) +
                 local.is_sra * AB::F::from_canonical_u32(Opcode::I32ShrS.code() as u32),
             local.a,
             local.b,
             local.c,
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -659,8 +666,8 @@ mod tests {
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
         shard.shift_right_events = vec![
-            AluEvent::new(0, Opcode::I32ShrU, 6, 12, 1, Opcode::I32ShrU.code()),
-            AluEvent::new(0, Opcode::I32ShrS, 6, 12, 1, Opcode::I32ShrS.code()),
+            AluEvent::new(0, 0, Opcode::I32ShrU, 6, 12, 1, Opcode::I32ShrU.code()),
+            AluEvent::new(0, 0, Opcode::I32ShrS, 6, 12, 1, Opcode::I32ShrS.code()),
         ];
         let chip = ShiftRightChip::default();
         let trace: RowMajorMatrix<BabyBear> =
@@ -712,7 +719,7 @@ mod tests {
         ];
         let mut shift_events: Vec<AluEvent> = Vec::new();
         for t in shifts.iter() {
-            shift_events.push(AluEvent::new(0, t.0, t.1, t.2, t.3, t.0.code()));
+            shift_events.push(AluEvent::new(0, 0, t.0, t.1, t.2, t.3, t.0.code()));
         }
         let mut shard = ExecutionRecord::default();
         shard.shift_right_events = shift_events;
@@ -767,7 +774,6 @@ mod tests {
                 )> {
                     let mut malicious_record = record.clone();
                     if malicious_record.cpu_events.len() > 4 {
-                        malicious_record.cpu_events[4].res = op_a as u32;
                         if let Some(MemoryRecordEnum::Write(mut write_record)) =
                             malicious_record.cpu_events[4].res_record
                         {

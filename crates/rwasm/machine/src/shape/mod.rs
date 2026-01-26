@@ -624,8 +624,7 @@ fn derive_cluster_from_maximal_shape(shape: &Shape<RwasmAirId>) -> ShapeCluster<
 
     let branch_log_height = shape.log2_height(&RwasmAirId::Branch);
     maybe_log2_heights.insert(RwasmAirId::Branch, heuristic(branch_log_height, 0));
-    let fuel_log_height = shape.log2_height(&RwasmAirId::Fuel);
-    maybe_log2_heights.insert(RwasmAirId::Fuel, heuristic(fuel_log_height, 0));
+
     let call_log_height = shape.log2_height(&RwasmAirId::Call);
     maybe_log2_heights.insert(RwasmAirId::Call, heuristic(call_log_height, 0));
 
@@ -640,6 +639,21 @@ fn derive_cluster_from_maximal_shape(shape: &Shape<RwasmAirId>) -> ShapeCluster<
 
     let global_log_height = shape.log2_height(&RwasmAirId::Global);
     maybe_log2_heights.insert(RwasmAirId::Global, heuristic(global_log_height, 1));
+
+    let const_log_height = shape.log2_height(&RwasmAirId::Const);
+    maybe_log2_heights.insert(RwasmAirId::Const, heuristic(const_log_height, 1));
+
+    let local_log_height = shape.log2_height(&RwasmAirId::Local);
+    maybe_log2_heights.insert(RwasmAirId::Local, heuristic(local_log_height, 1));
+
+    let table_grow_log_height = shape.log2_height(&RwasmAirId::TableGrow);
+    maybe_log2_heights.insert(RwasmAirId::TableGrow, heuristic(table_grow_log_height, 1));
+
+    let table_init_log_height = shape.log2_height(&RwasmAirId::TableInit);
+    maybe_log2_heights.insert(RwasmAirId::TableInit, heuristic(table_init_log_height, 1));
+
+    let params_check_log_height = shape.log2_height(&RwasmAirId::ParamsCheck);
+    maybe_log2_heights.insert(RwasmAirId::ParamsCheck, heuristic(params_check_log_height, 1));
 
     assert!(maybe_log2_heights.len() >= shape.len(), "not all chips were included in the shape");
 

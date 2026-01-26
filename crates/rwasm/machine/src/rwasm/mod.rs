@@ -16,12 +16,13 @@ use crate::{
     alu::{AddMul64Chip, TrailingChip},
     bytes::trace::NUM_ROWS as BYTE_CHIP_NUM_ROWS,
     control_flow::{BranchChip, CallChip},
-    fuel::FuelChip,
     global::GlobalChip,
     memory::{MemoryChipType, MemoryInstructionsChip, MemoryLocalChip},
+    non_alu_instructions::{
+        ConstChip, ExtendChip, LocalChip, ParamsCheckChip, TableGrowChip, TableInitChip,
+    },
     shape::Shapeable,
     syscall::{
-        fat_op::{table_grow::TableGrowChip, TableInitChip},
         instructions::SyscallInstrsChip,
         precompiles::fptower::{Fp2AddSubAssignChip, Fp2MulAssignChip, FpOpChip},
     },
@@ -31,8 +32,8 @@ use crate::{
 pub(crate) mod rwasm_chips {
     pub use crate::{
         alu::{
-            AddSubChip, BitwiseChip, DivRemChip, ExtendChip, LtChip, MulChip, RotateChip,
-            ShiftLeft, ShiftRightChip,
+            AddSubChip, BitwiseChip, DivRemChip, LtChip, MulChip, RotateChip, ShiftLeft,
+            ShiftRightChip,
         },
         bytes::ByteChip,
         cpu::CpuChip,
@@ -106,8 +107,6 @@ pub enum RwasmAir<F: PrimeField32> {
     Memory(MemoryInstructionsChip),
     /// An AIR for Rwasm branch instructions.
     Branch(BranchChip),
-    ///An Air for Rwasm Fuel instructions.
-    Fuel(FuelChip),
     /// An AIR for Rwasm branch instructions.
     Call(CallChip),
     /// An AIR for Rwasm ecall instructions.
@@ -178,6 +177,11 @@ pub enum RwasmAir<F: PrimeField32> {
     TableInit(TableInitChip),
 
     TableGrow(TableGrowChip),
+
+    Const(ConstChip),
+    Local(LocalChip),
+
+    ParamsCheck(ParamsCheckChip),
 }
 
 impl<F: PrimeField32> RwasmAir<F> {
@@ -410,9 +414,7 @@ impl<F: PrimeField32> RwasmAir<F> {
         let branch = Chip::new(RwasmAir::Branch(BranchChip::default()));
         costs.insert(branch.name(), branch.cost());
         chips.push(branch);
-        let fuel = Chip::new(RwasmAir::Fuel(FuelChip::default()));
-        costs.insert(fuel.name(), fuel.cost());
-        chips.push(fuel);
+
         let call = Chip::new(RwasmAir::Call(CallChip::default()));
         costs.insert(call.name(), call.cost());
         chips.push(call);
@@ -452,6 +454,18 @@ impl<F: PrimeField32> RwasmAir<F> {
         costs.insert(table_grow.name(), table_grow.cost());
         chips.push(table_grow);
 
+        let const_chip = Chip::new(RwasmAir::Const(ConstChip::default()));
+        costs.insert(const_chip.name(), const_chip.cost());
+        chips.push(const_chip);
+
+        let local_chip = Chip::new(RwasmAir::Local(LocalChip::default()));
+        costs.insert(local_chip.name(), local_chip.cost());
+        chips.push(local_chip);
+
+        let params_check_chip = Chip::new(RwasmAir::ParamsCheck(ParamsCheckChip::default()));
+        costs.insert(params_check_chip.name(), params_check_chip.cost());
+        chips.push(params_check_chip);
+
         assert_eq!(chips.len(), costs.len(), "chips and costs must have the same length",);
 
         (chips, costs)
@@ -486,12 +500,15 @@ impl<F: PrimeField32> RwasmAir<F> {
             RwasmAir::Extend(ExtendChip::default()),
             RwasmAir::Memory(MemoryInstructionsChip::default()),
             RwasmAir::Branch(BranchChip::default()),
-            RwasmAir::Fuel(FuelChip::default()),
             RwasmAir::Call(CallChip::default()),
             RwasmAir::SyscallInstrs(SyscallInstrsChip::default()),
             RwasmAir::MemoryLocal(MemoryLocalChip::new()),
             RwasmAir::Global(GlobalChip),
             RwasmAir::SyscallCore(SyscallChip::core()),
+            RwasmAir::Const(ConstChip::default()),
+            RwasmAir::Local(LocalChip::default()),
+            RwasmAir::TableGrow(TableGrowChip::default()),
+            RwasmAir::TableInit(TableInitChip::default()),
         ]
     }
 
@@ -576,7 +593,6 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::ShiftRight => RwasmAirId::ShiftRight,
             RwasmAirDiscriminants::Memory => RwasmAirId::MemoryInstrs,
             RwasmAirDiscriminants::Branch => RwasmAirId::Branch,
-            RwasmAirDiscriminants::Fuel => RwasmAirId::Fuel,
             RwasmAirDiscriminants::Call => RwasmAirId::Call,
             RwasmAirDiscriminants::SyscallInstrs => RwasmAirId::SyscallInstrs,
             RwasmAirDiscriminants::ByteLookup => RwasmAirId::Byte,
@@ -615,6 +631,9 @@ impl From<RwasmAirDiscriminants> for RwasmAirId {
             RwasmAirDiscriminants::Rotate => RwasmAirId::Rotate,
             RwasmAirDiscriminants::Trailing => RwasmAirId::Trailing,
             RwasmAirDiscriminants::Extend => RwasmAirId::Extend,
+            RwasmAirDiscriminants::Const => RwasmAirId::Const,
+            RwasmAirDiscriminants::Local => RwasmAirId::Local,
+            RwasmAirDiscriminants::ParamsCheck => RwasmAirId::ParamsCheck,
         }
     }
 }

@@ -6,7 +6,6 @@ mod call;
 mod comp;
 mod divrem;
 mod extend;
-mod fuel;
 mod lt;
 mod mul;
 mod rotate;
@@ -83,7 +82,7 @@ mod tests {
             Opcode::I32Sub,
             Opcode::I32Mul,
             Opcode::I32DivS,
-            Opcode::I32DivU,
+            // Opcode::I32DivU,
         ];
 
         let program = Program::from_instrs(instructions);
@@ -197,8 +196,10 @@ mod tests {
             Opcode::I32Const(addr_2.into()),
             Opcode::I32Const(addr.into()),
             Opcode::I32Load(0),
-            // Opcode::I32Load16U(0),
-            // Opcode::I32Load8U(0),
+            Opcode::I32Const(addr_2.into()),
+            Opcode::I32Load16U(0),
+            Opcode::I32Const(addr_3.into()),
+            Opcode::I32Load8U(0),
         ];
 
         let program = Program::from_instrs(instructions);

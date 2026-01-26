@@ -8,7 +8,6 @@ use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator, ParallelSlice};
 use rwasm::Opcode;
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, CpuEvent, MemoryRecordEnum},
-    syscalls::SyscallCode,
     ByteOpcode::{self, U16Range},
     ExecutionRecord, Program,
 };
@@ -17,7 +16,7 @@ use sp1_stark::air::MachineAir;
 use tracing::instrument;
 
 use super::{columns::NUM_CPU_COLS, CpuChip};
-use crate::{cpu::columns::CpuCols, memory::MemoryCols, utils::zeroed_f_vec};
+use crate::{cpu::columns::CpuCols, utils::zeroed_f_vec};
 
 impl<F: PrimeField32> MachineAir<F> for CpuChip {
     type Record = ExecutionRecord;
@@ -44,7 +43,6 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_CPU_COLS);
 
         let chunk_size = std::cmp::max(input.cpu_events.len() / num_cpus::get(), 1);
-        println!("input.cpu_events{:?}", input.cpu_events);
         values.chunks_mut(chunk_size * NUM_CPU_COLS).enumerate().par_bridge().for_each(
             |(i, rows)| {
                 rows.chunks_mut(NUM_CPU_COLS).enumerate().for_each(|(j, row)| {
@@ -124,38 +122,52 @@ impl CpuChip {
     ) {
         // Populate shard and clk columns.
         self.populate_shard_clk(cols, event, blu_events, shard);
-        self.populate_alu(cols, event, instruction);
         // Populate basic fields.
         cols.pc = F::from_canonical_u32(event.pc);
         cols.next_pc = F::from_canonical_u32(event.next_pc);
-        cols.sp = F::from_canonical_u32(event.sp);
-        cols.next_sp = F::from_canonical_u32(event.next_sp);
-        cols.call_data.call_sp = F::from_canonical_u32(event.call_sp);
-        cols.call_data.next_call_sp = F::from_canonical_u32(event.next_call_sp);
+        cols.sp.populate(event.sp, blu_events, true);
+        cols.next_sp.populate(event.next_sp, blu_events, true);
+
+        cols.instruction.is_implemented = F::from_bool(
+            !matches!(instruction, Opcode::MemoryGrow) &&
+                !matches!(instruction, Opcode::TableGet(_)),
+        );
+
+        if instruction.is_with_two_params() || instruction.is_with_three_params() {
+            cols.op_arg2_sp.populate(event.sp, blu_events, true);
+        }
+
         cols.instruction.populate(instruction);
 
         cols.is_memory = F::from_bool(
             instruction.is_memory_load_instruction() || instruction.is_memory_store_instruction(),
         );
         cols.is_syscall = F::from_bool(instruction.is_ecall_instruction());
-        *cols.op_res_access.value_mut() = event.res.into();
-        *cols.op_res_hi_access.value_mut() = event.res_hi.into();
-        *cols.op_arg1_access.value_mut() = event.arg1.into();
-        *cols.op_arg2_access.value_mut() = event.arg2.into();
+
+        let is_complex_opcode = instruction.is_64b_op() ||
+            instruction.is_local_instruction() ||
+            instruction.is_call_instruction() ||
+            instruction.is_table_instruction() ||
+            matches!(instruction, Opcode::SignatureCheck(_));
+
+        cols.is_complex_opcode = F::from_bool(is_complex_opcode);
 
         cols.shard_to_send = if instruction.is_memory_load_instruction() ||
             instruction.is_memory_store_instruction() ||
             instruction.is_ecall_instruction() ||
-            instruction.is_call_instruction()
+            instruction.is_call_instruction() ||
+            is_complex_opcode
         {
             cols.shard
         } else {
             F::zero()
         };
+
         cols.clk_to_send = if instruction.is_memory_load_instruction() ||
             instruction.is_memory_store_instruction() ||
             instruction.is_ecall_instruction() ||
-            instruction.is_call_instruction()
+            instruction.is_call_instruction() ||
+            is_complex_opcode
         {
             F::from_canonical_u32(event.clk)
         } else {
@@ -163,116 +175,27 @@ impl CpuChip {
         };
 
         // Populate memory accesses for result (lo and optional hi for 64-bit ops).
-        if let Some(record_lo) = event.res_record {
-            if instruction.is_ecall_instruction() {
-                // For ecall instructions, pass in a dummy byte lookup vector.
-                cols.op_res_access.populate(record_lo, &mut Vec::new());
-            } else {
-                let do_populate =
-                    !matches!(instruction, |Opcode::ConsumeFuel(_)| Opcode::ConsumeFuelStack);
-                if do_populate {
-                    // Lo write
-                    cols.op_res_access.populate(record_lo, blu_events);
-                    let do_check = !matches!(instruction, Opcode::CallIndirect(_));
+        if let Some(res) = event.res_record {
+            cols.op_res_access.populate(res, blu_events);
 
-                    cols.op_res_addr.populate(
-                        event.res_addr.unwrap().to_virtual_addr(),
-                        blu_events,
-                        do_check,
-                    );
-                }
-            }
+            blu_events.add_u8_range_checks(&res.value().to_le_bytes());
         }
-        if let Some(record_hi) = event.res_hi_record {
-            // Hi write for 64-bit ops
 
-            if instruction.is_64b_op() {
-                cols.op_res_hi_access.populate(record_hi, blu_events);
-                cols.op_res_hi_addr.populate(
-                    event.res_hi_addr.unwrap().to_virtual_addr(),
-                    blu_events,
-                    true,
-                );
-            } else {
-                debug_assert!(false, "Missing res_hi_record for 64-bit op at pc={}", event.pc);
-            }
-        }
         // Populate arg1/arg2 memory reads.
         if let Some(MemoryRecordEnum::Read(record)) = event.arg1_record {
-            //Do not check for LAST_SIG_ADDR because there is only one address.
-            let do_populate =
-                !matches!(instruction, Opcode::ConsumeFuel(_) | Opcode::ConsumeFuelStack);
-            if do_populate {
-                cols.op_arg1_access.populate(record, blu_events);
-                let do_check = !matches!(instruction, Opcode::SignatureCheck(_));
-                cols.op_arg1_addr.populate(
-                    event.arg1_addr.unwrap().to_virtual_addr(),
-                    blu_events,
-                    do_check,
-                );
-            }
+            cols.op_arg1_access.populate(record, blu_events);
         }
         if let Some(MemoryRecordEnum::Read(record)) = event.arg2_record {
-            let do_populate = !matches!(instruction, Opcode::ConsumeFuel(_));
             cols.op_arg2_access.populate(record, blu_events);
-            cols.op_arg2_addr.populate(
-                event.arg2_addr.unwrap().to_virtual_addr(),
-                blu_events,
-                true,
-            );
         }
 
-        if instruction.is_ecall_instruction() {
-            let syscall_id = match instruction {
-                Opcode::Call(_) => instruction.aux_value(),
-                Opcode::TableInit(_) => SyscallCode::TABLE_INIT.syscall_id(),
-                Opcode::TableGrow(_) => SyscallCode::TABLE_GROW.syscall_id(),
-                _ => unimplemented!(),
-            };
-            let syscall_id = F::from_canonical_u32(syscall_id);
-            let num_extra_cycles = match instruction {
-                Opcode::TableInit(_) => F::from_canonical_u32(2),
-                _ => cols.op_res_access.prev_value[2],
-            };
-            cols.is_halt =
-                F::from_bool(syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id()));
-            cols.num_extra_cycles = num_extra_cycles;
-        }
-
-        if let Some(call_data) = &&event.call_data {
-            println!("event.opcode:{},call_data:{:?}", instruction, event.call_data);
-            cols.call_data.signature_id = F::from_canonical_u32(call_data.signature_id);
-            cols.call_data.func_ref = F::from_canonical_u32(call_data.func_ref);
-            cols.call_data.table_id = F::from_canonical_u32(call_data.table_id);
-            cols.call_data.table_idx = F::from_canonical_u32(call_data.table_idx);
-            cols.call_data.call_sp_is_zero = F::from_bool(event.call_sp == 0);
-        }
-
-        // Populate range checks for lo (and hi if 64-bit).
-        let checks = if instruction.is_64b_op() {
-            vec![cols.op_res_access, cols.op_res_hi_access]
-        } else {
-            vec![cols.op_res_access]
+        let num_extra_cycles = match instruction {
+            Opcode::TableInit(_) => F::from_canonical_u32(2),
+            Opcode::CallIndirect(_) => F::from_canonical_u32(2),
+            _ => F::zero(),
         };
-        for col in checks {
-            let bytes = col.access.value.0.iter().map(|x| x.as_canonical_u32()).collect::<Vec<_>>();
-            blu_events.add_byte_lookup_event(ByteLookupEvent {
-                opcode: ByteOpcode::U8Range,
-                a1: 0,
-                a2: 0,
-                b: bytes[0] as u8,
-                c: bytes[1] as u8,
-            });
-            blu_events.add_byte_lookup_event(ByteLookupEvent {
-                opcode: ByteOpcode::U8Range,
-                a1: 0,
-                a2: 0,
-                b: bytes[2] as u8,
-                c: bytes[3] as u8,
-            });
-        }
-        // Assert that the instruction is not a no-op.
-        cols.is_real = F::one();
+
+        cols.num_extra_cycles = num_extra_cycles;
     }
 
     /// Populates the shard and clk related rows.
@@ -299,35 +222,5 @@ impl CpuChip {
             0,
             clk_8bit_limb as u8,
         ));
-    }
-
-    fn populate_alu<F: PrimeField>(&self, cols: &mut CpuCols<F>, event: &CpuEvent, opcode: Opcode) {
-        match opcode {
-            Opcode::I32LtS | Opcode::I32GtS | Opcode::I32GeS | Opcode::I32LeS => {
-                let alu = &mut cols.alu_cols;
-
-                let arg1_i32 = event.arg1 as i32;
-                let arg2_i32 = event.arg2 as i32;
-
-                alu.arg1_eq_arg2 = F::from_bool(arg1_i32 == arg2_i32);
-                alu.arg1_gt_arg2 = F::from_bool(arg1_i32 > arg2_i32);
-                alu.arg1_lt_arg2 = F::from_bool(arg1_i32 < arg2_i32);
-                alu.res_bool = F::from_canonical_u32(event.res);
-            }
-            Opcode::I32LtU |
-            Opcode::I32GtU |
-            Opcode::I32GeU |
-            Opcode::I32LeU |
-            Opcode::I32Eqz |
-            Opcode::I32Eq |
-            Opcode::I32Ne => {
-                let alu = &mut cols.alu_cols;
-                alu.arg1_eq_arg2 = F::from_bool(event.arg1 == event.arg2);
-                alu.arg1_gt_arg2 = F::from_bool(event.arg1 > event.arg2);
-                alu.arg1_lt_arg2 = F::from_bool(event.arg1 < event.arg2);
-                alu.res_bool = F::from_canonical_u32(event.res);
-            }
-            _ => {}
-        }
     }
 }

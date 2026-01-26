@@ -1,10 +1,8 @@
 use crate::{
     air::{MemoryAirBuilder, WordAirBuilder},
+    control_flow::TableIdxCols,
     memory::{MemoryCols, TableAddressCols},
-    syscall::fat_op::{
-        table_grow::column::{DeltaCols, StackAddressCols, TableGrowCols, NUM_TABLE_GROW_SIZE},
-        TableIdxCols,
-    },
+    non_alu_instructions::table_grow::column::{DeltaCols, TableGrowCols, NUM_TABLE_GROW_SIZE},
 };
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::AbstractField;
@@ -13,9 +11,9 @@ use rwasm::{
     mem_index::{TypedAddress, UNIT},
     N_MAX_TABLE_SIZE,
 };
-use rwasm_executor::syscalls::SyscallCode;
+use rwasm_executor::{Opcode, DEFAULT_PC_INC};
 use sp1_stark::{
-    air::{BaseAirBuilder, InteractionScope, SP1AirBuilder},
+    air::{BaseAirBuilder, SP1AirBuilder},
     Word,
 };
 use std::borrow::Borrow;
@@ -60,13 +58,12 @@ where
         builder
             .when(local.is_first)
             .when(local.is_non_zero_length)
-            .assert_eq(local.delta.value::<AB>(), local.delta_access.value().reduce::<AB>());
+            .assert_eq(local.delta.value::<AB>(), local.delta.value::<AB>());
 
         // Verify the table size update equation: old_size + delta = new_size
         // Only checked when table size is actually updated (successful non-zero growth)
         builder.when(local.should_update_table_size).assert_eq(
-            local.result_write_access.value().reduce::<AB>() +
-                local.delta_access.value().reduce::<AB>(),
+            local.res.reduce::<AB>() + local.delta.value::<AB>(),
             local.table_size_write_access.value().reduce::<AB>(),
         );
 
@@ -80,7 +77,7 @@ where
         builder
             .when(local.is_last)
             .when(local.not_successful_result)
-            .assert_word_eq(*local.result_write_access.value(), Word::<AB::F>::from(u32::MAX));
+            .assert_word_eq(local.res, Word::<AB::F>::from(u32::MAX));
 
         // Event boundary constraint: consecutive events must be properly delimited
         // If current is last AND next is real, then next must be first
@@ -112,18 +109,15 @@ where
         builder
             .when_transition()
             .when_not(local.is_last)
-            .assert_word_eq(*local.delta_access.value(), *next.delta_access.value());
+            .assert_eq(local.delta.value::<AB>(), next.delta.value::<AB>());
 
         // Initialization value must remain constant within an event
-        builder
-            .when_transition()
-            .when_not(local.is_last)
-            .assert_word_eq(*local.init_access.value(), *next.init_access.value());
+        builder.when_transition().when_not(local.is_last).assert_word_eq(local.init, next.init);
 
         // Verify that new table entries are initialized with the correct value
         builder
             .when(local.is_non_zero_length)
-            .assert_word_eq(*local.init_access.value(), *local.dst_write_access.value());
+            .assert_word_eq(local.init, *local.dst_write_access.value());
 
         // Zero-delta successful operations must have zero in delta memory access
         // (not_successful_result exempts failure cases which may have non-zero delta)
@@ -131,13 +125,12 @@ where
         builder
             .when(local.is_first)
             .when_not(local.is_non_zero_length + local.not_successful_result)
-            .assert_word_zero(*local.delta_access.value());
+            .assert_zero(local.delta.value::<AB>());
 
         // Verify destination address progression for multi-row events
         // On the last row, dst_address should equal old_size + delta - 1
         builder.when(local.is_last).when(local.is_non_zero_length).assert_eq(
-            local.table_size_read_access.value().reduce::<AB>() +
-                local.delta_access.value().reduce::<AB>() -
+            local.table_size_read_access.value().reduce::<AB>() + local.delta.value::<AB>() -
                 AB::Expr::one(),
             local.dst_address.value::<AB>(),
         );
@@ -153,9 +146,6 @@ where
             local.table_size_read_access.value().reduce::<AB>(),
             local.dst_address.value::<AB>(),
         );
-
-        StackAddressCols::<AB::Var>::range_check(builder, local.sp);
-        builder.when(local.is_first).assert_one(local.sp.is_real::<AB>());
 
         // Range check destination address to ensure it fits in table address space
         TableAddressCols::<AB::Var>::range_check(builder, local.dst_address);
@@ -183,14 +173,24 @@ where
         self.eval_memory_access(local, builder);
 
         // Register this table.grow syscall with the execution trace
-        builder.receive_syscall(
+        builder.receive_rwasm_instruction(
             local.shard,
             local.clk,
-            AB::Expr::from_canonical_u32(SyscallCode::TABLE_GROW.syscall_id() as u32),
+            local.pc,
+            local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp + AB::Expr::from_canonical_u32(UNIT),
             AB::Expr::zero(),
-            local.table_idx.value::<AB>(),
+            AB::Expr::from_canonical_u32(Opcode::TableGrow(0).code()),
+            local.res,
+            local.init,
+            local.delta.word::<AB>(),
+            local.table_idx.word::<AB>(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::one(),
             local.is_first,
-            InteractionScope::Local,
         );
     }
 }
@@ -219,24 +219,6 @@ impl TableGrowChip {
         builder: &mut AB,
     ) {
         let unit = AB::Expr::from_canonical_u32(UNIT);
-
-        // Read delta (growth amount) from stack at address sp
-        builder.eval_memory_access(
-            local.shard,
-            local.clk,
-            local.sp.value::<AB>(),
-            &local.delta_access.clone(),
-            local.is_first,
-        );
-
-        // Read initialization value from stack at address sp + UNIT (next stack slot)
-        builder.eval_memory_access(
-            local.shard,
-            local.clk,
-            local.sp.value::<AB>() + AB::Expr::from_canonical_u32(UNIT),
-            &local.init_access.clone(),
-            local.is_first,
-        );
 
         // Calculate virtual address for table size metadata
         // Each table has its size stored at TableSize base + table_idx * UNIT
@@ -279,16 +261,6 @@ impl TableGrowChip {
             table_addr,
             &local.dst_write_access,
             local.is_non_zero_length,
-        );
-
-        // Write result (old table size or u32::MAX) back to stack at sp at clock cycle clk + 1
-        // Conditional on should_update_result (set on first row)
-        builder.eval_memory_access(
-            local.shard,
-            local.clk + AB::Expr::from_canonical_u32(1),
-            local.sp.value::<AB>(),
-            &local.result_write_access.clone(),
-            local.should_update_result,
         );
     }
 }

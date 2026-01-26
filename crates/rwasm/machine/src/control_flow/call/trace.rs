@@ -1,34 +1,30 @@
-use std::borrow::BorrowMut;
-
+use super::{CallChip, CallColumns, NUM_CALL_COLS};
+use crate::utils::{next_power_of_two, zeroed_f_vec};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
-
-use rwasm::{mem_index::TypedAddress, N_MAX_TABLE_SIZE};
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, CallEvent},
     ExecutionRecord, Opcode, Program,
 };
 use sp1_stark::air::MachineAir;
+use std::borrow::BorrowMut;
 
-use crate::{
-    shape::Shapeable,
-    utils::{next_power_of_two, zeroed_f_vec},
-};
-
-use super::{CallChip, CallColumns, NUM_CALL_COLS};
+// --- Trait Implementation for MachineAir ---
+// This block connects the CallChip to the SP1 machine, defining how it generates its execution
+// trace.
 
 impl<F: PrimeField32> MachineAir<F> for CallChip {
     type Record = ExecutionRecord;
-
     type Program = Program;
 
     fn name(&self) -> String {
         "Call".to_string()
     }
 
+    /// Generates the execution trace for the CallChip from a given execution record.
     fn generate_trace(
         &self,
         input: &ExecutionRecord,
@@ -39,7 +35,7 @@ impl<F: PrimeField32> MachineAir<F> for CallChip {
         let size_log2 = input.fixed_log2_rows::<F, _>(self);
         let padded_nb_rows = next_power_of_two(nb_rows, size_log2);
         let mut values = zeroed_f_vec(padded_nb_rows * NUM_CALL_COLS);
-        println!("!!! make call event");
+
         let blu_events = values
             .chunks_mut(chunk_size * NUM_CALL_COLS)
             .enumerate()
@@ -52,7 +48,7 @@ impl<F: PrimeField32> MachineAir<F> for CallChip {
 
                     if idx < input.call_events.len() {
                         let event = &input.call_events[idx];
-                        self.event_to_row(event, cols, input.shard(), &mut blu);
+                        self.event_to_row(event, cols, &mut blu);
                     }
                 });
                 blu
@@ -65,6 +61,8 @@ impl<F: PrimeField32> MachineAir<F> for CallChip {
         RowMajorMatrix::new(values, NUM_CALL_COLS)
     }
 
+    /// Determines if this chip should be included in the proof, based on the record's shape or
+    /// event presence.
     fn included(&self, shard: &Self::Record) -> bool {
         if let Some(shape) = shard.shape.as_ref() {
             shape.included::<F, _>(self)
@@ -74,68 +72,78 @@ impl<F: PrimeField32> MachineAir<F> for CallChip {
     }
 
     fn local_only(&self) -> bool {
-        true
+        false
     }
 }
 
+// --- Helper Methods for CallChip ---
+
 impl CallChip {
-    /// Create a row from an event.
+    /// Converts a single `CallEvent` into a row in the trace matrix.
     fn event_to_row<F: PrimeField32>(
         &self,
         event: &CallEvent,
         cols: &mut CallColumns<F>,
-        shard: u32,
         blu: &mut HashMap<ByteLookupEvent, usize>,
     ) {
+        // --- 1. Populate Basic Columns ---
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
         cols.pc = event.pc.into();
         cols.next_pc = event.next_pc.into();
-        cols.pc_range_checker.populate(cols.pc, blu);
-        cols.next_pc_range_checker.populate(cols.next_pc, blu);
+        cols.sp = F::from_canonical_u32(event.sp);
 
-        cols.opcode = F::from_canonical_u32(event.opcode.code());
-        cols.call_sp = F::from_canonical_u32(event.call_sp);
-        let call_sp_addr = TypedAddress::FuncFrame(event.call_sp);
-        cols.call_sp_addr.populate(call_sp_addr.to_virtual_addr(), blu, true);
-        cols.next_call_sp = F::from_canonical_u32(event.next_call_sp);
-        let next_call_sp_addr = TypedAddress::FuncFrame(event.next_call_sp);
-        cols.next_call_sp_addr.populate(next_call_sp_addr.to_virtual_addr(), blu, true);
+        if let Some(signature_write_record) = event.signature_write_record {
+            cols.aux_value.populate(signature_write_record, blu);
+        } else {
+            cols.aux_value.access.value = event.opcode.aux_value().into();
+        }
 
-        cols.signature_id = F::from_canonical_u32(event.signature_id);
+        // --- 2. Populate Range-Check and Memory-Related Columns ---
 
-        cols.func_ref = F::from_canonical_u32(event.func_ref);
-        cols.table_id = F::from_canonical_u32(event.table_id);
-        cols.table_idx = F::from_canonical_u32(event.table_idx);
+        // Populate range checkers for pc and next_pc to ensure they are valid addresses.
+
+        match event.opcode {
+            Opcode::Call(_) | Opcode::CallIndirect(_) | Opcode::CallInternal(_) => {
+                cols.pc_range_checker.populate(cols.pc, blu);
+                cols.next_pc_range_checker.populate(cols.next_pc, blu);
+            }
+            _ => {}
+        };
+
+        // --- 3. Populate Columns for Indirect Calls ---
+
+        // If this is a CallIndirect, we need to populate table access information.
         if let Some(record) = event.table_access {
             cols.table_access.populate(record, blu);
-            let table_addr =
-                TypedAddress::Table(event.table_id * N_MAX_TABLE_SIZE + event.table_idx);
-            cols.table_access_addr.populate(table_addr.to_virtual_addr(), blu, true);
+            cols.table_idx.populate(event.table_idx, blu, true);
         }
-        println!("opcode  for call: {}", event.opcode.code());
-        cols.opcode_aux_val = event.opcode.aux_value().into();
-        println!("col.opcode:{:?}", cols.opcode);
+
+        if let Some(func_index) = event.func_index {
+            cols.func_index.populate(func_index, blu, true);
+        }
+
+        // --- 4. Decode Opcode and Set Flags ---
         match event.opcode {
-            Opcode::Call(_) => {
-                cols.is_call = F::from_bool(true);
-            }
-            Opcode::CallIndirect(_) => {
-                cols.is_call_indirect = F::from_bool(true);
-            }
-            Opcode::CallInternal(_) => {
-                cols.is_call_internal = F::from_bool(true);
-            }
-            Opcode::Return => {
-                cols.is_return = F::from_bool(true);
-            }
-            _ => unreachable!(),
+            Opcode::Call(_) => cols.is_call = F::one(),
+            Opcode::CallIndirect(_) => cols.is_call_indirect = F::one(),
+            Opcode::CallInternal(_) => cols.is_call_internal = F::one(),
+            Opcode::Return => cols.is_return = F::one(),
+            _ => unreachable!("Invalid opcode for CallChip"),
         }
-        if !(event.opcode == Opcode::Return && event.call_sp == 0) {
-            assert!(event.call_stack_access.is_some());
-            cols.call_stack_access.populate(event.call_stack_access.unwrap(), blu);
+
+        // --- 5. Handle Call Stack Access and "Fake" Return ---
+
+        // A "real" return is any return that is not the final exit from the main function (where
+        // sp=0). Real returns MUST have an associated stack access to read the return
+        // address.
+
+        if let Some(call_stack_access) = event.call_stack_access {
+            cols.call_stack_access.populate(call_stack_access, blu);
+            // Populate the call stack address. This is the pointer to the call stack frame.
+            cols.call_stack_address.populate(event.call_stack_address, blu, true);
         } else {
-            cols.not_real_return = F::from_bool(true);
+            cols.is_main_return = F::one();
         }
     }
 }

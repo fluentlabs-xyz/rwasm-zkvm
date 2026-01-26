@@ -10,7 +10,7 @@ use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
-use rwasm::Opcode;
+use rwasm::{mem_index::UNIT, Opcode};
 use rwasm_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord, EmptyByteRecord},
     ByteOpcode, ExecutionRecord, Program, DEFAULT_PC_INC,
@@ -34,6 +34,8 @@ pub struct BitwiseChip;
 pub struct BitwiseCols<T> {
     /// The program counter.
     pub pc: T,
+
+    pub sp: T,
 
     /// The output operand.
     pub a: Word<T>,
@@ -139,6 +141,7 @@ impl BitwiseChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.pc = F::from_canonical_u32(event.pc);
+        cols.sp = F::from_canonical_u32(event.sp);
 
         let a = event.a.to_le_bytes();
         let b = event.b.to_le_bytes();
@@ -199,17 +202,31 @@ where
             local.is_or * AB::Expr::from_canonical_u32(Opcode::I32Or.code()) +
             local.is_and * AB::Expr::from_canonical_u32(Opcode::I32And.code());
 
-        // Receive the instruction from the CPU.
-        builder.receive_instruction_old(
+        // Receive the arguments.
+        // SAFETY: This checks the following.
+        // - `next_pc = pc + 4`
+        // - `num_extra_cycles = 0`
+        // - `op_a_val` is constrained by the byte lookups when `op_a_not_0 == 1`
+        // - `op_a_not_0` is correct, due to the sent `op_a_0` being equal to `1 - op_a_not_0`
+        // - `op_a_immutable = 0`
+        // - `is_memory = 0`
+        // - `is_syscall = 0`
+        // - `is_halt = 0`
+        // Note that `is_xor + is_or + is_and` is checked to be boolean below.
+        builder.receive_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp + AB::Expr::from_canonical_u32(UNIT),
             AB::Expr::zero(),
             cpu_opcode,
             local.a,
             local.b,
             local.c,
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -253,7 +270,7 @@ mod tests {
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
         shard.bitwise_events =
-            vec![AluEvent::new(0, Opcode::I32Xor, 25, 10, 19, Opcode::I32Xor.code())];
+            vec![AluEvent::new(0, 0, Opcode::I32Xor, 25, 10, 19, Opcode::I32Xor.code())];
         let chip = BitwiseChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
@@ -268,9 +285,9 @@ mod tests {
 
         let mut shard = ExecutionRecord::default();
         shard.bitwise_events = [
-            AluEvent::new(0, Opcode::I32Xor, 25, 10, 19, Opcode::I32Xor.code()),
-            AluEvent::new(0, Opcode::I32Or, 27, 10, 19, Opcode::I32Or.code()),
-            AluEvent::new(0, Opcode::I32And, 2, 10, 19, Opcode::I32And.code()),
+            AluEvent::new(0, 0, Opcode::I32Xor, 25, 10, 19, Opcode::I32Xor.code()),
+            AluEvent::new(0, 0, Opcode::I32Or, 27, 10, 19, Opcode::I32Or.code()),
+            AluEvent::new(0, 0, Opcode::I32And, 2, 10, 19, Opcode::I32And.code()),
         ]
         .repeat(100);
         let chip = BitwiseChip::default();
@@ -311,7 +328,6 @@ mod tests {
                 let malicious = move |prover: &P, record: &mut ExecutionRecord| {
                     let mut malicious_record = record.clone();
                     if malicious_record.cpu_events.len() > 4 {
-                        malicious_record.cpu_events[4].res = op_a;
                         if let Some(MemoryRecordEnum::Write(mut wr)) =
                             malicious_record.cpu_events[4].res_record
                         {

@@ -1,6 +1,5 @@
 use crate::RwasmAirId;
 use enum_map::Enum;
-use fluentbase_types::SysFuncIdx;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
@@ -156,15 +155,6 @@ pub enum SyscallCode {
 
     /// Executes the `SECP256R1_DECOMPRESS` precompile.
     SECP256R1_DECOMPRESS = 0x00_00_01_2E,
-
-    /// Executes the `TableGrow` FatOp.
-    TABLE_GROW = 0x00_00_01_91,
-
-    /// Executes the `TableInit` FatOp.
-    TABLE_INIT = 0x00_02_01_96,
-
-    /// Executes the `Fuel` syscall.
-    FUEL = 0x00_00_00_F2,
 }
 
 impl SyscallCode {
@@ -193,7 +183,6 @@ impl SyscallCode {
             0x00_00_00_1B => SyscallCode::VERIFY_SP1_PROOF,
             0x00_00_00_F0 => SyscallCode::HINT_LEN,
             0x00_00_00_F1 => SyscallCode::HINT_READ,
-            0x00_00_00_F2 => SyscallCode::FUEL,
             0x00_01_01_1D => SyscallCode::UINT256_MUL,
             0x00_01_01_2F => SyscallCode::U256XU2048_MUL,
             0x00_01_01_20 => SyscallCode::BLS12381_FP_ADD,
@@ -212,8 +201,6 @@ impl SyscallCode {
             0x00_01_01_2C => SyscallCode::SECP256R1_ADD,
             0x00_00_01_2D => SyscallCode::SECP256R1_DOUBLE,
             0x00_00_01_2E => SyscallCode::SECP256R1_DECOMPRESS,
-            0x00_00_01_91 => SyscallCode::TABLE_GROW,
-            0x00_02_01_96 => SyscallCode::TABLE_INIT,
             _ => panic!("invalid syscall number: {value}"),
         }
     }
@@ -287,8 +274,6 @@ impl SyscallCode {
             SyscallCode::SECP256R1_ADD => RwasmAirId::Secp256r1AddAssign,
             SyscallCode::SECP256R1_DOUBLE => RwasmAirId::Secp256r1DoubleAssign,
             SyscallCode::SECP256R1_DECOMPRESS => RwasmAirId::Secp256r1Decompress,
-            SyscallCode::TABLE_INIT => RwasmAirId::TableInit,
-            SyscallCode::TABLE_GROW => RwasmAirId::TableGrow,
             SyscallCode::HALT |
             SyscallCode::WRITE |
             SyscallCode::ENTER_UNCONSTRAINED |
@@ -298,7 +283,6 @@ impl SyscallCode {
             SyscallCode::VERIFY_SP1_PROOF |
             SyscallCode::HINT_LEN |
             SyscallCode::HINT_READ => return None,
-            SyscallCode::FUEL => return None,
         })
     }
 }
@@ -306,62 +290,5 @@ impl SyscallCode {
 impl std::fmt::Display for SyscallCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
-    }
-}
-
-pub fn func_id_to_syscall_code(id: u32) -> SyscallCode {
-    let id = SysFuncIdx::from_repr(id).unwrap();
-    match id {
-        SysFuncIdx::EXIT => todo!(),
-        SysFuncIdx::STATE => todo!(),
-        SysFuncIdx::READ_INPUT => todo!(),
-        SysFuncIdx::INPUT_SIZE => todo!(),
-        SysFuncIdx::WRITE_OUTPUT => todo!(),
-        SysFuncIdx::OUTPUT_SIZE => todo!(),
-        SysFuncIdx::READ_OUTPUT => todo!(),
-        SysFuncIdx::EXEC => todo!(),
-        SysFuncIdx::RESUME => todo!(),
-        SysFuncIdx::FORWARD_OUTPUT => todo!(),
-        SysFuncIdx::CHARGE_FUEL_MANUALLY => todo!(),
-        SysFuncIdx::FUEL => SyscallCode::FUEL,
-        SysFuncIdx::DEBUG_LOG => todo!(),
-        SysFuncIdx::CHARGE_FUEL => todo!(),
-        SysFuncIdx::ENTER_UNCONSTRAINED => todo!(),
-        SysFuncIdx::EXIT_UNCONSTRAINED => todo!(),
-        SysFuncIdx::WRITE_FD => todo!(),
-        SysFuncIdx::KECCAK256 => todo!(),
-        SysFuncIdx::KECCAK256_PERMUTE => todo!(),
-        SysFuncIdx::POSEIDON => todo!(),
-        SysFuncIdx::SHA256_EXTEND => todo!(),
-        SysFuncIdx::SHA256_COMPRESS => todo!(),
-        SysFuncIdx::SHA256 => todo!(),
-        SysFuncIdx::BLAKE3 => todo!(),
-        SysFuncIdx::ED25519_DECOMPRESS => todo!(),
-        SysFuncIdx::ED25519_ADD => todo!(),
-        SysFuncIdx::TOWER_FP1_BN254_ADD => todo!(),
-        SysFuncIdx::TOWER_FP1_BN254_SUB => todo!(),
-        SysFuncIdx::TOWER_FP1_BN254_MUL => todo!(),
-        SysFuncIdx::TOWER_FP1_BLS12381_ADD => todo!(),
-        SysFuncIdx::TOWER_FP1_BLS12381_SUB => todo!(),
-        SysFuncIdx::TOWER_FP1_BLS12381_MUL => todo!(),
-        SysFuncIdx::TOWER_FP2_BN254_ADD => todo!(),
-        SysFuncIdx::TOWER_FP2_BN254_SUB => todo!(),
-        SysFuncIdx::TOWER_FP2_BN254_MUL => todo!(),
-        SysFuncIdx::TOWER_FP2_BLS12381_ADD => todo!(),
-        SysFuncIdx::TOWER_FP2_BLS12381_SUB => todo!(),
-        SysFuncIdx::TOWER_FP2_BLS12381_MUL => todo!(),
-        SysFuncIdx::SECP256K1_ADD => todo!(),
-        SysFuncIdx::SECP256K1_DECOMPRESS => todo!(),
-        SysFuncIdx::SECP256K1_DOUBLE => todo!(),
-        SysFuncIdx::SECP256R1_ADD => todo!(),
-        SysFuncIdx::SECP256R1_DECOMPRESS => todo!(),
-        SysFuncIdx::SECP256R1_DOUBLE => todo!(),
-        SysFuncIdx::BLS12381_ADD => todo!(),
-        SysFuncIdx::BLS12381_DECOMPRESS => todo!(),
-        SysFuncIdx::BLS12381_DOUBLE => todo!(),
-        SysFuncIdx::BN254_ADD => todo!(),
-        SysFuncIdx::BN254_DOUBLE => todo!(),
-        SysFuncIdx::UINT256_MUL_MOD => todo!(),
-        SysFuncIdx::UINT256_X2048_MUL => todo!(),
     }
 }

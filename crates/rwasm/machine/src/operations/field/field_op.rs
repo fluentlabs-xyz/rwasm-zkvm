@@ -527,8 +527,6 @@ mod tests {
             [FieldOperation::Add, FieldOperation::Sub, FieldOperation::Mul, FieldOperation::Div]
                 .iter()
         {
-            println!("op: {:?}", op);
-
             let mut challenger = config.challenger();
 
             let chip: FieldOpChip<Ed25519BaseField> = FieldOpChip::new(*op);

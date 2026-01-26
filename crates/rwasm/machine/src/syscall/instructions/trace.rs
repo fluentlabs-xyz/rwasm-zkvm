@@ -5,7 +5,6 @@ use itertools::Itertools;
 use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use rayon::iter::{ParallelBridge, ParallelIterator};
-use rwasm::Opcode;
 use rwasm_executor::{
     events::{ByteLookupEvent, ByteRecord, SyscallEvent},
     syscalls::SyscallCode,
@@ -89,19 +88,6 @@ impl SyscallInstrsChip {
 
         cols.shard = F::from_canonical_u32(event.shard);
         cols.clk = F::from_canonical_u32(event.clk);
-        #[allow(clippy::match_like_matches_macro)]
-        let is_fat_op = match event.syscall_code {
-            SyscallCode::TABLE_INIT | SyscallCode::TABLE_GROW => true,
-            _ => false,
-        };
-        cols.is_fat_op = F::from_bool(is_fat_op);
-        let fat_opcode = match event.syscall_code {
-            SyscallCode::TABLE_INIT => Opcode::TableInit(0u32).code(),
-            SyscallCode::TABLE_GROW => Opcode::TableGrow(0u16).code(),
-            _ => Opcode::Unreachable.code(),
-        };
-        cols.fat_opcode = F::from_canonical_u32(fat_opcode);
-        cols.is_sys_call = F::from_bool(!is_fat_op);
         // cols.op_a_access.populate(MemoryRecordEnum::Write(event.a_record), blu);
         cols.op_b_value = event.arg1.into();
         cols.op_c_value = event.arg2.into();

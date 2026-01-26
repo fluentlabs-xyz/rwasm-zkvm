@@ -1,7 +1,7 @@
 use std::borrow::BorrowMut;
 
 use crate::{
-    syscall::fat_op::table_grow::column::{TableGrowCols, NUM_TABLE_GROW_SIZE},
+    non_alu_instructions::table_grow::column::{TableGrowCols, NUM_TABLE_GROW_SIZE},
     utils::pad_rows_fixed,
 };
 use hashbrown::HashMap;
@@ -9,10 +9,8 @@ use itertools::Itertools;
 use p3_field::PrimeField32;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_maybe_rayon::prelude::{ParallelIterator, ParallelSlice};
-use rwasm::event::TableGrowEvent;
 use rwasm_executor::{
-    events::{ByteLookupEvent, ByteRecord, PrecompileEvent},
-    syscalls::SyscallCode,
+    events::{ByteLookupEvent, ByteRecord, TableGrowEvent},
     ExecutionRecord, Program,
 };
 use sp1_stark::air::MachineAir;
@@ -41,9 +39,7 @@ impl<F: PrimeField32> MachineAir<F> for TableGrowChip {
 
         let mut wrapped_rows = Some(rows);
         // Extract and process all TABLE_GROW events from the execution record
-        for (_, event) in input.get_precompile_events(SyscallCode::TABLE_GROW) {
-            let event =
-                if let PrecompileEvent::TableGrow(event) = event { event } else { unreachable!() };
+        for event in &input.table_grow_events {
             // Convert the event into trace rows
             self.event_to_rows(event, &mut wrapped_rows, &mut Vec::new());
         }
@@ -68,22 +64,15 @@ impl<F: PrimeField32> MachineAir<F> for TableGrowChip {
     /// Processes TABLE_GROW events in parallel to collect all byte lookup events
     /// required for constraint verification without generating actual trace rows.
     fn generate_dependencies(&self, input: &Self::Record, output: &mut Self::Record) {
-        println!("generate deps Table:");
-        let events = input.get_precompile_events(SyscallCode::TABLE_GROW);
-        println!("table events:{:?}", events);
         let chunk_size = 1usize;
 
         // Process events in parallel chunks to collect byte lookup events efficiently
-        let blu_batches = events
+        let blu_batches = &input
+            .table_grow_events
             .par_chunks(chunk_size)
             .map(|events| {
                 let mut blu: HashMap<ByteLookupEvent, usize> = HashMap::new();
-                events.iter().for_each(|(_, event)| {
-                    let event = if let PrecompileEvent::TableGrow(event) = event {
-                        event
-                    } else {
-                        unreachable!()
-                    };
+                events.iter().for_each(|event| {
                     // Collect byte lookups without generating trace rows
                     self.event_to_rows::<F>(event, &mut None, &mut blu);
                 });
@@ -102,7 +91,7 @@ impl<F: PrimeField32> MachineAir<F> for TableGrowChip {
         if let Some(shape) = shard.shape.as_ref() {
             shape.included::<F, _>(self)
         } else {
-            !shard.get_precompile_events(SyscallCode::TABLE_GROW).is_empty()
+            !shard.table_grow_events.is_empty()
         }
     }
 }
@@ -126,17 +115,16 @@ impl TableGrowChip {
         let mut row = [F::zero(); NUM_TABLE_GROW_SIZE];
         let local: &mut TableGrowCols<F> = row.as_mut_slice().borrow_mut();
 
-        // Populate stack reads for initialization value and delta
-        local.init_access.populate(event.stack_access[0], blu);
-        local.delta_access.populate(event.stack_access[1], blu);
+        local.init = event.init.into();
 
         // Populate table index with range check
 
-        local.table_idx.populate(event.table_idx, blu, populate_range_check);
-        local.sp.populate(event.sp, blu, populate_range_check);
+        local.table_idx.populate(event.opcode.aux_value(), blu, populate_range_check);
+        local.sp = F::from_canonical_u32(event.sp);
+        local.pc = F::from_canonical_u32(event.pc);
 
         // Populate the current table size read
-        local.table_size_read_access.populate(event.table_size_read_acess, blu);
+        local.table_size_read_access.populate(event.table_size_read_record, blu);
 
         // Set execution context metadata
         local.is_real = F::one();
@@ -159,7 +147,7 @@ impl TableGrowChip {
     /// # Arguments
     /// * `event` - The TableGrowEvent to process
     /// * `rows` - Optional vector to collect generated rows (None when only collecting
-    ///   dependencies)
+    ///   dependencies)ч
     /// * `blu` - Byte lookup record for range checks and memory operations
     fn event_to_rows<F: PrimeField32>(
         &self,
@@ -176,14 +164,14 @@ impl TableGrowChip {
 
         // Case 1: Failure - table cannot grow (exceeds maximum size or other constraints)
         // Returns u32::MAX to indicate failure per WASM specification
-        if event.result_write_access.value == u32::MAX {
+        if event.res == u32::MAX {
             let mut row = Self::create_base_row(true, blu, event);
             let local: &mut TableGrowCols<F> = row.as_mut_slice().borrow_mut();
 
             local.is_first = F::one();
             local.is_last = F::one();
             local.should_update_result = F::one();
-            local.result_write_access.populate(event.result_write_access, blu);
+            local.res = event.res.into();
             local.not_successful_result = F::one();
             local.delta.populate(event.delta, blu, true);
 
@@ -216,16 +204,17 @@ impl TableGrowChip {
 
             let local: &mut TableGrowCols<F> = row.as_mut_slice().borrow_mut();
 
+            local.res = event.res.into();
+
             // First row: mark as first and write the result (old table size) to stack
             if idx == 0 {
                 local.is_first = F::one();
                 local.should_update_result = F::one();
-                local.result_write_access.populate(event.result_write_access, blu);
+
                 local.delta.populate(event.delta, blu, true);
             } else {
-                // Subsequent rows: reuse values without byte lookups to avoid duplicates
-                local.result_write_access.populate(event.result_write_access, &mut Vec::new());
-                local.table_idx.populate(event.table_idx, blu, false);
+                local.table_idx.populate(event.opcode.aux_value(), blu, false);
+                local.delta.populate(event.delta, blu, false);
             }
 
             // Mark that the operation has non-zero length
@@ -235,28 +224,28 @@ impl TableGrowChip {
             // Perform range checks only on first and last addresses to optimize
             if idx == 0 || idx == event.delta as usize - 1 {
                 local.dst_address.populate(
-                    event.table_size_read_acess.value + idx as u32,
+                    event.table_size_read_record.value + idx as u32,
                     blu,
                     true,
                 );
             } else {
                 local.dst_address.populate(
-                    event.table_size_read_acess.value + idx as u32,
+                    event.table_size_read_record.value + idx as u32,
                     blu,
                     false,
                 );
             }
 
             // Write initialization value to this table entry
-            if let Some(memory_write_access) = event.memory_write_acess.get(idx) {
-                local.dst_write_access.populate(*memory_write_access, blu);
+            if let Some(dst_write_record) = event.dst_write_records.get(idx) {
+                local.dst_write_access.populate(*dst_write_record, blu);
             }
 
             // Last row: update table size in memory to reflect the growth
             if idx == event.delta as usize - 1 {
                 local.is_last = F::one();
                 local.should_update_table_size = F::one();
-                local.table_size_write_access.populate(event.table_size_write_acess, blu);
+                local.table_size_write_access.populate(event.table_size_write_record.unwrap(), blu);
             }
 
             push_row(row);

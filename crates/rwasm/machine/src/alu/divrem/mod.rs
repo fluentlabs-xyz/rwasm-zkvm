@@ -38,7 +38,7 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::{AbstractField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator, ParallelSlice};
-use rwasm::Opcode;
+use rwasm::{mem_index::UNIT, Opcode};
 use rwasm_executor::{
     events::{AluEvent, ByteRecord, EmptyByteRecord},
     ExecutionRecord, Program, DEFAULT_PC_INC,
@@ -70,6 +70,8 @@ pub struct DivRemChip;
 pub struct DivRemCols<T> {
     /// Program counter of the associated CPU instruction.
     pub pc: T,
+
+    pub sp: T,
 
     /// Raw input / output words as seen by the CPU bus.
     ///
@@ -331,6 +333,9 @@ impl DivRemChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.pc = F::from_wrapped_u32(event.pc);
+
+        cols.pc = F::from_canonical_u32(event.pc);
+        cols.sp = F::from_canonical_u32(event.sp);
 
         let b_val = event.b;
         let c_val = event.c;
@@ -1120,20 +1125,24 @@ where
             local.is_rem_s * op_rem_s +
             local.is_div_s * op_div_s;
 
-        builder.receive_instruction_old(
-            zero.clone(),                                            // shard / context
-            zero.clone(),                                            // cycle
-            local.pc,                                                // pc
-            local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC), // next_pc
-            zero.clone(),                                            // gas / aux
-            calculated_opcode,                                       // opcode
-            local.a,                                                 // result
-            local.b,                                                 // operand 1
-            local.c,                                                 // operand 2
-            zero.clone(),                                            // extras...
+        builder.receive_rwasm_instruction(
+            zero.clone(), // shard / context
+            zero.clone(),
+            local.pc, // pc
+            local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp + AB::Expr::from_canonical_u32(UNIT),
+            zero.clone(),
+            calculated_opcode,
+            local.a,
+            local.b,
+            local.c,
+            Word::zero::<AB>(),
             zero.clone(),
             zero.clone(),
-            is_real, // enabled flag
+            zero.clone(),
+            zero.clone(),
+            is_real,
         );
     }
 }
@@ -1217,7 +1226,7 @@ mod tests {
             let c = thread_rng().gen::<u32>();
             for op in &opcodes {
                 let a = compute_expected(*op, b, c);
-                divrem_events.push(AluEvent::new(0, *op, a, b, c, op.code()));
+                divrem_events.push(AluEvent::new(0, 0, *op, a, b, c, op.code()));
             }
         }
 
@@ -1266,7 +1275,7 @@ mod tests {
         for (b, c) in instructions {
             for op in &opcodes {
                 let a = compute_expected(*op, b, c);
-                divrem_events.push(AluEvent::new(0, *op, a, b, c, op.code()));
+                divrem_events.push(AluEvent::new(0, 0, *op, a, b, c, op.code()));
             }
         }
 
@@ -1328,7 +1337,6 @@ mod tests {
                 // trace "internally consistent" but inconsistent with
                 // the true arithmetic reality.
                 if mal_rec.cpu_events.len() > 2 {
-                    mal_rec.cpu_events[2].res = a_malicious;
                     if let Some(MemoryRecordEnum::Write(mut write_record)) =
                         mal_rec.cpu_events[2].res_record
                     {
@@ -1367,7 +1375,7 @@ mod tests {
         let op = Opcode::I32DivS;
 
         let mut shard = ExecutionRecord::default();
-        shard.divrem_events.push(AluEvent::new(0, op, 0x800000, b, c, op.code()));
+        shard.divrem_events.push(AluEvent::new(0, 0, op, 0x800000, b, c, op.code()));
 
         let chip = DivRemChip::default();
         let trace = chip.generate_trace(&shard, &mut ExecutionRecord::default());

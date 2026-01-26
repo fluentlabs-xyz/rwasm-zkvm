@@ -9,7 +9,7 @@ use p3_air::{Air, BaseAir};
 use p3_field::{AbstractField, PrimeField, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use p3_maybe_rayon::prelude::{ParallelBridge, ParallelIterator};
-use rwasm::Opcode;
+use rwasm::{mem_index::UNIT, Opcode};
 use rwasm_executor::{
     events::{AluEvent, ByteLookupEvent, ByteRecord, EmptyByteRecord},
     ExecutionRecord, Program, DEFAULT_PC_INC,
@@ -43,6 +43,9 @@ pub struct AddSubChip;
 pub struct AddSubCols<T> {
     /// The program counter.
     pub pc: T,
+
+    /// The current stack pointer.
+    pub sp: T,
 
     /// Instance of `AddOperation` to handle addition logic in `AddSubChip`'s ALU operations.
     /// It's result will be `a` for the add operation and `b` for the sub operation.
@@ -163,6 +166,7 @@ impl AddSubChip {
         blu: &mut impl ByteRecord,
     ) {
         cols.pc = F::from_canonical_u32(event.pc);
+        cols.sp = F::from_canonical_u32(event.sp);
 
         let is_add = event.opcode == Opcode::I32Add;
         cols.is_add = F::from_bool(is_add);
@@ -226,16 +230,20 @@ where
         // - `is_memory = 0`
         // - `is_syscall = 0`
         // - `is_halt = 0`
-        builder.receive_instruction_old(
+        builder.receive_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp + AB::Expr::from_canonical_u32(UNIT),
             AB::Expr::zero(),
             opcode.clone(),
             local.add_operation.value,
             local.operand_1,
             local.operand_2,
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -251,16 +259,20 @@ where
         // - `is_memory = 0`
         // - `is_syscall = 0`
         // - `is_halt = 0`
-        builder.receive_instruction_old(
+        builder.receive_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp + AB::Expr::from_canonical_u32(UNIT),
             AB::Expr::zero(),
             opcode,
             local.operand_1,
             local.add_operation.value,
             local.operand_2,
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -277,7 +289,7 @@ mod tests {
     use p3_matrix::dense::RowMajorMatrix;
     use rand::{thread_rng, Rng};
     use rwasm::Opcode;
-    use rwasm_executor::{events::AluEvent, ExecutionRecord, DEFAULT_PC_INC};
+    use rwasm_executor::{events::AluEvent, ExecutionRecord, DEFAULT_PC_INC, SP_START};
     use sp1_stark::{
         air::MachineAir, baby_bear_poseidon2::BabyBearPoseidon2, chip_name, CpuProver,
         MachineProver, StarkGenericConfig,
@@ -293,50 +305,11 @@ mod tests {
     use core::borrow::Borrow;
     use rwasm_executor::events::MemoryRecordEnum;
 
-    /// Lazily initialized record for use across multiple tests.
-    /// Consists of random `ADD` and `SUB` instructions.
-    static SHARD: LazyLock<ExecutionRecord> = LazyLock::new(|| {
-        let add_events = (0..1)
-            .flat_map(|i| {
-                [{
-                    let operand_1 = 1u32;
-                    let operand_2 = 2u32;
-                    let result = operand_1.wrapping_add(operand_2);
-                    AluEvent::new(
-                        i % 2,
-                        Opcode::I32Add,
-                        result,
-                        operand_1,
-                        operand_2,
-                        Opcode::I32Add.code(),
-                    )
-                }]
-            })
-            .collect::<Vec<_>>();
-        let _sub_events = (0..255)
-            .flat_map(|i| {
-                [{
-                    let operand_1 = thread_rng().gen_range(0..u32::MAX);
-                    let operand_2 = thread_rng().gen_range(0..u32::MAX);
-                    let result = operand_1.wrapping_add(operand_2);
-                    AluEvent::new(
-                        i % 2,
-                        Opcode::I32Sub,
-                        result,
-                        operand_1,
-                        operand_2,
-                        Opcode::I32Sub.code(),
-                    )
-                }]
-            })
-            .collect::<Vec<_>>();
-        ExecutionRecord { add_events, ..Default::default() }
-    });
-
     #[test]
     fn generate_trace() {
         let mut shard = ExecutionRecord::default();
-        shard.add_events = vec![AluEvent::new(0, Opcode::I32Add, 14, 8, 6, Opcode::I32Add.code())];
+        shard.add_events =
+            vec![AluEvent::new(0, SP_START, Opcode::I32Add, 14, 8, 6, Opcode::I32Add.code())];
         let chip = AddSubChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
@@ -348,6 +321,8 @@ mod tests {
         let config = BabyBearPoseidon2::new();
         let mut challenger = config.challenger();
 
+        let mut current_sp = SP_START - 2 * UNIT;
+
         let mut shard = ExecutionRecord::default();
         for i in 0..1 {
             let operand_1 = thread_rng().gen_range(0..u32::MAX);
@@ -355,6 +330,7 @@ mod tests {
             let result = operand_1.wrapping_add(operand_2);
             shard.add_events.push(AluEvent::new(
                 i * DEFAULT_PC_INC,
+                current_sp,
                 Opcode::I32Add,
                 result,
                 operand_1,
@@ -368,6 +344,7 @@ mod tests {
             let result = operand_1.wrapping_sub(operand_2);
             shard.add_events.push(AluEvent::new(
                 i * DEFAULT_PC_INC,
+                current_sp,
                 Opcode::I32Sub,
                 result,
                 operand_1,
@@ -401,9 +378,12 @@ mod tests {
         let c: u32 = 6;
         let a = b.wrapping_add(c);
 
+        let mut current_sp = SP_START - 2 * UNIT;
+
         let mut shard = ExecutionRecord::default();
         shard.add_events.push(AluEvent::new(
             0,
+            current_sp,
             Opcode::I32Add,
             a, // result 'a'
             b, // operand_1 (b for add)
@@ -437,9 +417,12 @@ mod tests {
         let c: u32 = 7;
         let b = a.wrapping_add(c);
 
+        let mut current_sp = SP_START - 2 * UNIT;
+
         let mut shard = ExecutionRecord::default();
         shard.sub_events.push(AluEvent::new(
             0,
+            current_sp,
             Opcode::I32Sub,
             a, // 'a' for sub
             a, // operand_1 is 'a' for sub rows
@@ -499,7 +482,6 @@ mod tests {
                 // The ALU op of interest is the 5th instruction (index 4)
                 if rec.cpu_events.len() > 4 {
                     let evt = &mut rec.cpu_events[4];
-                    evt.res = op_a;
 
                     // Keep memory trace consistent with our forged result
                     if let Some(MemoryRecordEnum::Write(mut wr)) = evt.res_record.take() {

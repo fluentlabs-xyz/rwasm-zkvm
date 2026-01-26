@@ -2,6 +2,7 @@
 //! shifts and a byte-wise OR with non-overlap.
 use core::borrow::{Borrow, BorrowMut};
 use p3_maybe_rayon::prelude::ParallelIterator;
+use rwasm::mem_index::UNIT;
 
 use core::mem::size_of;
 use hashbrown::HashMap;
@@ -28,6 +29,7 @@ pub const NUM_ROTATE_COLS: usize = size_of::<RotateCols<u8>>();
 pub struct RotateCols<T> {
     /// The program counter.
     pub pc: T,
+    pub sp: T,
     /// The final result of the rotation.
     pub a: Word<T>,
     /// The 32-bit value to be rotated.
@@ -65,6 +67,7 @@ impl RotateChip {
     ) {
         // 1) Basic columns: copy CPU operands/results into the trace row.
         cols.pc = F::from_canonical_u32(event.pc);
+        cols.sp = F::from_canonical_u32(event.sp);
 
         cols.a = Word::from(event.a);
         cols.b = Word::from(event.b);
@@ -226,31 +229,39 @@ where
         let shl_opcode = AB::Expr::from_canonical_u32(Opcode::I32Shl.code());
 
         // For ROTL(b, k), we depend on `b << k` and `b >> (32 - k)`
-        builder.send_instruction_old(
+        builder.send_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
             AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNIT),
             AB::Expr::zero(),
             shl_opcode.clone(),
             local.right_shifted,
             local.b,
             c_masked_word.clone(),
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.is_rotl,
         );
-        builder.send_instruction_old(
+        builder.send_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
             AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
             AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNIT),
+            AB::Expr::zero(),
             shr_opcode.clone(),
             local.left_shifted,
             local.b,
             c_inverse_word.clone(),
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -258,31 +269,39 @@ where
         );
 
         // For ROTR(b, k), we depend on `b >> k` and `b << (32 - k)`
-        builder.send_instruction_old(
+        builder.send_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
             AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
+            AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNIT),
             AB::Expr::zero(),
             shr_opcode.clone(),
             local.right_shifted,
             local.b,
             c_masked_word,
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.is_rotr,
         );
-        builder.send_instruction_old(
+        builder.send_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::from_canonical_u32(UNUSED_PC),
             AB::Expr::from_canonical_u32(UNUSED_PC + DEFAULT_PC_INC),
             AB::Expr::zero(),
+            AB::Expr::from_canonical_u32(UNIT),
+            AB::Expr::zero(),
             shl_opcode.clone(),
             local.left_shifted,
             local.b,
             c_inverse_word,
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -292,16 +311,20 @@ where
         let cpu_opcode = local.is_rotl * AB::Expr::from_canonical_u32(Opcode::I32Rotl.code()) +
             local.is_rotr * AB::Expr::from_canonical_u32(Opcode::I32Rotr.code());
 
-        builder.receive_instruction_old(
+        builder.receive_rwasm_instruction(
             AB::Expr::zero(),
             AB::Expr::zero(),
             local.pc,
             local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            local.sp,
+            local.sp + AB::Expr::from_canonical_u32(UNIT),
             AB::Expr::zero(),
             cpu_opcode,
             local.a,
             local.b,
             local.c,
+            Word::zero::<AB>(),
+            AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
             AB::Expr::zero(),
@@ -369,6 +392,7 @@ impl<F: PrimeField32> MachineAir<F> for RotateChip {
                     if event.code == Opcode::I32Rotl.code() {
                         sl_events.push(AluEvent::new(
                             UNUSED_PC,
+                            0,
                             Opcode::I32Shl,
                             b.wrapping_shl(k),
                             b,
@@ -377,6 +401,7 @@ impl<F: PrimeField32> MachineAir<F> for RotateChip {
                         ));
                         sr_events.push(AluEvent::new(
                             UNUSED_PC,
+                            0,
                             Opcode::I32ShrU,
                             b.wrapping_shr(inv),
                             b,
@@ -387,6 +412,7 @@ impl<F: PrimeField32> MachineAir<F> for RotateChip {
                         // I32Rotr
                         sr_events.push(AluEvent::new(
                             UNUSED_PC,
+                            0,
                             Opcode::I32ShrU,
                             b.wrapping_shr(k),
                             b,
@@ -395,6 +421,7 @@ impl<F: PrimeField32> MachineAir<F> for RotateChip {
                         ));
                         sl_events.push(AluEvent::new(
                             UNUSED_PC,
+                            0,
                             Opcode::I32Shl,
                             b.wrapping_shl(inv),
                             b,
@@ -456,7 +483,7 @@ mod tests {
         let c = 1u32;
         let a = b.rotate_left(c & 31);
         shard.rotate_events =
-            vec![AluEvent::new(0, Opcode::I32Rotl, a, b, c, Opcode::I32Rotl.code())];
+            vec![AluEvent::new(0, 0, Opcode::I32Rotl, a, b, c, Opcode::I32Rotl.code())];
         let chip = RotateChip::default();
         let trace: RowMajorMatrix<BabyBear> =
             chip.generate_trace(&shard, &mut ExecutionRecord::default());
@@ -493,7 +520,7 @@ mod tests {
         for (op, b, c) in samples.iter().copied() {
             let k = c & 31;
             let a = if op == Opcode::I32Rotl { b.rotate_left(k) } else { b.rotate_right(k) };
-            events.push(AluEvent::new(0, op, a, b, c, op.code()));
+            events.push(AluEvent::new(0, 0, op, a, b, c, op.code()));
         }
 
         // pad to ~1000 rows (typical of other chips’ tests)
@@ -501,7 +528,7 @@ mod tests {
             let b = 0x2121_2121u32;
             let c = 13;
             let a = b.rotate_left(c & 31);
-            events.push(AluEvent::new(0, Opcode::I32Rotl, a, b, c, Opcode::I32Rotl.code()));
+            events.push(AluEvent::new(0, 0, Opcode::I32Rotl, a, b, c, Opcode::I32Rotl.code()));
         }
 
         let mut shard = ExecutionRecord::default();
@@ -548,7 +575,6 @@ mod tests {
 
                     // forge CPU result cell + memory write
                     if malicious_record.cpu_events.len() > 4 {
-                        malicious_record.cpu_events[4].res = op_a as u32;
                         if let Some(MemoryRecordEnum::Write(mut write_record)) =
                             malicious_record.cpu_events[4].res_record
                         {

@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 
 use crate::{
-    air::MemoryAirBuilder,
+    air::{MemoryAirBuilder, ProgramAirBuilder},
     memory::{ElementAddressCols, TableAddressCols},
 };
 
@@ -10,8 +10,11 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use crate::air::WordAirBuilder;
 use p3_field::AbstractField;
 use p3_matrix::Matrix;
-use rwasm_executor::syscalls::SyscallCode;
-use sp1_stark::air::{BaseAirBuilder, InteractionScope, SP1AirBuilder};
+use rwasm_executor::{Opcode, DEFAULT_PC_INC};
+use sp1_stark::{
+    air::{BaseAirBuilder, SP1AirBuilder},
+    Word,
+};
 mod column;
 mod trace;
 use crate::memory::MemoryCols;
@@ -43,10 +46,6 @@ where
         builder.when(local.is_last).assert_one(local.is_real);
         builder.when(local.is_first).assert_one(local.is_real);
 
-        builder
-            .when(local.is_first)
-            .assert_eq(local.length.value::<AB>(), local.length_access.value().reduce::<AB>());
-
         // check transition between events
         builder.when_transition().when(local.is_last).when(next.is_real).assert_one(next.is_first);
 
@@ -58,14 +57,11 @@ where
             .when_transition()
             .when_not(local.is_last)
             .assert_eq(local.table_idx.value::<AB>(), next.table_idx.value::<AB>());
+        builder.when_transition().when_not(local.is_last).assert_word_eq(local.src, next.src);
         builder
             .when_transition()
             .when_not(local.is_last)
-            .assert_word_eq(*local.src_access.value(), *next.src_access.value());
-        builder
-            .when_transition()
-            .when_not(local.is_last)
-            .assert_word_eq(*local.length_access.value(), *next.length_access.value());
+            .assert_word_eq(local.length.word::<AB>(), next.length.word::<AB>());
         builder
             .when_transition()
             .when_not(local.is_last)
@@ -78,16 +74,14 @@ where
         builder
             .when(local.is_first)
             .when_not(local.is_non_zero_length)
-            .assert_word_zero(*local.length_access.value());
+            .assert_zero(local.length.value::<AB>());
 
         builder.when(local.is_last).when(local.is_non_zero_length).assert_eq(
-            local.src_access.value().reduce::<AB>() + local.length_access.value().reduce::<AB>() -
-                AB::Expr::one(),
+            local.src.reduce::<AB>() + local.length.value::<AB>() - AB::Expr::one(),
             local.src_address.value::<AB>(),
         );
         builder.when(local.is_last).when(local.is_non_zero_length).assert_eq(
-            local.dst_access.value().reduce::<AB>() + local.length_access.value().reduce::<AB>() -
-                AB::Expr::one(),
+            local.dst_access.value().reduce::<AB>() + local.length.value::<AB>() - AB::Expr::one(),
             local.dst_address.value::<AB>(),
         );
         builder.when_transition().when(local.is_real).when_not(local.is_last).assert_eq(
@@ -102,13 +96,7 @@ where
         // check that it does not go out of memory bounds
         builder
             .when(local.is_first)
-            .assert_eq(local.src_access.value().reduce::<AB>(), local.src_address.value::<AB>());
-        builder
-            .when(local.is_first)
             .assert_eq(local.dst_access.value().reduce::<AB>(), local.dst_address.value::<AB>());
-
-        StackAddressCols::<AB::Var>::range_check(builder, local.sp);
-        builder.when(local.is_first).assert_one(local.sp.is_real::<AB>());
 
         ElementAddressCols::<AB::Var>::range_check(builder, local.src_address);
         builder.when(local.is_first).assert_one(local.src_address.is_real::<AB>());
@@ -126,14 +114,31 @@ where
 
         self.eval_memory_access(local, builder);
 
-        builder.receive_syscall(
+        builder.send_program(
+            local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC),
+            AB::Expr::from_canonical_u32(Opcode::TableGet(0).code()),
+            local.table_idx.word::<AB>(),
+            local.is_first,
+        );
+
+        builder.receive_rwasm_instruction(
             local.shard,
             local.clk,
-            AB::Expr::from_canonical_u32(SyscallCode::TABLE_INIT.syscall_id() as u32),
+            local.pc,
+            local.pc + AB::Expr::from_canonical_u32(DEFAULT_PC_INC) + AB::Expr::one(),
+            local.sp,
+            local.sp + AB::Expr::from_canonical_u32(3 * UNIT),
+            AB::Expr::from_canonical_u32(2),
+            AB::Expr::from_canonical_u32(Opcode::TableInit(0).code()),
+            Word::zero::<AB>(),
+            local.src,
+            local.length.word::<AB>(),
+            Word::zero::<AB>(),
             AB::Expr::zero(),
             AB::Expr::zero(),
+            AB::Expr::zero(),
+            AB::Expr::one(),
             local.is_first,
-            InteractionScope::Local,
         );
     }
 }
@@ -149,23 +154,7 @@ impl TableInitChip {
         builder.eval_memory_access(
             local.shard,
             local.clk,
-            local.sp.value::<AB>(),
-            &local.length_access.clone(),
-            local.is_first,
-        );
-
-        builder.eval_memory_access(
-            local.shard,
-            local.clk,
-            local.sp.value::<AB>() + AB::Expr::from_canonical_u32(UNIT),
-            &local.src_access.clone(),
-            local.is_first,
-        );
-
-        builder.eval_memory_access(
-            local.shard,
-            local.clk,
-            local.sp.value::<AB>() + AB::Expr::from_canonical_u32(2 * UNIT),
+            local.sp + AB::Expr::from_canonical_u32(3 * UNIT),
             &local.dst_access.clone(),
             local.is_first,
         );
@@ -188,7 +177,7 @@ impl TableInitChip {
 
         builder.eval_memory_access(
             local.shard,
-            local.clk + AB::Expr::from_canonical_u32(1),
+            local.clk + AB::Expr::one(),
             table_addr,
             &local.dst_write_access,
             local.is_non_zero_length,

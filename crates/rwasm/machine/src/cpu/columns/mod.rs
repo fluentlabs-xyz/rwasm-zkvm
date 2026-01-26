@@ -41,15 +41,16 @@ pub struct CpuCols<T: Copy> {
     /// The expected next program counter value.
     pub next_pc: T,
 
-    pub sp: T,
-    pub next_sp: T,
+    pub sp: StackAddressCols<T>,
+    pub next_sp: StackAddressCols<T>,
+
+    pub op_arg2_sp: StackAddressCols<T>,
 
     /// Columns related to the instruction.
     pub instruction: InstructionCols<T>,
 
-    /// Columns related to the call data
-    pub call_data: CallDataCols<T>,
-
+    // /// Columns related to the call data
+    // pub call_data: CallDataCols<T>,
     ///Alu cols:
     pub alu_cols: AluCols<T>,
 
@@ -59,6 +60,8 @@ pub struct CpuCols<T: Copy> {
     /// Whether this is a syscall instruction.
     pub is_syscall: T,
 
+    pub is_complex_opcode: T,
+
     /// Whether this is a halt instruction.
     pub is_halt: T,
 
@@ -67,27 +70,14 @@ pub struct CpuCols<T: Copy> {
 
     /// Operand values, either from registers or immediate values.
     pub op_res_access: MemoryReadWriteCols<T>,
-    pub op_res_hi_access: MemoryReadWriteCols<T>,
     pub op_arg1_access: MemoryReadCols<T>,
     pub op_arg2_access: MemoryReadCols<T>,
-
-    ///Operand Address RangeChecker
-    pub op_arg1_addr: StackAddressCols<T>,
-    pub op_arg2_addr: StackAddressCols<T>,
-    pub op_res_addr: StackAddressCols<T>,
-    pub op_res_hi_addr: StackAddressCols<T>,
-    /// Selector to label whether this row is a non padded row.
-    pub is_real: T,
 }
 
 impl<T: Copy> CpuCols<T> {
     /// Gets the value of the first operand.
     pub fn op_res_val(&self) -> Word<T> {
         *self.op_res_access.value()
-    }
-
-    pub fn op_res_hi_val(&self) -> Word<T> {
-        *self.op_res_hi_access.value()
     }
 
     /// Gets the value of the second operand.
