@@ -152,6 +152,17 @@ pub struct ParamsCheckEvent {
     pub params_read_record: MemoryReadRecord,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[repr(C)]
+pub struct FuelEvent {
+    pub pc: u32,
+    pub sp: u32,
+    /// The Opcode
+    pub opcode: Opcode,
+    pub arg1: u32,
+    pub fuel_consumed: u64,
+}
+
 impl ConstEvent {
     /// Create a new [`ConstEvent`].
     #[must_use]

@@ -34,6 +34,8 @@ pub struct SP1Context<'a> {
 
     /// The IO options for the [`SP1Executor`].
     pub io_options: IoOptions<'a>,
+
+    pub fuel_limit: Option<u64>,
 }
 
 impl Default for SP1Context<'_> {
@@ -126,6 +128,7 @@ impl<'a> SP1ContextBuilder<'a> {
             deferred_proof_verification,
             calculate_gas,
             io_options: take(&mut self.io_options),
+            fuel_limit: None,
         }
     }
 

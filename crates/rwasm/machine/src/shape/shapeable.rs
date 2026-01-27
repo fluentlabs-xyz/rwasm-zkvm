@@ -82,6 +82,7 @@ impl Shapeable for ExecutionRecord {
             //TODO: is it true for TableGrow/TableInit ?
             (RwasmAirId::TableGrow, self.table_grow_events.len()),
             (RwasmAirId::TableInit, self.table_init_events.len()),
+            (RwasmAirId::Fuel, self.fuel_events.len()),
         ]
     }
 

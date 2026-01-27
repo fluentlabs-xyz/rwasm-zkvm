@@ -3464,7 +3464,7 @@ dependencies = [
  "k256",
  "num",
  "p256",
- "rwasm",
+ "rwasm 0.3.2 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing-new)",
  "schnellru",
  "sha2 0.10.9",
  "smallvec",
@@ -3489,7 +3489,7 @@ dependencies = [
  "paste",
  "revm-precompile",
  "revm-primitives",
- "rwasm",
+ "rwasm 0.3.2 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing-new)",
  "serde",
  "strum_macros 0.27.2",
 ]
@@ -6930,6 +6930,31 @@ dependencies = [
 [[package]]
 name = "rwasm"
 version = "0.3.2"
+source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ffuel#d773e20b8863819b9b88cb4e550e74cff7b0e44d"
+dependencies = [
+ "anyhow",
+ "bincode 2.0.1",
+ "bitvec",
+ "bytes 1.11.0",
+ "downcast-rs 2.0.2",
+ "futures",
+ "hashbrown 0.15.5",
+ "libm",
+ "num-derive",
+ "num-traits",
+ "paste",
+ "serde",
+ "smallvec",
+ "spin 0.10.0",
+ "tiny-keccak",
+ "wasmi",
+ "wasmparser-nostd",
+ "wasmtime",
+]
+
+[[package]]
+name = "rwasm"
+version = "0.3.2"
 source = "git+https://github.com/fluentlabs-xyz/rwasm.git?branch=feat%2Ftracing-new#ed8ea1bcc739a9b7c77e1a97f0195fd7be22219a"
 dependencies = [
  "anyhow",
@@ -6980,7 +7005,7 @@ dependencies = [
  "range-set-blaze",
  "rrs-succinct",
  "rustc-demangle",
- "rwasm",
+ "rwasm 0.3.2 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ffuel)",
  "serde",
  "serde_json",
  "sp1-curves 5.2.3",
@@ -7032,7 +7057,7 @@ dependencies = [
  "rand 0.8.5",
  "rayon",
  "rayon-scan",
- "rwasm",
+ "rwasm 0.3.2 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ffuel)",
  "rwasm-executor",
  "serde",
  "serde_json",
@@ -7137,7 +7162,7 @@ dependencies = [
  "p3-symmetric",
  "p3-util",
  "rayon",
- "rwasm",
+ "rwasm 0.3.2 (git+https://github.com/fluentlabs-xyz/rwasm.git?branch=djadjka%2Ffuel)",
  "rwasm-executor",
  "rwasm-machine",
  "serde",

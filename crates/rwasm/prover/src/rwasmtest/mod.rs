@@ -6,6 +6,7 @@ mod call;
 mod comp;
 mod divrem;
 mod extend;
+mod fuel;
 mod lt;
 mod mul;
 mod rotate;
@@ -18,12 +19,15 @@ use rwasm_machine::utils::setup_logger;
 
 use super::*;
 
-pub fn run_rwasm_prover(mut program: Program) {
+pub fn run_rwasm_prover_with_fuel_limit(mut program: Program, fuel_limit: u64) {
     setup_logger();
     let prover: SP1Prover = SP1Prover::new();
     let mut opts = SP1ProverOpts::default();
     opts.core_opts.shard_batch_size = 1;
-    let context = SP1Context::default();
+
+    let mut context = SP1Context::default();
+
+    context.fuel_limit = Some(fuel_limit);
 
     tracing::info!("setup elf");
     let (_, pk, vk) = prover.setup_program(&mut program);
@@ -52,6 +56,10 @@ pub fn run_rwasm_prover(mut program: Program) {
     }
 
     println!("done rwasm proof");
+}
+
+pub fn run_rwasm_prover(program: Program) {
+    run_rwasm_prover_with_fuel_limit(program, u64::MAX);
 }
 #[cfg(test)]
 mod tests {
